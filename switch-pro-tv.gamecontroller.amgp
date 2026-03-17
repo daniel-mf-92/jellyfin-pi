@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gamecontroller configversion="19" appversion="3.3">
+    <sets>
+        <set index="0">
+            <!-- Left stick: mouse cursor -->
+            <stick index="0">
+                <mode>mouse</mode>
+                <deadzone>8000</deadzone>
+                <stickdirections>
+                    <stickdirection index="1"><slots><slot><code>3</code><mode>mousemovement</mode></slot></slots></stickdirection>
+                    <stickdirection index="2"><slots><slot><code>2</code><mode>mousemovement</mode></slot></slots></stickdirection>
+                    <stickdirection index="4"><slots><slot><code>4</code><mode>mousemovement</mode></slot></slots></stickdirection>
+                    <stickdirection index="8"><slots><slot><code>1</code><mode>mousemovement</mode></slot></slots></stickdirection>
+                </stickdirections>
+            </stick>
+            <!-- Right stick: scroll only -->
+            <stick index="1">
+                <mode>mouse</mode>
+                <deadzone>6000</deadzone>
+                <stickdirections>
+                    <stickdirection index="1"><slots><slot><code>4</code><mode>mousebutton</mode></slot></slots></stickdirection>
+                    <stickdirection index="2"><slots><slot><code>7</code><mode>mousebutton</mode></slot></slots></stickdirection>
+                    <stickdirection index="4"><slots><slot><code>5</code><mode>mousebutton</mode></slot></slots></stickdirection>
+                    <stickdirection index="8"><slots><slot><code>6</code><mode>mousebutton</mode></slot></slots></stickdirection>
+                </stickdirections>
+            </stick>
+            <!-- D-pad: Arrow keys for TV UI navigation -->
+            <dpad index="0">
+                <dpadbutton index="1"><slots><slot><code>103</code><mode>keyboard</mode></slot></slots></dpadbutton>
+                <dpadbutton index="2"><slots><slot><code>106</code><mode>keyboard</mode></slot></slots></dpadbutton>
+                <dpadbutton index="4"><slots><slot><code>108</code><mode>keyboard</mode></slot></slots></dpadbutton>
+                <dpadbutton index="8"><slots><slot><code>105</code><mode>keyboard</mode></slot></slots></dpadbutton>
+            </dpad>
+            <!-- A (button 0) = Enter/Select -->
+            <button index="0"><slots><slot><code>28</code><mode>keyboard</mode></slot></slots></button>
+            <!-- B (button 1) = Escape/Back -->
+            <button index="1"><slots><slot><code>1</code><mode>keyboard</mode></slot></slots></button>
+            <!-- X (button 2) = Return/Enter (confirm) -->
+            <button index="2"><slots><slot><code>36</code><mode>keyboard</mode></slot></slots></button>
+            <!-- Y (button 3) = Backspace -->
+            <button index="3"><slots><slot><code>14</code><mode>keyboard</mode></slot></slots></button>
+            <!-- L bumper (button 4) = Page Up (prev section) -->
+            <button index="4"><slots><slot><code>104</code><mode>keyboard</mode></slot></slots></button>
+            <!-- R bumper (button 5) = Page Down (next section) -->
+            <button index="5"><slots><slot><code>109</code><mode>keyboard</mode></slot></slots></button>
+            <!-- ZL trigger (button 6) = Rewind -->
+            <button index="6"><slots><slot><code>168</code><mode>keyboard</mode></slot></slots></button>
+            <!-- ZR trigger (button 7) = Fast Forward -->
+            <button index="7"><slots><slot><code>208</code><mode>keyboard</mode></slot></slots></button>
+            <!-- + (button 8) = Space (play/pause) -->
+            <button index="8"><slots><slot><code>57</code><mode>keyboard</mode></slot></slots></button>
+            <!-- - (button 9) = Tab (toggle info/menu) -->
+            <button index="9"><slots><slot><code>15</code><mode>keyboard</mode></slot></slots></button>
+            <!-- Home (button 10) = mouse click (fallback) -->
+            <button index="10"><slots><slot><code>1</code><mode>mousebutton</mode></slot></slots></button>
+            <!-- Capture (button 11) = F (fullscreen toggle) -->
+            <button index="11"><slots><slot><code>33</code><mode>keyboard</mode></slot></slots></button>
+            <!-- L stick click (button 12) = mouse click -->
+            <button index="12"><slots><slot><code>1</code><mode>mousebutton</mode></slot></slots></button>
+            <!-- R stick click (button 13) = M (mute) -->
+            <button index="13"><slots><slot><code>50</code><mode>keyboard</mode></slot></slots></button>
+        </set>
+    </sets>
+</gamecontroller>

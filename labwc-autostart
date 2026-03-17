@@ -1,0 +1,12 @@
+# Scale display for TV
+wlr-randr --output HDMI-A-2 --scale 1.25 &
+sleep 0.5
+
+# Hide cursor when idle
+unclutter --timeout 3 &
+
+# Disable screen blanking
+wlopm --on $(wlopm | awk "{print \$1}") &
+
+# TV launcher (the root screen)
+flex-launcher -c ~/.config/flex-launcher/config.ini &
