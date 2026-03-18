@@ -1,0 +1,53 @@
+{
+  "name": "Universal Gamepad",
+  "idmatcher": ".*",
+  "mapping": {
+    "KEY_GAMEPAD_A": "enter",
+
+    "KEY_GAMEPAD_B": {
+      "short": "back",
+      "long": "home"
+    },
+
+    "KEY_GAMEPAD_X": "cycle_subtitles",
+
+    "KEY_GAMEPAD_Y": "cycle_audio",
+
+    "KEY_GAMEPAD_BACK": "host:toggleDebug",
+
+    "KEY_GAMEPAD_GUIDE": {
+      "short": "home",
+      "long": "exit"
+    },
+
+    "KEY_GAMEPAD_START": "host:fullscreen",
+
+    "KEY_GAMEPAD_LEFTSHOULDER": "seek_backward",
+
+    "KEY_GAMEPAD_RIGHTSHOULDER": "seek_forward",
+
+    "KEY_GAMEPAD_DPAD_UP": "up",
+    "KEY_GAMEPAD_DPAD_DOWN": "down",
+    "KEY_GAMEPAD_DPAD_LEFT": "left",
+    "KEY_GAMEPAD_DPAD_RIGHT": "right",
+
+    "KEY_GAMEPAD_LEFTSTICK": "",
+    "KEY_GAMEPAD_RIGHTSTICK": "search",
+
+    "KEY_GAMEPAD_LEFTX_NEG": "left",
+    "KEY_GAMEPAD_LEFTX_POS": "right",
+    "KEY_GAMEPAD_LEFTY_NEG": "up",
+    "KEY_GAMEPAD_LEFTY_POS": "down",
+
+    "KEY_GAMEPAD_RIGHTX_NEG": "decrease_audio_delay",
+    "KEY_GAMEPAD_RIGHTX_POS": "increase_audio_delay",
+    "KEY_GAMEPAD_RIGHTY_NEG": "increase_volume",
+    "KEY_GAMEPAD_RIGHTY_POS": "decrease_volume",
+
+    "KEY_GAMEPAD_TRIGGERLEFT": "play_pause",
+    "KEY_GAMEPAD_TRIGGERRIGHT": "play_pause",
+
+    "KEY_GAMEPAD_MISC1": "",
+    "KEY_GAMEPAD_TOUCHPAD": "search"
+  }
+}
