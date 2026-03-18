@@ -3,7 +3,7 @@
 //  konvergo
 //
 //  Created by Lionel CHAZALLON on 16/10/2014.
-//
+//  GameController upgrade for native gamepad support.
 //
 
 #ifndef _INPUT_SDL_
@@ -16,13 +16,12 @@
 
 #include "input/InputComponent.h"
 
+typedef QMap<int, SDL_GameController*> SDLControllerMap;
+typedef SDLControllerMap::const_iterator SDLControllerMapIterator;
 typedef QMap<int, SDL_Joystick*> SDLJoystickMap;
 typedef SDLJoystickMap::const_iterator SDLJoystickMapIterator;
 
-typedef QMap<int, QElapsedTimer*> SDLTimeStampMap;
-typedef QMap<int, QElapsedTimer*>::const_iterator SDLTimeStampMapIterator;
-
-#define SDL_POLL_TIME 50
+#define SDL_POLL_TIME 16
 #define SDL_BUTTON_REPEAT_DELAY 500
 #define SDL_BUTTON_REPEAT_RATE 100
 
@@ -43,9 +42,12 @@ signals:
   void receivedInput(const QString& source, const QString& keycode, InputBase::InputkeyState keyState);
 
 private:
-  void refreshJoystickList();
-  QString nameForId(SDL_JoystickID id);
+  void refreshDeviceList();
+  QString nameForController(SDL_JoystickID id);
+  QString nameForJoystick(SDL_JoystickID id);
+  void rumble(SDL_JoystickID id, Uint16 lowFreq, Uint16 highFreq, Uint32 durationMs);
 
+  SDLControllerMap m_controllers;
   SDLJoystickMap m_joysticks;
 
   // map axis to up = true or down = false
