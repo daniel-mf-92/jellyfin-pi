@@ -27,6 +27,9 @@
 #include <unistd.h>
 #endif
 
+#include <QProcess>
+#include <cstdlib>
+
 #ifdef TARGET_RPI
 #include <bcm_host.h>
 #include <interface/vmcs_host/vcgencmd.h>
@@ -276,6 +279,30 @@ void PlayerComponent::setWindow(QQuickWindow* window)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 bool PlayerComponent::load(const QString& url, const QVariantMap& options, const QVariantMap &metadata, const QVariant& audioStream , const QVariant& subtitleStream)
 {
+  // External player support: if JMP_EXTERNAL_PLAYER is set (e.g. "vlc"),
+  // launch that player with the stream URL instead of using built-in mpv.
+  const char* extPlayer = std::getenv("JMP_EXTERNAL_PLAYER");
+  if (extPlayer && strlen(extPlayer) > 0) {
+    QString player = QString::fromUtf8(extPlayer);
+    QStringList args;
+
+    // VLC-specific: fullscreen, no embedded video window
+    if (player.contains("vlc", Qt::CaseInsensitive)) {
+      args << "--fullscreen" << "--play-and-exit";
+      // Start at offset if specified
+      quint64 startMs = options["startMilliseconds"].toLongLong();
+      if (startMs > 0) {
+        int startSec = startMs / 1000;
+        args << QString("--start-time=%1").arg(startSec);
+      }
+    }
+
+    args << url;
+    qInfo() << "Launching external player:" << player << args;
+    QProcess::startDetached(player, args);
+    return true;
+  }
+
   stop();
   queueMedia(url, options, metadata, audioStream, subtitleStream);
   return true;
