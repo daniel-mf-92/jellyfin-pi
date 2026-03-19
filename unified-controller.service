@@ -1,0 +1,16 @@
+[Unit]
+Description=Unified Switch Pro Controller Mapper
+After=bluetooth.target
+Wants=bluetooth.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /home/your-username/bin/unified-controller.py
+Restart=always
+RestartSec=5
+Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+
+[Install]
+WantedBy=default.target

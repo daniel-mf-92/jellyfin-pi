@@ -1,485 +1,1216 @@
 #!/usr/bin/env python3
 """
-Unified Controller Daemon for Pi Home
-- Switch Pro Controller -> keyboard/mouse via uinput (Wayland + X11)
-- B button: back within current app (Escape)
-- Y button: kill foreground app, return to flex-launcher (launchpad)
-- Right joystick: scroll (mouse wheel up/down/left/right)
-- Left joystick: arrow key navigation with repeat
-- D-pad: arrow keys
-- Sound self-healing: ensures media always plays with sound (unmute + volume via CDP)
+unified-controller.py -- Unified Switch Pro Controller mapper for Pi5-home-A
+==============================================================================
 
-Replaces deprecated home-button-daemon.py.
+ARCHITECTURE
+------------
+This script is the single controller daemon for the Jellyfin Pi media centre.
+It replaces several earlier scripts: gamepad-kbd.py, switch-controller-mapper.py,
+media-controller-daemon.sh, home-button-daemon.py, and go-home.sh.
+
+MODES (auto-switch based on foreground app via /tmp/foreground-app):
+  LAUNCHER   -- flex-launcher in front: d-pad->arrows, A->Enter, B->Esc
+  NAVIGATION -- JMP/Kodi/Chromium/etc: d-pad->arrows, A->mouse click,
+                B->Backspace (back), X->Backspace, sticks->mouse/scroll,
+                bumpers->seek (accelerating), ZL->fullscreen, ZR->play/pause
+  MEDIA      -- overlay mode: d-pad up/down->volume (accel), d-pad left/right
+                ->subtitle, A->play/pause, bumpers->seek (accel), B->exit mode
+
+INPUT:  evdev (Nintendo Switch Pro Controller via Bluetooth)
+OUTPUT: Two UInput virtual devices (split to avoid libinput misclassification):
+        - Switch-Pro-Keyboard  (EV_KEY: arrows, enter, esc, backspace, etc.)
+        - Switch-Pro-Mouse     (EV_REL + BTN_LEFT/BTN_RIGHT)
+
+PLAYBACK CONTROL STACK (tried in order):
+  1. MPRIS D-Bus  -- works with JMP, Chromium, any MPRIS player
+  2. mpv IPC      -- /tmp/mpv-socket (standalone mpv)
+  3. Keyboard     -- KEY_PAGEUP/KEY_PAGEDOWN seek, KEY_SPACE play/pause
+
+HOME BUTTON (Y):
+  - Outside fullscreen: pkill media apps, return to flex-launcher
+  - In fullscreen: hold 3 seconds to confirm (prevents accidental exit)
+
+IDLE: 15-minute auto-disconnect via bluetoothctl (saves battery, wakes on press)
+
+SYSTEMD: Run as unified-controller.service (user or system unit)
 """
 
-import subprocess
-import time
-import threading
-import json
-import urllib.request
+import asyncio
+import enum
+import json as _json
 import os
-import sys
 import signal
+import socket
+import re
+import subprocess
+import sys
+import time
+from collections import defaultdict
+
+os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/1000")
+os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+os.environ.setdefault("WAYLAND_DISPLAY", "wayland-0")
 
 try:
     import evdev
-    from evdev import UInput, ecodes, AbsInfo
+    from evdev import UInput, ecodes, ff, InputDevice
 except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--break-system-packages", "-q", "evdev"])
-    import evdev
-    from evdev import UInput, ecodes, AbsInfo
-
-try:
-    import websocket
-except ImportError:
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--break-system-packages", "-q", "websocket-client"])
-    import websocket
-
-# --- Config ---
-CONTROLLER_NAME = "Pro Controller"
-COOLDOWN_HOME = 2  # seconds between Y presses
-CDP_PORT = int(os.environ.get("JMP_CDP_PORT", "9222"))
-CDP_HOST = os.environ.get("JMP_CDP_HOST", "localhost")
-SOUND_CHECK_INTERVAL = 5  # seconds between sound health checks
-DEFAULT_VOLUME = 80  # percent
-
-# Switch Pro Controller button codes (evdev)
-BTN_B = 304       # B (bottom/South)
-BTN_A = 305       # A (right/East)
-BTN_X = 307       # X (top/North)
-BTN_Y = 308       # Y (left/West)
-BTN_L = 309       # L bumper
-BTN_R = 310       # R bumper
-BTN_ZL = 311      # ZL trigger
-BTN_ZR = 312      # ZR trigger
-BTN_MINUS = 313   # - button
-BTN_PLUS = 314    # + button
-BTN_LSTICK = 315  # L stick click
-BTN_RSTICK = 316  # R stick click
-BTN_HOME = 317    # Home button
-BTN_CAPTURE = 318 # Capture button
-
-# Axes
-ABS_HAT0X = 16    # D-pad left/right
-ABS_HAT0Y = 17    # D-pad up/down
-ABS_X = 0         # Left stick X
-ABS_Y = 1         # Left stick Y
-ABS_RX = 3        # Right stick X
-ABS_RY = 4        # Right stick Y
-
-# Button -> keyboard mapping
-BUTTON_MAP = {
-    BTN_A: ecodes.KEY_ENTER,        # A = Select/Enter
-    BTN_B: ecodes.KEY_ESC,          # B = Back (within app)
-    BTN_X: ecodes.KEY_J,            # X = J (confirm in some UIs)
-    # BTN_Y handled separately -> go home / kill app
-    BTN_L: ecodes.KEY_PAGEUP,       # L bumper = Page Up
-    BTN_R: ecodes.KEY_PAGEDOWN,     # R bumper = Page Down
-    BTN_ZL: ecodes.KEY_REWIND,      # ZL = Rewind
-    BTN_ZR: ecodes.KEY_FASTFORWARD, # ZR = Fast Forward
-    BTN_PLUS: ecodes.KEY_SPACE,     # + = Play/Pause
-    BTN_MINUS: ecodes.KEY_TAB,      # - = Menu/Tab
-    BTN_LSTICK: ecodes.KEY_F,       # L stick click = Fullscreen
-    BTN_RSTICK: ecodes.KEY_M,       # R stick click = Mute toggle
-}
-
-DPAD_MAP_X = {-1: ecodes.KEY_LEFT, 1: ecodes.KEY_RIGHT}
-DPAD_MAP_Y = {-1: ecodes.KEY_UP, 1: ecodes.KEY_DOWN}
-
-# Stick tuning
-STICK_DEADZONE = 12000
-STICK_REPEAT_DELAY = 0.4   # initial delay before repeat
-STICK_REPEAT_RATE = 0.12   # repeat interval
-
-# Right stick scroll tuning
-SCROLL_DEADZONE = 8000
-SCROLL_INTERVAL = 0.08     # time between scroll events when stick held
-SCROLL_SPEED = 3           # lines per scroll event
-
-APP_PROCESSES = ["jellyfinmediaplayer", "moonlight-qt", "retroarch", "vlc"]
+    print("ERROR: python3-evdev not installed. Run: sudo apt install python3-evdev", flush=True)
+    sys.exit(1)
 
 
-def find_controller():
-    for path in evdev.list_devices():
-        dev = evdev.InputDevice(path)
-        if CONTROLLER_NAME in dev.name:
-            return dev
+# ─── Configuration ───────────────────────────────────────────────────────────
+
+CONTROLLER_MAC = "98:41:5C:37:CB:EB"
+CONTROLLER_NAMES = ["Pro Controller"]
+IDLE_TIMEOUT = 900           # 15 minutes → auto-disconnect
+FOREGROUND_POLL_S = 2.0      # how often to check foreground app
+RECONNECT_POLL_S = 5.0       # how often to check for reconnected controller
+
+# D-pad repeat with acceleration
+DPAD_INITIAL_DELAY = 0.400   # 400ms before first repeat
+DPAD_REPEAT_FAST = 0.150     # 150ms repeat rate (initial)
+DPAD_ACCEL_THRESHOLD = 2.0   # after 2.0s held, accelerate
+DPAD_REPEAT_ACCEL = 0.080    # 80ms repeat rate (accelerated)
+
+# Analog stick thresholds
+STICK_DIGITAL_DEAD = 8000    # left stick → digital direction threshold
+MOUSE_DEAD = 6000            # left stick → mouse cursor dead zone
+SCROLL_DEAD = 6000           # right stick → scroll dead zone
+MOUSE_SPEED = 12             # pixels per poll tick at full deflection
+SCROLL_SPEED = 3.0           # scroll units per poll tick at full deflection
+MOUSE_POLL_S = 0.012         # ~83Hz mouse output
+
+# Stick axis range (evdev reports -32768 to 32767 typically)
+STICK_MAX = 32767
+
+# Haptic feedback durations (milliseconds)
+HAPTIC_NAV_MS = 20           # weak motor only, navigation tick
+HAPTIC_SELECT_MS = 50        # both motors, select/confirm
+
+# Apps that trigger each mode
+LAUNCHER_APPS = {"flex-launcher", "flex_launcher"}
+NAVIGATION_APPS = {"kodi", "org.videolan.vlc", "vlc", "mpv", "chromium", "chromium-browser", "jellyfin-media-player",
+                   "com.github.iwalton3.jellyfin-media-player", "jmp", "firefox", "moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
+
+# Accelerating hold config
+ACCEL_INITIAL_DELAY = 0.300     # delay before first repeat when held
+ACCEL_REPEAT_INTERVAL = 0.250   # interval between accelerating actions (fast repeat)
+SEEK_STEPS = [5, 10, 20, 40, 80, 120]  # seconds — doubles each repeat
+VOLUME_STEP_INITIAL = 2         # volume change per tick (out of 100)
+VOLUME_STEP_MAX = 10            # max volume change per tick
+VOLUME_ACCEL_EVERY = 3          # increase step every N ticks
+
+MPV_SOCKET = "/tmp/mpv-socket"
+
+
+# ─── Mode Enum ───────────────────────────────────────────────────────────────
+
+class Mode(enum.Enum):
+    LAUNCHER = "LAUNCHER"
+    NAVIGATION = "NAVIGATION"
+    MEDIA = "MEDIA"
+
+
+# ─── Logging ─────────────────────────────────────────────────────────────────
+
+def log(msg):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[{ts}] {msg}", flush=True)
+
+
+# ─── mpv IPC helpers ─────────────────────────────────────────────────────────
+
+def _mpv_command(cmd_list):
+    """Send a command to mpv via IPC socket. Returns True on success."""
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect(MPV_SOCKET)
+        cmd = _json.dumps({"command": cmd_list}) + "\n"
+        sock.sendall(cmd.encode())
+        sock.close()
+        return True
+    except Exception:
+        return False
+
+
+def _mpv_get_property(prop):
+    """Get a property from mpv via IPC. Returns value or None."""
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(1)
+        sock.connect(MPV_SOCKET)
+        cmd = _json.dumps({"command": ["get_property", prop]}) + "\n"
+        sock.sendall(cmd.encode())
+        data = sock.recv(4096).decode()
+        sock.close()
+        resp = _json.loads(data.strip().split("\n")[0])
+        return resp.get("data")
+    except Exception:
+        return None
+
+
+def mpv_is_active():
+    """Check if mpv IPC socket is available."""
+    try:
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(0.5)
+        sock.connect(MPV_SOCKET)
+        sock.close()
+        return True
+    except Exception:
+        return False
+
+
+def mpv_is_fullscreen():
+    """Check if mpv is currently fullscreen."""
+    val = _mpv_get_property("fullscreen")
+    return val is True
+
+
+# --- MPRIS D-Bus helpers (for JMP/Chromium-based players) ---
+
+def _find_mpris_player():
+    """Discover the first active MPRIS player on D-Bus (handles instance suffixes)."""
+    try:
+        env = {
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        }
+        r = subprocess.run(
+            ["dbus-send", "--session", "--dest=org.freedesktop.DBus", "--print-reply",
+             "/org/freedesktop/DBus", "org.freedesktop.DBus.ListNames"],
+            capture_output=True, text=True, timeout=2, env=env
+        )
+        for line in r.stdout.splitlines():
+            if "org.mpris.MediaPlayer2." in line:
+                match = re.search(r'"(org\.mpris\.MediaPlayer2\.[^"]+)"', line)
+                if match:
+                    return match.group(1)
+    except Exception:
+        pass
     return None
 
 
-def app_is_running():
-    for app in APP_PROCESSES:
-        result = subprocess.run(["pgrep", "-f", app], capture_output=True)
-        if result.returncode == 0:
-            return True
-    return False
+def _mpris_command(method, *args):
+    """Send an MPRIS command via dbus-send. Returns True on success."""
+    dest = _find_mpris_player()
+    if not dest:
+        return False
+    try:
+        env = {
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        }
+        cmd = ["dbus-send", "--session", "--dest=" + dest, "--print-reply",
+               "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player." + method]
+        cmd.extend(args)
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=2, env=env)
+        return "method return" in r.stdout
+    except Exception:
+        return False
 
 
-def go_home():
-    """Kill foreground apps and return to flex-launcher."""
-    for proc in APP_PROCESSES:
-        subprocess.run(["killall", proc], capture_output=True)
-    subprocess.run(["killall", "chromium"], capture_output=True)
-    time.sleep(0.5)
-    result = subprocess.run(["pgrep", "-x", "flex-launcher"], capture_output=True)
-    if result.returncode != 0:
-        env = os.environ.copy()
-        env["WAYLAND_DISPLAY"] = "wayland-0"
-        env["XDG_RUNTIME_DIR"] = "/run/user/1000"
-        subprocess.Popen(
-            ["flex-launcher", "-c",
-             os.path.expanduser("~/.config/flex-launcher/config.ini")],
-            env=env,
-            stdout=open("/tmp/flex-launcher.log", "w"),
-            stderr=subprocess.STDOUT
+def _mpris_seek(seconds):
+    """Seek via MPRIS. seconds can be positive or negative."""
+    usec = int(seconds * 1000000)
+    return _mpris_command("Seek", "int64:" + str(usec))
+
+
+def _mpris_play_pause():
+    """Toggle play/pause via MPRIS."""
+    return _mpris_command("PlayPause")
+
+
+
+# ─── Accelerating Hold Engine ────────────────────────────────────────────────
+
+class AccelHold:
+    """Tracks held buttons and fires accelerating actions.
+
+    Usage:
+        accel.press("seek_fwd")   — call on button down
+        accel.release("seek_fwd") — call on button up
+        accel.tick()              — call every loop iteration (~10ms)
+
+    Actions fire immediately on press, then repeat with acceleration.
+    """
+
+    def __init__(self, action_callback):
+        """action_callback(action_name, tick_count) is called for each fire."""
+        self.callback = action_callback
+        # action_name → { "press_time": float, "next_fire": float, "ticks": int }
+        self.held = {}
+
+    def press(self, action):
+        if action not in self.held:
+            now = time.monotonic()
+            self.held[action] = {
+                "press_time": now,
+                "next_fire": now + ACCEL_INITIAL_DELAY,
+                "ticks": 0,
+            }
+            # Fire immediately on press
+            self.callback(action, 0)
+
+    def release(self, action):
+        self.held.pop(action, None)
+
+    def release_all(self):
+        self.held.clear()
+
+    def tick(self):
+        now = time.monotonic()
+        for action, state in list(self.held.items()):
+            if now >= state["next_fire"]:
+                state["ticks"] += 1
+                self.callback(action, state["ticks"])
+                state["next_fire"] = now + ACCEL_REPEAT_INTERVAL
+
+
+# ─── Controller Discovery ───────────────────────────────────────────────────
+
+def find_controller():
+    """Find the Pro Controller evdev device (not IMU, not virtual)."""
+    for path in evdev.list_devices():
+        try:
+            dev = InputDevice(path)
+            if dev.name in CONTROLLER_NAMES:
+                phys = (dev.phys or "").lower()
+                if "imu" not in dev.name.lower() and "virtual" not in phys:
+                    return dev
+        except (OSError, PermissionError):
+            continue
+    return None
+
+
+def is_bt_connected():
+    """Check if controller is connected via Bluetooth."""
+    try:
+        r = subprocess.run(
+            ["bluetoothctl", "info", CONTROLLER_MAC],
+            capture_output=True, text=True, timeout=5
         )
+        return "Connected: yes" in r.stdout
+    except Exception:
+        return False
 
 
-def create_virtual_keyboard():
-    """Create uinput device with keyboard keys + relative axes for scroll."""
-    keys = list(set(
-        list(BUTTON_MAP.values()) +
-        list(DPAD_MAP_X.values()) +
-        list(DPAD_MAP_Y.values()) +
-        [ecodes.KEY_BACKSPACE]
-    ))
-    cap = {
-        ecodes.EV_KEY: keys,
-        ecodes.EV_REL: [ecodes.REL_WHEEL, ecodes.REL_HWHEEL],
-    }
-    return UInput(cap, name="pi-home-controller")
+def bt_disconnect():
+    """Disconnect controller via bluetoothctl (saves battery, wakes on button press)."""
+    log(f"Idle timeout ({IDLE_TIMEOUT}s), disconnecting {CONTROLLER_MAC}")
+    try:
+        subprocess.run(
+            ["bluetoothctl", "disconnect", CONTROLLER_MAC],
+            capture_output=True, text=True, timeout=10
+        )
+    except Exception as e:
+        log(f"Disconnect error: {e}")
 
 
-def press_key(ui, key):
-    ui.write(ecodes.EV_KEY, key, 1)
-    ui.syn()
-    time.sleep(0.05)
-    ui.write(ecodes.EV_KEY, key, 0)
-    ui.syn()
+# ─── Foreground App Detection ────────────────────────────────────────────────
+
+FOREGROUND_STATE_FILE = "/tmp/foreground-app"
+
+def get_foreground_app():
+    """Get the foreground app from state file (written by show-*.sh scripts)."""
+    try:
+        with open(FOREGROUND_STATE_FILE, "r") as f:
+            app = f.read().strip().lower()
+        if app:
+            return [app]
+    except FileNotFoundError:
+        pass
+    except Exception:
+        pass
+    # Fallback: assume launcher if no state file
+    return ["flex-launcher"]
 
 
-def scroll(ui, vertical=0, horizontal=0):
-    """Emit scroll wheel events. Positive = up/right, negative = down/left."""
-    if vertical:
-        ui.write(ecodes.EV_REL, ecodes.REL_WHEEL, vertical)
-    if horizontal:
-        ui.write(ecodes.EV_REL, ecodes.REL_HWHEEL, horizontal)
-    if vertical or horizontal:
-        ui.syn()
+def detect_mode(visible_apps):
+    """Determine mode from the list of visible app IDs."""
+    app_set = set(visible_apps)
+    has_launcher = bool(app_set & LAUNCHER_APPS)
+    has_nav_app = bool(app_set & NAVIGATION_APPS)
+
+    if has_launcher and not has_nav_app:
+        return Mode.LAUNCHER
+    elif has_nav_app:
+        return Mode.NAVIGATION
+    else:
+        return Mode.NAVIGATION
 
 
-# --- Sound Self-Healing (CDP) ---
+# ─── Haptic Feedback ─────────────────────────────────────────────────────────
 
-class SoundHealer(threading.Thread):
-    """Periodically checks JMP video element and ensures sound is on."""
+class HapticEngine:
+    """Manage FF_RUMBLE effects on the controller."""
 
-    def __init__(self):
-        super().__init__(daemon=True)
-        self.running = True
+    def __init__(self, device):
+        self.device = device
+        self.nav_effect_id = -1
+        self.select_effect_id = -1
+        self._setup_effects()
 
-    def run(self):
-        while self.running:
+    def _setup_effects(self):
+        """Haptics fully disabled — do not upload any effects."""
+        log("Haptic effects DISABLED (no vibration)")
+        self.nav_effect_id = -1
+        self.select_effect_id = -1
+
+    def play_nav(self):
+        if self.nav_effect_id >= 0:
             try:
-                self._check_and_fix_sound()
+                self.device.write(ecodes.EV_FF, self.nav_effect_id, 1)
             except Exception:
                 pass
-            time.sleep(SOUND_CHECK_INTERVAL)
 
-    def _check_and_fix_sound(self):
-        # Check if JMP CDP is available
-        try:
-            resp = urllib.request.urlopen(
-                f"http://{CDP_HOST}:{CDP_PORT}/json", timeout=2)
-            pages = json.loads(resp.read())
-        except Exception:
-            return  # JMP not running or CDP not available
+    def play_select(self):
+        if self.select_effect_id >= 0:
+            try:
+                self.device.write(ecodes.EV_FF, self.select_effect_id, 1)
+            except Exception:
+                pass
 
-        targets = [p for p in pages if p.get("type") == "page"]
-        if not targets:
-            return
-
-        ws_url = targets[0].get("webSocketDebuggerUrl")
-        if not ws_url:
-            return
-
-        try:
-            ws = websocket.create_connection(ws_url, suppress_origin=True, timeout=5)
-        except Exception:
-            return
-
-        try:
-            # Check video state and fix if muted or volume 0
-            msg = json.dumps({
-                "id": 1,
-                "method": "Runtime.evaluate",
-                "params": {
-                    "expression": f"""
-                        (function() {{
-                            var v = document.querySelector('video');
-                            if (!v) return JSON.stringify({{has_video: false}});
-                            var wasMuted = v.muted;
-                            var wasVol = v.volume;
-                            var fixed = false;
-                            if (v.muted) {{
-                                v.muted = false;
-                                fixed = true;
-                            }}
-                            if (v.volume < 0.1) {{
-                                v.volume = {DEFAULT_VOLUME / 100.0};
-                                fixed = true;
-                            }}
-                            return JSON.stringify({{
-                                has_video: true,
-                                paused: v.paused,
-                                wasMuted: wasMuted,
-                                wasVol: Math.round(wasVol * 100),
-                                nowMuted: v.muted,
-                                nowVol: Math.round(v.volume * 100),
-                                fixed: fixed
-                            }});
-                        }})()
-                    """,
-                    "returnByValue": True,
-                    "awaitPromise": False
-                }
-            })
-            ws.send(msg)
-            deadline = time.time() + 5
-            while time.time() < deadline:
-                ws.settimeout(max(0.1, deadline - time.time()))
+    def cleanup(self):
+        for eid in (self.nav_effect_id, self.select_effect_id):
+            if eid >= 0:
                 try:
-                    r = json.loads(ws.recv())
+                    self.device.erase_effect(eid)
                 except Exception:
-                    break
-                if r.get("id") == 1:
-                    result = r.get("result", {}).get("result", {})
-                    val = result.get("value")
-                    if val and isinstance(val, str):
-                        data = json.loads(val)
-                        if data.get("fixed"):
-                            print(f"[sound-healer] Fixed: muted={data['wasMuted']}->{data['nowMuted']}, "
-                                  f"vol={data['wasVol']}%->{data['nowVol']}%", flush=True)
-                    break
-        finally:
-            ws.close()
-
-    def stop(self):
-        self.running = False
+                    pass
 
 
-# --- Right Stick Scroll Thread ---
+# ─── Virtual Input (UInput) — SPLIT into Keyboard + Mouse ─────────────────
 
-class ScrollThread(threading.Thread):
-    """Emits scroll events while right stick is held."""
+class VirtualInput:
+    """Create and manage TWO UInput devices:
+    - Switch-Pro-Keyboard: EV_KEY only (arrows, enter, esc, media keys, etc.)
+    - Switch-Pro-Mouse: EV_REL + BTN_LEFT/BTN_RIGHT only
+    """
 
-    def __init__(self, ui):
-        super().__init__(daemon=True)
-        self.ui = ui
-        self.rx = 0  # raw axis value
+    KEYBOARD_KEYS = [
+        ecodes.KEY_UP, ecodes.KEY_DOWN, ecodes.KEY_LEFT, ecodes.KEY_RIGHT,
+        ecodes.KEY_ENTER, ecodes.KEY_ESC, ecodes.KEY_BACKSPACE, ecodes.KEY_TAB,
+        ecodes.KEY_SPACE, ecodes.KEY_F, ecodes.KEY_PAGEUP, ecodes.KEY_PAGEDOWN,
+        ecodes.KEY_HOME,
+        ecodes.KEY_PLAYPAUSE, ecodes.KEY_VOLUMEUP, ecodes.KEY_VOLUMEDOWN,
+        ecodes.KEY_NEXTSONG, ecodes.KEY_PREVIOUSSONG,
+        ecodes.KEY_SUBTITLE,
+        ecodes.KEY_V, ecodes.KEY_LEFTSHIFT,
+        ecodes.KEY_F5, ecodes.KEY_F11,
+    ]
+
+    MOUSE_KEYS = [
+        ecodes.BTN_LEFT, ecodes.BTN_RIGHT,
+    ]
+
+    def __init__(self):
+        kbd_caps = {
+            ecodes.EV_KEY: list(self.KEYBOARD_KEYS),
+        }
+        self.kbd = UInput(kbd_caps, name="Switch-Pro-Keyboard")
+
+        mouse_caps = {
+            ecodes.EV_KEY: list(self.MOUSE_KEYS),
+            ecodes.EV_REL: [
+                ecodes.REL_X, ecodes.REL_Y,
+                ecodes.REL_WHEEL, ecodes.REL_HWHEEL,
+            ],
+        }
+        self.mouse = UInput(mouse_caps, name="Switch-Pro-Mouse")
+        log("Virtual input devices created (Switch-Pro-Keyboard + Switch-Pro-Mouse)")
+
+    def _is_mouse_key(self, key):
+        return key in self.MOUSE_KEYS
+
+    def key_press(self, key):
+        if self._is_mouse_key(key):
+            self.mouse.write(ecodes.EV_KEY, key, 1)
+            self.mouse.syn()
+        else:
+            self.kbd.write(ecodes.EV_KEY, key, 1)
+            self.kbd.syn()
+
+    def key_release(self, key):
+        if self._is_mouse_key(key):
+            self.mouse.write(ecodes.EV_KEY, key, 0)
+            self.mouse.syn()
+        else:
+            self.kbd.write(ecodes.EV_KEY, key, 0)
+            self.kbd.syn()
+
+    def key_tap(self, key):
+        if self._is_mouse_key(key):
+            self.mouse.write(ecodes.EV_KEY, key, 1)
+            self.mouse.syn()
+            self.mouse.write(ecodes.EV_KEY, key, 0)
+            self.mouse.syn()
+        else:
+            self.kbd.write(ecodes.EV_KEY, key, 1)
+            self.kbd.syn()
+            self.kbd.write(ecodes.EV_KEY, key, 0)
+            self.kbd.syn()
+
+    def key_combo(self, *keys):
+        kbd_keys = [k for k in keys if not self._is_mouse_key(k)]
+        mouse_keys = [k for k in keys if self._is_mouse_key(k)]
+
+        for k in kbd_keys:
+            self.kbd.write(ecodes.EV_KEY, k, 1)
+        if kbd_keys:
+            self.kbd.syn()
+        for k in mouse_keys:
+            self.mouse.write(ecodes.EV_KEY, k, 1)
+        if mouse_keys:
+            self.mouse.syn()
+        for k in reversed(kbd_keys):
+            self.kbd.write(ecodes.EV_KEY, k, 0)
+        if kbd_keys:
+            self.kbd.syn()
+        for k in reversed(mouse_keys):
+            self.mouse.write(ecodes.EV_KEY, k, 0)
+        if mouse_keys:
+            self.mouse.syn()
+
+    def mouse_move(self, dx, dy):
+        if dx != 0 or dy != 0:
+            self.mouse.write(ecodes.EV_REL, ecodes.REL_X, dx)
+            self.mouse.write(ecodes.EV_REL, ecodes.REL_Y, dy)
+            self.mouse.syn()
+
+    def scroll(self, vertical=0, horizontal=0):
+        needs_syn = False
+        if vertical != 0:
+            self.mouse.write(ecodes.EV_REL, ecodes.REL_WHEEL, vertical)
+            needs_syn = True
+        if horizontal != 0:
+            self.mouse.write(ecodes.EV_REL, ecodes.REL_HWHEEL, horizontal)
+            needs_syn = True
+        if needs_syn:
+            self.mouse.syn()
+
+    def close(self):
+        try:
+            self.kbd.close()
+        except Exception:
+            pass
+        try:
+            self.mouse.close()
+        except Exception:
+            pass
+
+
+# ─── D-pad Repeat Engine ────────────────────────────────────────────────────
+
+class DpadRepeat:
+    """Handle d-pad key repeat with acceleration."""
+
+    def __init__(self, vinput, haptic):
+        self.vinput = vinput
+        self.haptic = haptic
+        self.held = {}
+
+    def press(self, key):
+        if key not in self.held:
+            now = time.monotonic()
+            self.vinput.key_tap(key)
+            self.held[key] = (now, now + DPAD_INITIAL_DELAY)
+
+    def release(self, key):
+        if key in self.held:
+            del self.held[key]
+
+    def tick(self):
+        now = time.monotonic()
+        for key, (press_time, next_fire) in list(self.held.items()):
+            if now >= next_fire:
+                self.vinput.key_tap(key)
+                held_duration = now - press_time
+                if held_duration >= DPAD_ACCEL_THRESHOLD:
+                    rate = DPAD_REPEAT_ACCEL
+                else:
+                    rate = DPAD_REPEAT_FAST
+                self.held[key] = (press_time, now + rate)
+
+    def release_all(self):
+        self.held.clear()
+
+
+# ─── Media Control Helpers ───────────────────────────────────────────────────
+
+class MediaController:
+    """Handle media-specific actions."""
+
+    HOME_BIN = "/home/your-username/bin"
+
+    @staticmethod
+    def _run(script, *args):
+        try:
+            env = {
+                **os.environ,
+                "XDG_RUNTIME_DIR": "/run/user/1000",
+                "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+                "WAYLAND_DISPLAY": "wayland-0",
+            }
+            subprocess.Popen(
+                [os.path.join(MediaController.HOME_BIN, script)] + list(args),
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as e:
+            log(f"Media helper error ({script}): {e}")
+
+    @classmethod
+    def play_pause(cls):
+        cls._run("media-playpause.sh")
+
+    @classmethod
+    def seek_forward(cls):
+        cls._run("media-seek.sh", "forward")
+
+    @classmethod
+    def seek_backward(cls):
+        cls._run("media-seek.sh", "backward")
+
+    @classmethod
+    def volume_up(cls):
+        cls._run("media-volume.sh", "up")
+
+    @classmethod
+    def volume_down(cls):
+        cls._run("media-volume.sh", "down")
+
+    @classmethod
+    def subtitle_next(cls):
+        cls._run("media-subtitle.sh", "next")
+
+    @classmethod
+    def subtitle_prev(cls):
+        cls._run("media-subtitle.sh", "prev")
+
+    @classmethod
+    def fullscreen_toggle(cls):
+        cls._run("media-fullscreen.sh")
+
+    @classmethod
+    def quit_player(cls):
+        cls._run("media-quit.sh")
+
+
+# ─── Analog Stick Processing ────────────────────────────────────────────────
+
+def stick_to_mouse(value, dead, speed, max_val):
+    if abs(value) <= dead:
+        return 0
+    sign = 1 if value > 0 else -1
+    magnitude = abs(value) - dead
+    max_range = max_val - dead
+    if max_range <= 0:
+        return 0
+    normalized = magnitude / max_range
+    return int(sign * (normalized ** 1.5) * speed)
+
+
+def stick_to_scroll(value, dead, speed, max_val):
+    if abs(value) <= dead:
+        return 0.0
+    sign = 1 if value > 0 else -1
+    magnitude = abs(value) - dead
+    max_range = max_val - dead
+    if max_range <= 0:
+        return 0.0
+    normalized = magnitude / max_range
+    return sign * normalized * speed
+
+
+def stick_to_digital(value, threshold):
+    if value < -threshold:
+        return -1
+    elif value > threshold:
+        return 1
+    return 0
+
+
+# ─── Main Controller Loop ───────────────────────────────────────────────────
+
+class UnifiedController:
+    """Main controller state machine."""
+
+    def __init__(self):
+        self.controller = None
+        self.vinput = None
+        self.haptic = None
+        self.dpad = None
+        self.accel = None
+        self.mode = Mode.LAUNCHER
+        self.grabbed = False
+        self.running = True
+        self.last_activity = time.monotonic()
+        self.last_mode_check = 0
+        self.media_mode_active = False
+        self.is_fullscreen = False      # toggled by L2
+        self.y_press_time = 0           # for hold-to-quit in fullscreen
+
+        # Analog state
+        self.lx = 0
+        self.ly = 0
+        self.rx = 0
         self.ry = 0
-        self.running = True
+        self.hat_x = 0
+        self.hat_y = 0
+        self.lstick_digital_x = 0
+        self.lstick_digital_y = 0
 
-    def run(self):
-        while self.running:
-            vscroll = 0
-            hscroll = 0
+        # Scroll accumulator
+        self.scroll_accum_x = 0.0
+        self.scroll_accum_y = 0.0
 
-            if abs(self.ry) > SCROLL_DEADZONE:
-                # Stick up (negative Y) = scroll up (positive wheel)
-                vscroll = -SCROLL_SPEED if self.ry > 0 else SCROLL_SPEED
+        # Button state tracking (for edge detection)
+        self.btn_state = defaultdict(bool)
 
-            if abs(self.rx) > SCROLL_DEADZONE:
-                hscroll = SCROLL_SPEED if self.rx > 0 else -SCROLL_SPEED
+    def _accel_action(self, action, tick):
+        """Callback for AccelHold — fires accelerating seek/volume."""
+        if action == "seek_fwd":
+            idx = min(tick, len(SEEK_STEPS) - 1)
+            secs = SEEK_STEPS[idx]
+            self._mpv_seek(secs)
+        elif action == "seek_bwd":
+            idx = min(tick, len(SEEK_STEPS) - 1)
+            secs = SEEK_STEPS[idx]
+            self._mpv_seek(-secs)
+        elif action == "vol_up":
+            step = min(VOLUME_STEP_INITIAL + (tick // VOLUME_ACCEL_EVERY), VOLUME_STEP_MAX)
+            if not self._mpv_volume(step):
+                self.vinput.key_tap(ecodes.KEY_VOLUMEUP)
+        elif action == "vol_down":
+            step = min(VOLUME_STEP_INITIAL + (tick // VOLUME_ACCEL_EVERY), VOLUME_STEP_MAX)
+            if not self._mpv_volume(-step):
+                self.vinput.key_tap(ecodes.KEY_VOLUMEDOWN)
 
-            if vscroll or hscroll:
-                scroll(self.ui, vertical=vscroll, horizontal=hscroll)
-                time.sleep(SCROLL_INTERVAL)
+    def setup(self):
+        """Find controller and create virtual devices."""
+        self.controller = find_controller()
+        if not self.controller:
+            return False
+
+        log(f"Found: {self.controller.name} at {self.controller.path}")
+
+        # Kill all vibration at kernel level
+        try:
+            self.controller.write(ecodes.EV_FF, ecodes.FF_GAIN, 0)
+            log("FF_GAIN set to 0 (vibration disabled at kernel level)")
+        except Exception as e:
+            log(f"FF_GAIN disable failed (non-fatal): {e}")
+
+        self.vinput = VirtualInput()
+        self.haptic = HapticEngine(self.controller)
+        self.dpad = DpadRepeat(self.vinput, self.haptic)
+        self.accel = AccelHold(self._accel_action)
+        self.last_activity = time.monotonic()
+
+        # Detect initial mode
+        apps = get_foreground_app()
+        self.mode = detect_mode(apps)
+        self._apply_grab()
+        log(f"Initial mode: {self.mode.value} (apps: {apps})")
+
+        return True
+
+    def _apply_grab(self):
+        should_grab = True  # Always grab — we send keyboard events in all modes
+
+        if should_grab and not self.grabbed:
+            try:
+                self.controller.grab()
+                self.grabbed = True
+                log("Controller grabbed")
+            except Exception as e:
+                log(f"Grab failed: {e}")
+        elif not should_grab and self.grabbed:
+            try:
+                self.controller.ungrab()
+                self.grabbed = False
+                log("Controller ungrabbed (LAUNCHER mode)")
+            except Exception as e:
+                log(f"Ungrab failed: {e}")
+
+    def _check_mode(self):
+        now = time.monotonic()
+        if now - self.last_mode_check < FOREGROUND_POLL_S:
+            return
+
+        self.last_mode_check = now
+        apps = get_foreground_app()
+        new_mode = detect_mode(apps)
+
+        if self.media_mode_active and new_mode == Mode.NAVIGATION:
+            new_mode = Mode.MEDIA
+
+        if new_mode != self.mode:
+            old = self.mode
+            self.mode = new_mode
+            self.dpad.release_all()
+            self.accel.release_all()
+            self._apply_grab()
+            log(f"Mode: {old.value} → {new_mode.value}")
+        else:
+            self._launcher_switch_count = 0
+
+    def _go_home(self):
+        """Kill media apps and return to flex-launcher."""
+        wl_env = {**os.environ, "WAYLAND_DISPLAY": "wayland-0",
+                  "XDG_RUNTIME_DIR": "/run/user/1000"}
+        # Kill JMP and other media apps (they restart fresh from launcher)
+        for proc_name in ["jellyfinmedia", "moonlight-qt", "kodi", "vlc", "mpv"]:
+            subprocess.run(["pkill", "-f", proc_name],
+                           capture_output=True, timeout=2)
+        self.is_fullscreen = False
+        self.media_mode_active = False
+        self.mode = Mode.LAUNCHER
+        # Ensure flex-launcher is running
+        try:
+            r = subprocess.run(["pgrep", "-f", "flex-launcher"],
+                               capture_output=True, timeout=2)
+            if r.returncode != 0:
+                subprocess.Popen(
+                    ["flex-launcher", "-c",
+                     "/home/your-username/.config/flex-launcher/config.ini"],
+                    env=wl_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                time.sleep(1)
+        except Exception:
+            pass
+        # Write state file
+        try:
+            with open("/tmp/foreground-app", "w") as f:
+                f.write("flex-launcher")
+        except Exception:
+            pass
+        log("GO HOME: killed media apps, focused launcher")
+
+    def _mpv_seek(self, seconds):
+        """Seek via MPRIS first (for JMP), then mpv IPC, then arrow keys."""
+        if _mpris_seek(seconds):
+            return
+        if _mpv_command(["seek", seconds, "relative"]):
+            return
+        # Last resort: arrow keys
+        if seconds < 0:
+            self.vinput.key_tap(ecodes.KEY_PAGEUP)
+        else:
+            self.vinput.key_tap(ecodes.KEY_PAGEDOWN)
+
+    def _mpv_volume(self, delta):
+        """Adjust volume via mpv IPC. Falls back to keyboard volume keys."""
+        if _mpv_command(["add", "volume", delta]):
+            return True
+        return False
+
+    def _handle_button(self, code, value):
+        """Process a button event. value: 1=press, 0=release."""
+        pressed = (value == 1)
+        was_pressed = self.btn_state[code]
+        self.btn_state[code] = pressed
+        edge = pressed and not was_pressed  # rising edge only
+
+        if not edge and pressed:
+            return  # ignore held (repeat handled by accel engine)
+        if not edge and not pressed:
+            # Release events
+            self._handle_button_release(code)
+            return
+
+        # ── Home button: always active in all modes ──
+        if code == ecodes.BTN_MODE:
+            self.vinput.key_tap(ecodes.KEY_HOME)
+            self.media_mode_active = False
+            return
+
+        # ── Y button: ALWAYS go home, regardless of mode ──
+        if code == ecodes.BTN_WEST:
+            if mpv_is_fullscreen():
+                self.y_press_time = time.monotonic()
+                log("Y pressed — mpv fullscreen, hold 3s to go home")
             else:
-                time.sleep(0.05)
+                self._go_home()
+                self.y_press_time = 0
+            return
 
-    def stop(self):
-        self.running = False
+        # ── LAUNCHER mode: A button -> Enter for flex-launcher selection ──
+        if self.mode == Mode.LAUNCHER:
+            if code == ecodes.BTN_EAST:  # A (Nintendo) -> Enter/Select
+                self.vinput.key_tap(ecodes.KEY_ENTER)
+            elif code == ecodes.BTN_SOUTH:  # B (Nintendo) -> Escape
+                self.vinput.key_tap(ecodes.KEY_ESC)
+            return
 
+        # ── ZR press: play/pause (KEY_SPACE) ──
+        if code == ecodes.BTN_TR2:  # ZR
+            if not _mpris_play_pause():
+                self.vinput.key_tap(ecodes.KEY_SPACE)
+            return
 
-# --- Left Stick Arrow Key Repeat Thread ---
+        # ── MEDIA mode buttons ──
+        if self.mode == Mode.MEDIA:
+            if code == ecodes.BTN_TL:      # L bumper → seek backward (accel)
+                self.accel.press("seek_bwd")
+            elif code == ecodes.BTN_TR:     # R bumper → seek forward (accel)
+                self.accel.press("seek_fwd")
+            elif code == ecodes.BTN_TL2:    # ZL → toggle fullscreen (universal)
+                self.is_fullscreen = not self.is_fullscreen
+                _mpv_command(["cycle", "fullscreen"])
+                self.vinput.key_tap(ecodes.KEY_F11)
+                log(f"Fullscreen toggled: {self.is_fullscreen}")
+            elif code == ecodes.BTN_EAST:   # A (Nintendo) -> play/pause
+                MediaController.play_pause()
 
-class StickArrowThread(threading.Thread):
-    """Emits arrow key repeats when left stick is held."""
+            elif code == ecodes.BTN_SOUTH:  # B (Nintendo) -> exit media mode
+                self.media_mode_active = False
+                self.mode = Mode.NAVIGATION
+                self.dpad.release_all()
+                self.accel.release_all()
 
-    def __init__(self, ui):
-        super().__init__(daemon=True)
-        self.ui = ui
-        self.x_dir = 0   # -1, 0, 1
-        self.y_dir = 0
-        self.running = True
-        self._x_start = 0
-        self._y_start = 0
-        self._x_repeating = False
-        self._y_repeating = False
+                log("Media mode OFF (B back)")
+            # Y handled globally above (go home)
+            return
 
-    def run(self):
-        while self.running:
-            now = time.time()
+        # ── NAVIGATION mode buttons ──
+        if self.mode == Mode.NAVIGATION:
+            if code == ecodes.BTN_EAST:      # A (Nintendo) -> mouse click (select under cursor)
+                self.vinput.key_tap(ecodes.BTN_LEFT)
 
-            # X axis
-            if self.x_dir != 0:
-                key = ecodes.KEY_LEFT if self.x_dir < 0 else ecodes.KEY_RIGHT
-                if not self._x_repeating:
-                    if now - self._x_start >= STICK_REPEAT_DELAY:
-                        self._x_repeating = True
-                        press_key(self.ui, key)
+            elif code == ecodes.BTN_SOUTH:   # B (Nintendo) -> Backspace (back in JMP)
+                self.vinput.key_tap(ecodes.KEY_BACKSPACE)
+
+            elif code == ecodes.BTN_NORTH:   # X → Backspace
+                self.vinput.key_tap(ecodes.KEY_BACKSPACE)
+
+            # Y handled globally above (go home)
+            elif code == ecodes.BTN_TL:      # L bumper → seek back (accel)
+                self.accel.press("seek_bwd")
+
+            elif code == ecodes.BTN_TR:      # R bumper → seek forward (accel)
+                self.accel.press("seek_fwd")
+
+            elif code == ecodes.BTN_START:   # + → Space (play/pause fallback)
+                self.vinput.key_tap(ecodes.KEY_SPACE)
+
+            elif code == ecodes.BTN_SELECT:  # - → Tab
+                self.vinput.key_tap(ecodes.KEY_TAB)
+
+            elif code == ecodes.BTN_THUMBL:  # L stick click → Enter
+                self.vinput.key_tap(ecodes.KEY_ENTER)
+
+            elif code == ecodes.BTN_THUMBR:  # R stick click → right-click
+                self.vinput.key_tap(ecodes.BTN_RIGHT)
+
+            elif code == ecodes.BTN_TL2:     # ZL → toggle fullscreen (universal)
+                self.is_fullscreen = not self.is_fullscreen
+                _mpv_command(["cycle", "fullscreen"])  # mpv
+                self.vinput.key_tap(ecodes.KEY_F11)    # Chromium/Firefox/most Linux apps
+                log(f"Fullscreen toggled: {self.is_fullscreen}")
+
+    def _handle_button_release(self, code):
+        """Handle button release events for held-state buttons."""
+        # Release accelerating hold actions
+        if code == ecodes.BTN_TL:
+            self.accel.release("seek_bwd")
+        elif code == ecodes.BTN_TR:
+            self.accel.release("seek_fwd")
+        elif code == ecodes.BTN_WEST:
+            # Y release: check if held 3s in fullscreen
+            if self.y_press_time > 0:
+                held = time.monotonic() - self.y_press_time
+                if held >= 3.0:
+                    self._go_home()
                 else:
-                    press_key(self.ui, key)
-            # Y axis
-            if self.y_dir != 0:
-                key = ecodes.KEY_UP if self.y_dir < 0 else ecodes.KEY_DOWN
-                if not self._y_repeating:
-                    if now - self._y_start >= STICK_REPEAT_DELAY:
-                        self._y_repeating = True
-                        press_key(self.ui, key)
+                    log(f"Y held {held:.1f}s in fullscreen (need 3s) — ignored")
+                self.y_press_time = 0
+
+    def _handle_hat(self, axis, value):
+        """Process D-pad (hat) events."""
+        if self.mode == Mode.LAUNCHER:
+            # Send keyboard arrows for flex-launcher navigation
+            if axis == ecodes.ABS_HAT0X:
+                if value < 0:
+                    self.vinput.key_tap(ecodes.KEY_LEFT)
+                elif value > 0:
+                    self.vinput.key_tap(ecodes.KEY_RIGHT)
+            elif axis == ecodes.ABS_HAT0Y:
+                if value < 0:
+                    self.vinput.key_tap(ecodes.KEY_UP)
+                elif value > 0:
+                    self.vinput.key_tap(ecodes.KEY_DOWN)
+            return
+
+        if self.mode == Mode.MEDIA:
+            # Media mode d-pad: volume up/down (accel), subtitle left/right
+            if axis == ecodes.ABS_HAT0Y:
+                if value == -1:
+                    self.accel.press("vol_up")
+    
+                elif value == 1:
+                    self.accel.press("vol_down")
+    
                 else:
-                    press_key(self.ui, key)
+                    self.accel.release("vol_up")
+                    self.accel.release("vol_down")
+            elif axis == ecodes.ABS_HAT0X:
+                if value == 1:
+                    MediaController.subtitle_next()
+    
+                elif value == -1:
+                    MediaController.subtitle_prev()
+    
+            return
 
-            time.sleep(STICK_REPEAT_RATE if (self._x_repeating or self._y_repeating) else 0.05)
+        # NAVIGATION mode: d-pad up/down = arrows (volume only when fullscreen)
+        if axis == ecodes.ABS_HAT0Y:
+            if self.is_fullscreen or mpv_is_fullscreen():
+                # Fullscreen playback: volume control
+                if value == -1:
+                    self.accel.press("vol_up")
+    
+                elif value == 1:
+                    self.accel.press("vol_down")
+    
+                else:
+                    self.accel.release("vol_up")
+                    self.accel.release("vol_down")
+            else:
+                # UI navigation: arrow keys
+                if value == -1:
+                    self.dpad.release(ecodes.KEY_DOWN)
+                    self.dpad.press(ecodes.KEY_UP)
+                elif value == 1:
+                    self.dpad.release(ecodes.KEY_UP)
+                    self.dpad.press(ecodes.KEY_DOWN)
+                else:
+                    self.dpad.release(ecodes.KEY_UP)
+                    self.dpad.release(ecodes.KEY_DOWN)
 
-    def set_x(self, direction):
-        if direction != self.x_dir:
-            self.x_dir = direction
-            self._x_start = time.time()
-            self._x_repeating = False
-            if direction != 0:
-                key = ecodes.KEY_LEFT if direction < 0 else ecodes.KEY_RIGHT
-                press_key(self.ui, key)
+        elif axis == ecodes.ABS_HAT0X:
+            # Left/right always arrow keys (for navigation)
+            if value < 0:
+                self.dpad.release(ecodes.KEY_RIGHT)
+                self.dpad.press(ecodes.KEY_LEFT)
+                self.hat_x = -1
+            elif value > 0:
+                self.dpad.release(ecodes.KEY_LEFT)
+                self.dpad.press(ecodes.KEY_RIGHT)
+                self.hat_x = 1
+            else:
+                self.dpad.release(ecodes.KEY_LEFT)
+                self.dpad.release(ecodes.KEY_RIGHT)
+                self.hat_x = 0
 
-    def set_y(self, direction):
-        if direction != self.y_dir:
-            self.y_dir = direction
-            self._y_start = time.time()
-            self._y_repeating = False
-            if direction != 0:
-                key = ecodes.KEY_UP if direction < 0 else ecodes.KEY_DOWN
-                press_key(self.ui, key)
+    def _handle_stick(self, axis, value):
+        """Process analog stick events."""
+        if self.mode == Mode.LAUNCHER:
+            return
 
-    def stop(self):
-        self.running = False
+        if axis == ecodes.ABS_X:
+            self.lx = value
+            new_digital = stick_to_digital(value, STICK_DIGITAL_DEAD)
+            if new_digital != self.lstick_digital_x:
+                if self.lstick_digital_x == -1:
+                    self.dpad.release(ecodes.KEY_LEFT)
+                elif self.lstick_digital_x == 1:
+                    self.dpad.release(ecodes.KEY_RIGHT)
+                if self.mode == Mode.NAVIGATION and new_digital != 0:
+                    if new_digital == -1:
+                        self.dpad.press(ecodes.KEY_LEFT)
+                    else:
+                        self.dpad.press(ecodes.KEY_RIGHT)
+                self.lstick_digital_x = new_digital
+
+        elif axis == ecodes.ABS_Y:
+            self.ly = value
+            new_digital = stick_to_digital(value, STICK_DIGITAL_DEAD)
+            if new_digital != self.lstick_digital_y:
+                if self.lstick_digital_y == -1:
+                    self.dpad.release(ecodes.KEY_UP)
+                elif self.lstick_digital_y == 1:
+                    self.dpad.release(ecodes.KEY_DOWN)
+                if self.mode == Mode.NAVIGATION and new_digital != 0:
+                    if new_digital == -1:
+                        self.dpad.press(ecodes.KEY_UP)
+                    else:
+                        self.dpad.press(ecodes.KEY_DOWN)
+                self.lstick_digital_y = new_digital
+
+        elif axis == ecodes.ABS_RX:
+            self.rx = value
+        elif axis == ecodes.ABS_RY:
+            self.ry = value
+
+    def _output_mouse_scroll(self):
+        """Called at MOUSE_POLL_S interval to output mouse movement and scroll."""
+        if self.mode == Mode.LAUNCHER:
+            return
+
+        dx = stick_to_mouse(self.lx, MOUSE_DEAD, MOUSE_SPEED, STICK_MAX)
+        dy = stick_to_mouse(self.ly, MOUSE_DEAD, MOUSE_SPEED, STICK_MAX)
+        if dx != 0 or dy != 0:
+            self.vinput.mouse_move(dx, dy)
+
+        sy = stick_to_scroll(self.ry, SCROLL_DEAD, SCROLL_SPEED, STICK_MAX)
+        sx = stick_to_scroll(self.rx, SCROLL_DEAD, SCROLL_SPEED, STICK_MAX)
+
+        if sy != 0.0:
+            self.scroll_accum_y += sy
+        else:
+            self.scroll_accum_y = 0.0
+
+        if sx != 0.0:
+            self.scroll_accum_x += sx
+        else:
+            self.scroll_accum_x = 0.0
+
+        v_scroll = 0
+        h_scroll = 0
+        if abs(self.scroll_accum_y) >= 1.0:
+            v_scroll = int(self.scroll_accum_y)
+            self.scroll_accum_y -= v_scroll
+            v_scroll = -v_scroll
+        if abs(self.scroll_accum_x) >= 1.0:
+            h_scroll = int(self.scroll_accum_x)
+            self.scroll_accum_x -= h_scroll
+
+        if v_scroll != 0 or h_scroll != 0:
+            self.vinput.scroll(v_scroll, h_scroll)
+
+    def cleanup(self):
+        log("Cleaning up...")
+        if self.dpad:
+            self.dpad.release_all()
+        if self.accel:
+            self.accel.release_all()
+        if self.haptic:
+            self.haptic.cleanup()
+        if self.grabbed and self.controller:
+            try:
+                self.controller.ungrab()
+            except Exception:
+                pass
+            self.grabbed = False
+        if self.vinput:
+            self.vinput.close()
+            self.vinput = None
+        self.controller = None
+
+    async def run(self):
+        """Main async event loop."""
+        last_mouse = time.monotonic()
+
+        try:
+            while self.running:
+                idle = time.monotonic() - self.last_activity
+                if idle >= IDLE_TIMEOUT:
+                    bt_disconnect()
+                    self.cleanup()
+                    await asyncio.sleep(30)
+                    return "idle_disconnect"
+
+                self._check_mode()
+
+                try:
+                    event = await asyncio.wait_for(
+                        self.controller.async_read_one(),
+                        timeout=0.010
+                    )
+
+                    if event is not None:
+                        self.last_activity = time.monotonic()
+
+                        if event.type == ecodes.EV_KEY:
+                            self._handle_button(event.code, event.value)
+                        elif event.type == ecodes.EV_ABS:
+                            if event.code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+                                self._handle_hat(event.code, event.value)
+                            elif event.code in (ecodes.ABS_X, ecodes.ABS_Y,
+                                                ecodes.ABS_RX, ecodes.ABS_RY):
+                                self._handle_stick(event.code, event.value)
+
+                except asyncio.TimeoutError:
+                    pass
+
+                # D-pad repeat tick
+                if self.dpad:
+                    self.dpad.tick()
+
+                # Accelerating hold tick
+                if self.accel:
+                    self.accel.tick()
+
+                # Mouse/scroll output at fixed rate
+                now = time.monotonic()
+                if now - last_mouse >= MOUSE_POLL_S:
+                    self._output_mouse_scroll()
+                    last_mouse = now
+
+        except OSError as e:
+            log(f"Controller disconnected: {e}")
+            return "disconnected"
+        except Exception as e:
+            log(f"Error in main loop: {e}")
+            import traceback
+            traceback.print_exc()
+            return "error"
+        finally:
+            self.cleanup()
+
+        return "stopped"
 
 
-def main():
-    print("unified-controller: starting", flush=True)
+# ─── Entry Point ─────────────────────────────────────────────────────────────
 
-    ui = create_virtual_keyboard()
-    print("Virtual keyboard+scroll created", flush=True)
-
-    # Start sound healer
-    healer = SoundHealer()
-    healer.start()
-    print(f"Sound healer active (check every {SOUND_CHECK_INTERVAL}s, default vol {DEFAULT_VOLUME}%)", flush=True)
-
-    # Start scroll thread
-    scroller = ScrollThread(ui)
-    scroller.start()
-
-    # Start left stick arrow thread
-    stick_arrows = StickArrowThread(ui)
-    stick_arrows.start()
-
-    last_home = 0
-    dpad_x_key = None
-    dpad_y_key = None
-
-    def shutdown(sig, frame):
-        print("\nunified-controller: shutting down", flush=True)
-        healer.stop()
-        scroller.stop()
-        stick_arrows.stop()
-        ui.close()
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, shutdown)
-    signal.signal(signal.SIGINT, shutdown)
+async def main_loop():
+    """Outer loop: handle connect/disconnect/reconnect."""
+    log("unified-controller.py starting")
+    log(f"Idle timeout: {IDLE_TIMEOUT}s ({IDLE_TIMEOUT // 60} min)")
+    log(f"D-pad repeat: {DPAD_INITIAL_DELAY*1000:.0f}ms delay, "
+        f"{DPAD_REPEAT_FAST*1000:.0f}ms rate, "
+        f"accel to {DPAD_REPEAT_ACCEL*1000:.0f}ms after {DPAD_ACCEL_THRESHOLD}s")
+    log(f"AccelHold: seek steps {SEEK_STEPS}, vol step {VOLUME_STEP_INITIAL}-{VOLUME_STEP_MAX}")
 
     while True:
-        dev = find_controller()
-        if not dev:
-            print("Waiting for Pro Controller...", flush=True)
-            time.sleep(5)
+        if not is_bt_connected() and find_controller() is None:
+            log("Controller not connected, waiting...")
+            await asyncio.sleep(RECONNECT_POLL_S)
             continue
 
-        print(f"Connected: {dev.path} ({dev.name})", flush=True)
-        try:
-            for event in dev.read_loop():
-                # --- Button events ---
-                if event.type == ecodes.EV_KEY:
-                    if event.code == BTN_Y:
-                        if event.value == 1:  # press
-                            now = time.time()
-                            if now - last_home > COOLDOWN_HOME and app_is_running():
-                                print("Y -> go home (launchpad)", flush=True)
-                                go_home()
-                                last_home = now
-                    elif event.code in BUTTON_MAP:
-                        if event.value == 1:  # press
-                            ui.write(ecodes.EV_KEY, BUTTON_MAP[event.code], 1)
-                            ui.syn()
-                        elif event.value == 0:  # release
-                            ui.write(ecodes.EV_KEY, BUTTON_MAP[event.code], 0)
-                            ui.syn()
+        uc = UnifiedController()
+        if not uc.setup():
+            log("Controller detected but evdev device not ready, retrying...")
+            await asyncio.sleep(RECONNECT_POLL_S)
+            continue
 
-                # --- Axis events ---
-                elif event.type == ecodes.EV_ABS:
-                    # D-pad
-                    if event.code == ABS_HAT0X:
-                        if dpad_x_key:
-                            ui.write(ecodes.EV_KEY, dpad_x_key, 0)
-                            ui.syn()
-                            dpad_x_key = None
-                        if event.value in DPAD_MAP_X:
-                            dpad_x_key = DPAD_MAP_X[event.value]
-                            ui.write(ecodes.EV_KEY, dpad_x_key, 1)
-                            ui.syn()
+        result = await uc.run()
+        log(f"Session ended: {result}")
 
-                    elif event.code == ABS_HAT0Y:
-                        if dpad_y_key:
-                            ui.write(ecodes.EV_KEY, dpad_y_key, 0)
-                            ui.syn()
-                            dpad_y_key = None
-                        if event.value in DPAD_MAP_Y:
-                            dpad_y_key = DPAD_MAP_Y[event.value]
-                            ui.write(ecodes.EV_KEY, dpad_y_key, 1)
-                            ui.syn()
+        if result == "idle_disconnect":
+            log("Waiting for user to wake controller...")
+            await asyncio.sleep(10)
+        else:
+            await asyncio.sleep(RECONNECT_POLL_S)
 
-                    # Left stick -> arrow keys (via thread for repeat)
-                    elif event.code == ABS_X:
-                        if event.value < -STICK_DEADZONE:
-                            stick_arrows.set_x(-1)
-                        elif event.value > STICK_DEADZONE:
-                            stick_arrows.set_x(1)
-                        else:
-                            stick_arrows.set_x(0)
 
-                    elif event.code == ABS_Y:
-                        if event.value < -STICK_DEADZONE:
-                            stick_arrows.set_y(-1)
-                        elif event.value > STICK_DEADZONE:
-                            stick_arrows.set_y(1)
-                        else:
-                            stick_arrows.set_y(0)
-
-                    # Right stick -> scroll (via thread for continuous)
-                    elif event.code == ABS_RX:
-                        scroller.rx = event.value
-
-                    elif event.code == ABS_RY:
-                        scroller.ry = event.value
-
-        except OSError:
-            print("Controller disconnected, retrying...", flush=True)
-            scroller.rx = 0
-            scroller.ry = 0
-            stick_arrows.set_x(0)
-            stick_arrows.set_y(0)
-            time.sleep(3)
+def handle_signal(signum, frame):
+    log(f"Received signal {signum}, exiting")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
+    try:
+        asyncio.run(main_loop())
+    except KeyboardInterrupt:
+        log("Interrupted, exiting")
+    except SystemExit:
+        pass
