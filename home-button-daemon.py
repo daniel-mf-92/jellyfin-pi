@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# DEPRECATED: Use unified-controller.py instead. This file kept for reference only.
 """
 Pi Home Controller Daemon
 - Maps Switch Pro Controller to keyboard via uinput (works on Wayland + X11)
