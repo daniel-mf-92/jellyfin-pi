@@ -1,5 +1,5 @@
 # Scale display for TV
-wlr-randr --output HDMI-A-2 --scale 1.25 &
+wlr-randr --output HDMI-A-2 --scale 2 &
 sleep 0.5
 
 # Hide cursor when idle

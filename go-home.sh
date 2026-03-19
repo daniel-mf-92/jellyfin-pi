@@ -7,7 +7,7 @@ killall jellyfinmediaplayer 2>/dev/null
 killall chromium 2>/dev/null
 
 # Kill Moonlight
-flatpak kill com.moonlight_stream.Moonlight 2>/dev/null
+killall moonlight-qt 2>/dev/null
 
 # Small delay for cleanup
 sleep 0.5
