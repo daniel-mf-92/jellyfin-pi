@@ -13,6 +13,7 @@ export WAYLAND_DISPLAY=wayland-0
 export XDG_RUNTIME_DIR=/run/user/1000
 export QT_QPA_PLATFORM=wayland
 export QTWEBENGINE_REMOTE_DEBUGGING=9222
+export JMP_EXTERNAL_PLAYER=vlc
 
 nohup jellyfinmediaplayer --fullscreen --tv > /tmp/jmp.log 2>&1 &
 JMP_PID=$!

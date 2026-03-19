@@ -28,7 +28,8 @@ apt-get install -y --no-install-recommends \
     libx11-dev libxrandr-dev libxi-dev \
     libcec-dev libprotobuf-dev protobuf-compiler \
     libsdl2-dev zlib1g-dev libfreetype6-dev libfontconfig-dev \
-    libdrm-dev libgbm-dev libegl-dev 2>&1 | tail -3
+    libdrm-dev libgbm-dev libegl-dev \
+    vlc 2>&1 | tail -3
 echo "[1/4] Done."
 
 # --- Step 2: Clone JMP source ---
@@ -45,6 +46,14 @@ else
         https://github.com/jellyfin/jellyfin-media-player.git 2>&1
 fi
 echo "[2/4] Done."
+
+# --- Step 2b: Apply custom patches (VLC external player support) ---
+CUSTOM_SRC="${HOME}/Documents/local-codebases/jmp-custom/src/player/PlayerComponent.cpp"
+if [ -f "$CUSTOM_SRC" ]; then
+    echo "[2b/4] Applying custom PlayerComponent (VLC external player)..."
+    cp "$CUSTOM_SRC" "${BUILD_DIR}/jellyfin-media-player/src/player/PlayerComponent.cpp"
+    echo "[2b/4] Done."
+fi
 
 # --- Step 3: Configure & Build ---
 echo "[3/4] Building with ${NPROC} cores..."
