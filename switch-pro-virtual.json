@@ -1,0 +1,24 @@
+{
+  "name": "Switch Pro Virtual Input",
+  "idmatcher": "Switch-Pro-Virtual.*",
+  "mapping":
+  {
+    "(Shift\\+)?Left": "left",
+    "(Shift\\+)?Right": "right",
+    "(Shift\\+)?Up": "up",
+    "(Shift\\+)?Down": "down",
+    "(Return|Enter)": "enter",
+    "(Esc|Backspace)": {
+      "short": "back",
+      "long": "exit"
+    },
+    "Space": ["space", "play_pause"],
+    "F11": "host:fullscreen",
+    "Back": "back",
+    "Home": "home",
+    "PgUp": "seek_backward",
+    "PgDown": "seek_forward",
+    "(?:Shift\\+)?([A-Z])": "%1",
+    "(?:Shift\\+)?([0-9])": "%1"
+  }
+}

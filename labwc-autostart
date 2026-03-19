@@ -1,12 +1,69 @@
-# Scale display for TV
-wlr-randr --output HDMI-A-2 --scale 2 &
+# =============================================================================
+# labwc-autostart — Startup script for labwc Wayland compositor on Pi 5
+# =============================================================================
+# Runs automatically when labwc starts. Sets up the TV appliance environment:
+# display layout, cursor hiding, HDMI audio, app pre-launches.
+# Deploy to: ~/.config/labwc/autostart
+# =============================================================================
+
+# --- Display Configuration ---
+# Pi 5 has two micro-HDMI ports. Disable HDMI-A-1 (unused) and configure
+# HDMI-A-2 as the sole output at native scale with origin position.
+wlr-randr --output HDMI-A-1 --off 2>/dev/null &
+sleep 0.3
+wlr-randr --output HDMI-A-2 --scale 1 --pos 0,0 &
 sleep 0.5
 
-# Hide cursor when idle
+# --- Cursor ---
+# Hide the mouse cursor after 3 seconds of inactivity. This is a TV — no
+# visible cursor needed. Controller/CEC input does not move the pointer.
 unclutter --timeout 3 &
 
-# Disable screen blanking
+# --- Controller ---
+# Gamepad input handled by unified-controller systemd service (not started here).
+# antimicrox is intentionally disabled — it conflicts with unified-controller.
+
+# --- Screen Blanking ---
+# Disable DPMS / screen blanking. The TV should stay on; power management
+# is handled by CEC standby or the TV's own sleep timer.
 wlopm --on $(wlopm | awk "{print \$1}") &
 
-# TV launcher (the root screen)
+# --- HDMI Audio ---
+# Force HDMI jack detection. Pi 5 sometimes misses the audio jack at boot
+# (especially HDMI-A-2). This script re-probes DRM connectors and restarts
+# WirePlumber if needed. See fix-hdmi-audio.sh for details.
+~/bin/fix-hdmi-audio.sh &
+
+# --- Global Qt / Chromium Environment ---
+# QT_QPA_PLATFORM=wayland: Force Qt apps to use Wayland (not X11/XWayland).
+# QTWEBENGINE_REMOTE_DEBUGGING=9222: Enable Chrome DevTools Protocol on JMP's
+#   embedded Chromium — used by launch-jmp.sh for auto-navigation and auto-login.
+# QTWEBENGINE_CHROMIUM_FLAGS: --disable-gpu-compositing fixes GL context errors
+#   on Pi 5's Mesa V3D driver; --disable-smooth-scrolling reduces GPU load.
+export QT_QPA_PLATFORM=wayland
+export QTWEBENGINE_REMOTE_DEBUGGING=9222
+export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu-compositing --disable-smooth-scrolling"
+
+# --- TV Launcher (root screen) ---
+# flex-launcher is the main menu / home screen. It stays in the foreground
+# and the user switches to JMP, Moonlight, etc. from its grid.
 flex-launcher -c ~/.config/flex-launcher/config.ini &
+echo flex-launcher > /tmp/foreground-app
+sleep 2
+
+# --- Pre-launch Jellyfin Media Player (minimized) ---
+# Starting JMP at boot and immediately minimizing it cuts switch-to time
+# from ~8s to <1s. The web view loads in the background.
+jellyfinmediaplayer --fullscreen --tv > /tmp/jmp.log 2>&1 &
+sleep 4
+wlrctl toplevel minimize app_id:com.github.iwalton3.jellyfin-media-player 2>/dev/null
+
+# --- Pre-launch Moonlight (minimized) ---
+# Same strategy: pre-warm Moonlight so game streaming starts instantly.
+moonlight-qt --fullscreen > /tmp/moonlight.log 2>&1 &
+sleep 4
+wlrctl toplevel minimize app_id:com.moonlight_stream.Moonlight 2>/dev/null
+
+# --- Restore focus to launcher ---
+# After pre-launching background apps, bring the launcher back to front.
+wlrctl toplevel focus app_id:flex-launcher 2>/dev/null
