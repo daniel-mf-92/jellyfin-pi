@@ -9,6 +9,9 @@ killall chromium 2>/dev/null
 # Kill Moonlight
 killall moonlight-qt 2>/dev/null
 
+# Kill VLC (external player)
+killall vlc 2>/dev/null
+
 # Small delay for cleanup
 sleep 0.5
 
