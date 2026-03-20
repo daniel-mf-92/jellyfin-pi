@@ -46,3 +46,65 @@ open(f,'w').write(c)
 " "$KONVERGO"
     echo "  Patched KonvergoWindow.cpp"
 fi
+
+# --- Patch getNativeShellScript to prepend qwebchannel.js and inline plugin JS files ---
+if ! grep -q "Inlining plugin" "$CPP"; then
+    # Write python patch script to temp file to avoid shell quoting issues
+    PYSCRIPT=$(mktemp /tmp/patch_nss_XXXXXX.py)
+    python3 -c "
+# Generate the python patch script
+script = '''import sys
+
+f = sys.argv[1]
+c = open(f).read()
+Q = chr(34)
+NL = chr(10)
+BS = chr(92)
+
+old = '  nativeshellString.replace(' + Q + '@@data@@' + Q + ', QJsonDocument(clientData).toJson(QJsonDocument::Compact).toBase64());' + NL + '  return nativeshellString;'
+
+new = '  nativeshellString.replace(' + Q + '@@data@@' + Q + ', QJsonDocument(clientData).toJson(QJsonDocument::Compact).toBase64());' + NL
+new += NL
+new += '  // Prepend qwebchannel.js from Qt resources so QWebChannel JS class is available' + NL
+new += '  // This is needed when loading remote web client (HTTPS) where Qt cannot auto-inject it' + NL
+new += '  QFile qwcFile(' + Q + ':/qtwebchannel/qwebchannel.js' + Q + ');' + NL
+new += '  if (qwcFile.open(QIODevice::ReadOnly)) {' + NL
+new += '    QString qwcScript = QTextStream(&qwcFile).readAll();' + NL
+new += '    nativeshellString = qwcScript + ' + Q + BS + 'n' + Q + ' + nativeshellString;' + NL
+new += '    qDebug() << ' + Q + 'Prepended qwebchannel.js from Qt resources (' + Q + ' << qwcScript.size() << ' + Q + ' bytes)' + Q + ';' + NL
+new += '  } else {' + NL
+new += '    qWarning() << ' + Q + 'FAILED to load qwebchannel.js from Qt resources - QWebChannel will not work!' + Q + ';' + NL
+new += '  }' + NL
+new += NL
+new += '  // Inlining plugin JS files to avoid CORS issues with remote web client' + NL
+new += '  QStringList pluginFiles = {' + Q + 'mpvVideoPlayer.js' + Q + ', ' + Q + 'mpvAudioPlayer.js' + Q + ', ' + Q + 'jmpInputPlugin.js' + Q + ', ' + Q + 'jmpUpdatePlugin.js' + Q + ', ' + Q + 'skipIntroPlugin.js' + Q + '};' + NL
+new += '  QString inlinedPlugins;' + NL
+new += '  for (const auto& pluginFile : pluginFiles) {' + NL
+new += '    QFile pf(path + pluginFile);' + NL
+new += '    if (pf.open(QIODevice::ReadOnly)) {' + NL
+new += '      qDebug() << ' + Q + 'Inlining plugin:' + Q + ' << pluginFile;' + NL
+new += '      inlinedPlugins += ' + Q + BS + 'n// === Inlined: ' + Q + ' + pluginFile + ' + Q + ' ===' + BS + 'n' + Q + ';' + NL
+new += '      inlinedPlugins += QTextStream(&pf).readAll();' + NL
+new += '      inlinedPlugins += ' + Q + BS + 'n' + Q + ';' + NL
+new += '    } else {' + NL
+new += '      qWarning() << ' + Q + 'Could not inline plugin:' + Q + ' << pluginFile;' + NL
+new += '    }' + NL
+new += '  }' + NL
+new += '  nativeshellString += inlinedPlugins;' + NL
+new += NL
+new += '  return nativeshellString;'
+
+if old not in c:
+    print('WARNING: Target pattern not found in getNativeShellScript - may be already patched', file=sys.stderr)
+    sys.exit(0)
+
+c = c.replace(old, new)
+open(f, 'w').write(c)
+print('  Patched getNativeShellScript for qwebchannel.js + plugin inlining')
+'''
+import sys
+open(sys.argv[1], 'w').write(script)
+" "$PYSCRIPT"
+    python3 "$PYSCRIPT" "$CPP"
+    rm -f "$PYSCRIPT"
+fi
