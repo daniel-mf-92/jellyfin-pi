@@ -18,7 +18,6 @@ Window
   visible: true
   color: "#000000"
 
-  // Properties previously from KonvergoWindow
   property bool webDesktopMode: true
   property bool showDebugLayer: false
   property string debugInfo: ""
@@ -38,7 +37,6 @@ Window
 
   onClosing: function(close) {
     if (showSystemTrayIcon) {
-      // Minimize to tray on close.
       close.accepted = false
       mainWindow.hide()
     }
@@ -131,56 +129,48 @@ Window
   {
     shortcut: StandardKey.Copy
     onTriggered: runWebAction(WebEngineView.Copy)
-    id: action_copy
   }
 
   Action
   {
     shortcut: StandardKey.Cut
     onTriggered: runWebAction(WebEngineView.Cut)
-    id: action_cut
   }
 
   Action
   {
     shortcut: StandardKey.Paste
     onTriggered: runWebAction(WebEngineView.Paste)
-    id: action_paste
   }
 
   Action
   {
     shortcut: StandardKey.SelectAll
     onTriggered: runWebAction(WebEngineView.SelectAll)
-    id: action_selectall
   }
 
   Action
   {
     shortcut: StandardKey.Undo
     onTriggered: runWebAction(WebEngineView.Undo)
-    id: action_undo
   }
 
   Action
   {
     shortcut: StandardKey.Redo
     onTriggered: runWebAction(WebEngineView.Redo)
-    id: action_redo
   }
 
   Action
   {
     shortcut: StandardKey.Back
     onTriggered: runWebAction(WebEngineView.Back)
-    id: action_back
   }
 
   Action
   {
     shortcut: StandardKey.Forward
     onTriggered: runWebAction(WebEngineView.Forward)
-    id: action_forward
   }
 
   Action
@@ -203,23 +193,17 @@ Window
     when: !components.settings.allowBrowserZoom()
   }
 
-  MpvVideoItem
+  // Black background — VLC renders in its own fullscreen window,
+  // JMP window stays dark behind it during playback.
+  Rectangle
   {
-    id: video
-    objectName: "video"
-    enabled: true
-
+    id: videoPlaceholder
+    color: "#000000"
     width: mainWindow.contentItem.width
     height: mainWindow.contentItem.height
     anchors.left: mainWindow.contentItem.left
-    anchors.right: mainWindow.contentItem.right
     anchors.top: mainWindow.contentItem.top
-
-    Component.onCompleted: {
-      console.log("MpvVideoItem size:", width, "x", height, "visible:", visible)
-    }
-    onWidthChanged: console.log("MpvVideoItem width changed:", width)
-    onHeightChanged: console.log("MpvVideoItem height changed:", height)
+    z: 0
   }
 
   WebEngineView
@@ -231,8 +215,6 @@ Window
     z: 100
     backgroundColor: "transparent"
 
-    // this is needed to prevent intermittent(?) black screens when unminizing
-    // or resumsing from suspend (linux/{x11/wayland}, possibly others).
     layer.enabled: true
 
     webChannel: webChannelObject
@@ -256,14 +238,11 @@ Window
 
     Component.onCompleted:
     {
-      console.log("WebEngineView size:", width, "x", height, "backgroundColor:", backgroundColor)
       forceActiveFocus()
       mainWindow.reloadWebClient.connect(reload)
 
-      // Handle CSP workaround from C++
       components.system.pageContentReady.connect(function(html, finalUrl, hadCSP) {
         if (hadCSP) {
-          console.log("CSP workaround: navigating to", finalUrl);
           web.url = finalUrl;
         }
       })
@@ -280,10 +259,6 @@ Window
 
     onLoadingChanged: function(loadingInfo)
     {
-      // we use a timer here to switch to the webview since
-      // it take a few moments for the webview to render
-      // after it has loaded.
-      //
       if (loadingInfo.status == WebEngineView.LoadStartedStatus)
       {
         console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
@@ -307,14 +282,12 @@ Window
     {
       if (request.userInitiated)
       {
-        console.log("Opening external URL: " + web.currentHoveredUrl)
         components.system.openExternalUrl(web.currentHoveredUrl)
       }
     }
 
     onFullScreenRequested:
     {
-      console.log("Request fullscreen: " + request.toggleOn)
       mainWindow.setFullScreen(request.toggleOn)
       request.accept()
     }
@@ -326,7 +299,6 @@ Window
 
     onCertificateError: function(error)
     {
-      console.log(error.url + " :" + error.description + error.error)
       if (components.settings.ignoreSSLErrors()) {
         error.acceptCertificate()
       }
@@ -360,7 +332,6 @@ Window
     }
   }
 
-
   Rectangle
   {
     id: debug
@@ -391,7 +362,7 @@ Window
         var dbg = mainWindow.debugInfo + "Window and web\n";
         dbg += "  Window size: " + parent.width + "x" + parent.height + " - " + web.width + "x" + web.height + "\n";
         dbg += "  DevicePixel ratio: " + Screen.devicePixelRatio + "\n";
-
+        dbg += "  Backend: VLC (libvlc)\n";
         return dbg;
       }
 
@@ -412,7 +383,6 @@ Window
       color: "white"
       font.pixelSize: Math.round(height / 65)
       wrapMode: Text.WrapAnywhere
-
       text: mainWindow.videoInfo
     }
   }
@@ -426,11 +396,9 @@ Window
 
     onActivated: function(reason) {
       if (reason === Labs.SystemTrayIcon.Context) {
-        // Right click: open context menu
         contextMenu.open()
         components.window.setCursorVisibility(true)
       } else {
-        // All other clicks: restore window
         restoreWindow()
       }
     }

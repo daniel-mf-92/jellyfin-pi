@@ -55,9 +55,13 @@ public:
 
   Q_INVOKABLE void openExternalUrl(const QString& url);
 
+  Q_INVOKABLE void setCursorVisibility(bool visible);
+
   Q_INVOKABLE void runUserScript(QString script);
 
   Q_INVOKABLE QString getNativeShellScript();
+
+  Q_INVOKABLE QString getEnvironmentVariable(const QString& name);
 
   Q_INVOKABLE void fetchPageForCSPWorkaround(QString url);
   Q_SIGNAL void pageContentReady(QString html, QString finalUrl, bool hadCSP);
@@ -102,6 +106,8 @@ public:
   inline bool isOpenELEC() const { return m_platformType == platformTypeOpenELEC; }
   bool isWebClientConnected() const { return !m_webClientVersion.isEmpty(); }
 
+  inline bool cursorVisible() { return m_cursorVisible; }
+
   inline QString authenticationToken() { return m_authenticationToken; }
 
   Q_INVOKABLE void crashApp();
@@ -136,6 +142,7 @@ private:
   QString m_authenticationToken;
   QString m_webClientVersion;
   qreal m_scale;
+  bool m_cursorVisible;
   QNetworkReply* m_connectivityCheckReply;
   QNetworkReply* m_resolveUrlReply;
   QTimer* m_connectivityRetryTimer;
