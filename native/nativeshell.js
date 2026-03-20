@@ -1,3 +1,6 @@
+const jmpInfo = JSON.parse(window.atob("@@data@@"));
+window.jmpInfo = jmpInfo;
+
 const features = [
     "filedownload",
     "displaylanguage",
@@ -34,32 +37,17 @@ const vlcMode = (function() {
     return false;
 })();
 
-const getPlugins = () => {
-    const basePlugins = [
-        'inputPlugin',
-        'updatePlugin'
-    ];
-
-    // In VLC mode, we still register the mpv player plugins because the
-    // QWebChannel API calls (load, play, pause, stop, seek) route through
-    // PlayerComponent which already handles VLC dispatch. The plugins
-    // provide the Jellyfin web client with a player interface; the actual
-    // rendering is done by VLC in its own window.
-    const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
-    if (mpvEnabled || vlcMode) {
-        return [
-            'mpvVideoPlayer',
-            'mpvAudioPlayer',
-            ...basePlugins
-        ];
-    }
-
-    return basePlugins;
-};
-
-const plugins = getPlugins();
+const plugins = [
+    'mpvVideoPlayer',
+    'mpvAudioPlayer',
+    'jmpInputPlugin',
+    'jmpUpdatePlugin',
+    'skipIntroPlugin'
+];
 
 // Plugins are bundled, return class directly
+// Plugin JS files are inlined by C++ getNativeShellScript() to avoid CORS issues.
+// The inlined scripts define window["_" + pluginName], so we just reference them directly.
 for (const plugin of plugins) {
     window[plugin] = () => {
         return window["_" + plugin];
@@ -409,7 +397,7 @@ window.initCompleted = new Promise(async (resolve) => {
         for (const mutation of mutations) {
             if (mutation.attributeName === 'class') {
                 const isIdle = document.body.classList.contains('mouseIdle');
-                window.api.window.setCursorVisibility(!isIdle);
+                if (window.api && window.api.window) window.api.window.setCursorVisibility(!isIdle);
             }
         }
     });
