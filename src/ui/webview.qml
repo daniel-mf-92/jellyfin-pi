@@ -1,69 +1,17 @@
-import QtQuick
+import QtQuick 2.4
 import Konvergo 1.0
-import QtWebEngine
-import QtWebChannel
-import QtQuick.Window
-import QtQuick.Controls
-import Qt.labs.platform as Labs
+import QtWebEngine 1.7
+import QtWebChannel 1.0
+import QtQuick.Window 2.2
+import QtQuick.Controls 1.4
 
-Window
+KonvergoWindow
 {
   id: mainWindow
-  title: "Jellyfin Desktop"
+  title: "Jellyfin Media Player"
   objectName: "mainWindow"
-  width: 1280
-  height: 720
-  minimumWidth: 213
-  minimumHeight: 120
-  visible: true
-  color: "#000000"
-
-  property bool webDesktopMode: true
-  property bool showDebugLayer: false
-  property string debugInfo: ""
-  property string videoInfo: ""
-  property string webUrl: ""
-
-  property bool showSystemTrayIcon: webDesktopMode && components.system.isWindows &&
-                                    components.settings.windowsTrayIcon
-
-  signal reloadWebClient()
-
-  Component.onCompleted: {
-    if (components && components.settings) {
-      webUrl = components.settings.getWebClientUrl(webDesktopMode)
-    }
-  }
-
-  onClosing: function(close) {
-    if (showSystemTrayIcon) {
-      close.accepted = false
-      mainWindow.hide()
-    }
-  }
-
-  function toggleFullscreen() {
-    visibility = (visibility === Window.FullScreen) ? Window.Windowed : Window.FullScreen
-  }
-
-  function toggleDebug() {
-    showDebugLayer = !showDebugLayer
-  }
-
-  function setFullScreen(enable) {
-    visibility = enable ? Window.FullScreen : Window.Windowed
-  }
-
-  function minimizeWindow() {
-    if (visibility !== Window.FullScreen)
-      visibility = Window.Minimized
-  }
-
-  function restoreWindow() {
-    mainWindow.show()
-    mainWindow.raise()
-    mainWindow.requestActivate()
-  }
+  minimumHeight: windowMinSize.height
+  minimumWidth: windowMinSize.width
 
   function runWebAction(action)
   {
@@ -114,8 +62,8 @@ Window
   Action
   {
     enabled: mainWindow.webDesktopMode
-    shortcut: components.system.isWindows ? "Ctrl+Q" : StandardKey.Quit
-    onTriggered: Qt.quit()
+    shortcut: StandardKey.Quit
+    onTriggered: mainWindow.close()
   }
 
   Action
@@ -129,178 +77,143 @@ Window
   {
     shortcut: StandardKey.Copy
     onTriggered: runWebAction(WebEngineView.Copy)
+    id: action_copy
   }
 
   Action
   {
     shortcut: StandardKey.Cut
     onTriggered: runWebAction(WebEngineView.Cut)
+    id: action_cut
   }
 
   Action
   {
     shortcut: StandardKey.Paste
     onTriggered: runWebAction(WebEngineView.Paste)
+    id: action_paste
   }
 
   Action
   {
     shortcut: StandardKey.SelectAll
     onTriggered: runWebAction(WebEngineView.SelectAll)
+    id: action_selectall
   }
 
   Action
   {
     shortcut: StandardKey.Undo
     onTriggered: runWebAction(WebEngineView.Undo)
+    id: action_undo
   }
 
   Action
   {
     shortcut: StandardKey.Redo
     onTriggered: runWebAction(WebEngineView.Redo)
+    id: action_redo
   }
 
   Action
   {
     shortcut: StandardKey.Back
     onTriggered: runWebAction(WebEngineView.Back)
+    id: action_back
   }
 
   Action
   {
     shortcut: StandardKey.Forward
     onTriggered: runWebAction(WebEngineView.Forward)
+    id: action_forward
   }
 
-  Action
-  {
-    enabled: mainWindow.webDesktopMode
-    shortcut: "Ctrl+0"
-    onTriggered: web.zoomFactor = 1.0
-  }
+  // MpvVideo removed - VLC renders in its own window
 
-  WebChannel
-  {
-    id: webChannelObject
-  }
-
-  Binding
-  {
-    target: web
-    property: "zoomFactor"
-    value: 1.0
-    when: !components.settings.allowBrowserZoom()
-  }
-
-  // Black background — VLC renders in its own fullscreen window,
-  // JMP window stays dark behind it during playback.
-  Rectangle
-  {
-    id: videoPlaceholder
-    color: "#000000"
-    width: mainWindow.contentItem.width
-    height: mainWindow.contentItem.height
-    anchors.left: mainWindow.contentItem.left
-    anchors.top: mainWindow.contentItem.top
-    z: 0
-  }
 
   WebEngineView
   {
     id: web
     objectName: "web"
-    width: mainWindow.width
-    height: mainWindow.height
-    z: 100
-    backgroundColor: "transparent"
-
-    layer.enabled: true
-
-    webChannel: webChannelObject
     settings.errorPageEnabled: false
     settings.localContentCanAccessRemoteUrls: true
     settings.localContentCanAccessFileUrls: true
     settings.allowRunningInsecureContent: true
     settings.playbackRequiresUserGesture: false
     profile.httpUserAgent: components.system.getUserAgent()
-    profile.httpCacheType: WebEngineProfile.DiskHttpCache
     url: mainWindow.webUrl
     focus: true
     property string currentHoveredUrl: ""
-    onLinkHovered: function(hoveredUrl)
-    {
-      web.currentHoveredUrl = hoveredUrl;
-    }
-    profile.persistentCookiesPolicy: WebEngineProfile.AllowPersistentCookies
-    profile.offTheRecord: false
-    profile.storageName: "JellyfinDesktopStorage"
+    onLinkHovered: web.currentHoveredUrl = hoveredUrl
+    width: mainWindow.width
+    height: mainWindow.height
+    userScripts: [
+      WebEngineScript
+      {
+        sourceCode: components.system.getNativeShellScript()
+        injectionPoint: WebEngineScript.DocumentCreation
+        worldId: WebEngineScript.MainWorld
+      }
+    ]
 
     Component.onCompleted:
     {
       forceActiveFocus()
       mainWindow.reloadWebClient.connect(reload)
-
-      components.system.pageContentReady.connect(function(html, finalUrl, hadCSP) {
-        if (hadCSP) {
-          web.url = finalUrl;
-        }
-      })
-
-      var nativeshell =
-      {
-        sourceCode: components.system.getNativeShellScript(),
-        injectionPoint: WebEngineScript.DocumentCreation,
-        worldId: WebEngineScript.MainWorld
-      }
-
-      web.userScripts.collection = [ nativeshell ];
     }
 
-    onLoadingChanged: function(loadingInfo)
+    onLoadingChanged:
     {
-      if (loadingInfo.status == WebEngineView.LoadStartedStatus)
+      // we use a timer here to switch to the webview since
+      // it take a few moments for the webview to render
+      // after it has loaded.
+      //
+      if (loadRequest.status == WebEngineView.LoadStartedStatus)
       {
-        console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
+        console.log("WebEngineLoadRequest starting: " + loadRequest.url);
       }
-      else if (loadingInfo.status == WebEngineView.LoadSucceededStatus)
+      else if (loadRequest.status == WebEngineView.LoadSucceededStatus)
       {
-        console.log("WebEngineLoadRequest success: " + loadingInfo.url);
+        console.log("WebEngineLoadRequest success: " + loadRequest.url);
       }
-      else if (loadingInfo.status == WebEngineView.LoadFailedStatus)
+      else if (loadRequest.status == WebEngineView.LoadFailedStatus)
       {
-        console.log("WebEngineLoadRequest failure: " + loadingInfo.url + " error code: " + loadingInfo.errorCode);
+        console.log("WebEngineLoadRequest failure: " + loadRequest.url + " error code: " + loadRequest.errorCode);
         errorLabel.visible = true
         errorLabel.text = "Error loading client, this is bad and should not happen<br>" +
                           "You can try to <a href='reload'>reload</a> or head to our <a href='http://jellyfin.org'>support page</a><br><br>Actual Error: <pre>" +
-                          loadingInfo.errorString + " [" + loadingInfo.errorCode + "]</pre><br><br>" +
+                          loadRequest.errorString + " [" + loadRequest.errorCode + "]</pre><br><br>" +
                           "Provide the <a target='_blank' href='file://"+ components.system.logFilePath + "'>logfile</a> as well."
       }
     }
 
-    onNewWindowRequested:
+    onNewViewRequested:
     {
       if (request.userInitiated)
       {
+        console.log("Opening external URL: " + web.currentHoveredUrl)
         components.system.openExternalUrl(web.currentHoveredUrl)
       }
     }
 
     onFullScreenRequested:
     {
+      console.log("Request fullscreen: " + request.toggleOn)
       mainWindow.setFullScreen(request.toggleOn)
       request.accept()
     }
 
-    onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID)
+    onJavaScriptConsoleMessage:
     {
-      components.system.jsLog(level, sourceID + ":" + lineNumber + " " + message);
+      components.system.info(message)
     }
 
-    onCertificateError: function(error)
+    onCertificateError:
     {
+      console.log(error.url + " :" + error.description + error.error)
       if (components.settings.ignoreSSLErrors()) {
-        error.acceptCertificate()
+        error.ignoreCertificateError()
       }
     }
   }
@@ -320,17 +233,18 @@ Window
     textFormat: Text.StyledText
     onLinkActivated:
     {
-      if (url == "reload")
+      if (link == "reload")
       {
         errorLabel.visible = false
         web.reload()
       }
       else
       {
-        Qt.openUrlExternally(url)
+        Qt.openUrlExternally(link)
       }
     }
   }
+
 
   Rectangle
   {
@@ -362,7 +276,7 @@ Window
         var dbg = mainWindow.debugInfo + "Window and web\n";
         dbg += "  Window size: " + parent.width + "x" + parent.height + " - " + web.width + "x" + web.height + "\n";
         dbg += "  DevicePixel ratio: " + Screen.devicePixelRatio + "\n";
-        dbg += "  Backend: VLC (libvlc)\n";
+
         return dbg;
       }
 
@@ -383,37 +297,10 @@ Window
       color: "white"
       font.pixelSize: Math.round(height / 65)
       wrapMode: Text.WrapAnywhere
+
       text: mainWindow.videoInfo
     }
   }
 
   property QtObject webChannel: web.webChannel
-
-  Labs.SystemTrayIcon {
-    visible: showSystemTrayIcon
-    icon.source: "qrc:/images/icon.png"
-    tooltip: "Jellyfin Desktop"
-
-    onActivated: function(reason) {
-      if (reason === Labs.SystemTrayIcon.Context) {
-        contextMenu.open()
-        components.window.setCursorVisibility(true)
-      } else {
-        restoreWindow()
-      }
-    }
-
-    menu: Labs.Menu {
-      id: contextMenu
-      Labs.MenuItem {
-        text: qsTr("Restore")
-        onTriggered: restoreWindow()
-      }
-      Labs.MenuSeparator {}
-      Labs.MenuItem {
-        text: qsTr("Quit")
-        onTriggered: Qt.quit()
-      }
-    }
-  }
 }
