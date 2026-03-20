@@ -69,7 +69,13 @@ echo "[3/5] Done."
 # --- Step 3b: Overlay jmp-custom source tree (VLC CMake integration) ---
 # The jmp-custom tree contains modified CMakeLists, PlayerConfiguration.cmake,
 # FindVLC.cmake, and PlayerComponent.cpp with native VLC support via USE_VLC.
-CUSTOM_DIR="/home/your-username/Documents/local-codebases/jmp-custom"
+# Auto-detect the real user home (script runs as root via sudo)
+if [ -n "${SUDO_USER:-}" ]; then
+  _REAL_HOME=$(eval echo ~$SUDO_USER)
+else
+  _REAL_HOME=$HOME
+fi
+CUSTOM_DIR="${_REAL_HOME}/Documents/local-codebases/jmp-custom"
 JMP_SRC="${BUILD_DIR}/jellyfin-media-player"
 if [ -d "$CUSTOM_DIR" ]; then
     echo "[3b/5] Overlaying jmp-custom source tree..."
