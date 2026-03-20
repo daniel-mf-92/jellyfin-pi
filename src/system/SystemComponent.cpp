@@ -20,6 +20,8 @@
 #include <QRegularExpression>
 #include <QPointer>
 #include <functional>
+#include <cstdlib>
+#include <cstring>
 
 #include <QtWebEngineCore/qtwebenginecoreglobal.h>
 
@@ -579,6 +581,14 @@ QString SystemComponent::getNativeShellScript()
   clientData.insert("settingsDescriptions", QJsonValue::fromVariant(settingsDescriptions));
   clientData.insert("settings", QJsonValue::fromVariant(SettingsComponent::Get().allValues()));
 
+  // Expose JMP_EXTERNAL_PLAYER env var to JS so nativeshell.js can detect VLC mode
+  const char* extPlayer = std::getenv("JMP_EXTERNAL_PLAYER");
+  if (extPlayer && strlen(extPlayer) > 0) {
+    clientData.insert("externalPlayer", QString::fromUtf8(extPlayer));
+  } else {
+    clientData.insert("externalPlayer", QString());
+  }
+
   QString jmpInfoDeclaration = "const jmpInfo = JSON.parse(window.atob(\"" +
                                 QJsonDocument(clientData).toJson(QJsonDocument::Compact).toBase64() +
                                 "\"));\nwindow.jmpInfo = jmpInfo;\n";
@@ -608,6 +618,13 @@ QString SystemComponent::getNativeShellScript()
   }
 
   return cachedScript;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////
+QString SystemComponent::getEnvironmentVariable(const QString& name)
+{
+  return QString::fromUtf8(qgetenv(name.toUtf8().constData()));
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////

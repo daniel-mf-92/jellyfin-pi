@@ -16,14 +16,37 @@ const features = [
     "fileinput"
 ];
 
+// Detect VLC mode: PlayerComponent checks JMP_EXTERNAL_PLAYER env var.
+// The C++ side injects this into jmpInfo so JS can detect it too.
+const vlcMode = (function() {
+    // Check if settings indicate VLC external player
+    // The enableMPV setting being false combined with external player = VLC mode
+    const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
+    // Also check if jmpInfo has an externalPlayer hint (set by C++ from env var)
+    const extPlayer = jmpInfo.externalPlayer || '';
+    if (extPlayer.toLowerCase().indexOf('vlc') >= 0) {
+        return true;
+    }
+    // Fallback: if MPV is explicitly disabled, assume VLC/external mode
+    if (!mpvEnabled) {
+        return true;
+    }
+    return false;
+})();
+
 const getPlugins = () => {
     const basePlugins = [
         'inputPlugin',
         'updatePlugin'
     ];
 
+    // In VLC mode, we still register the mpv player plugins because the
+    // QWebChannel API calls (load, play, pause, stop, seek) route through
+    // PlayerComponent which already handles VLC dispatch. The plugins
+    // provide the Jellyfin web client with a player interface; the actual
+    // rendering is done by VLC in its own window.
     const mpvEnabled = jmpInfo.settings?.main?.enableMPV !== false;
-    if (mpvEnabled) {
+    if (mpvEnabled || vlcMode) {
         return [
             'mpvVideoPlayer',
             'mpvAudioPlayer',
@@ -62,6 +85,82 @@ window.NativeShell = {
 };
 
 function getDeviceProfile() {
+    // VLC mode: configure for maximum DirectPlay, no transcoding.
+    // VLC can decode virtually everything natively, so we tell the
+    // Jellyfin server to send the original stream without transcoding.
+    if (vlcMode) {
+        return getVlcDeviceProfile();
+    }
+
+    return getMpvDeviceProfile();
+}
+
+/**
+ * VLC device profile: prefer DirectPlay for everything.
+ * No codec restrictions, unlimited bitrate, no HLS transcoding needed.
+ */
+function getVlcDeviceProfile() {
+    return {
+        'Name': 'Jellyfin Desktop (VLC)',
+        'MaxStaticBitrate': 1000000000,
+        'MaxStreamingBitrate': 1000000000,
+        'MusicStreamingTranscodingBitrate': 1280000,
+        'TimelineOffsetSeconds': 5,
+        'TranscodingProfiles': [
+            // Minimal transcoding profiles as fallback only.
+            // VLC handles nearly all formats, so the server should
+            // rarely need to transcode.
+            { 'Type': 'Audio' },
+            {
+                'Container': 'ts',
+                'Type': 'Video',
+                'Protocol': 'hls',
+                'AudioCodec': 'aac,mp3,ac3,eac3,opus,flac,vorbis,dts',
+                'VideoCodec': 'h264,h265,hevc,mpeg4,mpeg2video,vp9,av1',
+                'MaxAudioChannels': '8'
+            },
+            { 'Container': 'jpeg', 'Type': 'Photo' }
+        ],
+        // DirectPlay everything: video, audio, photos
+        'DirectPlayProfiles': [
+            {
+                'Type': 'Video',
+                // VLC supports essentially all containers/codecs
+                'AudioCodec': 'aac,mp3,ac3,eac3,dts,flac,opus,vorbis,pcm,truehd,dca',
+                'VideoCodec': 'h264,h265,hevc,mpeg4,mpeg2video,vp8,vp9,av1,vc1,wmv3'
+            },
+            { 'Type': 'Audio' },
+            { 'Type': 'Photo' }
+        ],
+        'ResponseProfiles': [],
+        'ContainerProfiles': [],
+        // No codec restrictions in VLC mode — it handles everything
+        'CodecProfiles': [],
+        'SubtitleProfiles': [
+            { 'Format': 'srt', 'Method': 'External' },
+            { 'Format': 'srt', 'Method': 'Embed' },
+            { 'Format': 'ass', 'Method': 'External' },
+            { 'Format': 'ass', 'Method': 'Embed' },
+            { 'Format': 'sub', 'Method': 'Embed' },
+            { 'Format': 'sub', 'Method': 'External' },
+            { 'Format': 'ssa', 'Method': 'Embed' },
+            { 'Format': 'ssa', 'Method': 'External' },
+            { 'Format': 'smi', 'Method': 'Embed' },
+            { 'Format': 'smi', 'Method': 'External' },
+            { 'Format': 'pgssub', 'Method': 'Embed' },
+            { 'Format': 'dvdsub', 'Method': 'Embed' },
+            { 'Format': 'dvbsub', 'Method': 'Embed' },
+            { 'Format': 'pgs', 'Method': 'Embed' },
+            { 'Format': 'vobsub', 'Method': 'Embed' },
+            { 'Format': 'idx', 'Method': 'External' }
+        ]
+    };
+}
+
+/**
+ * Original mpv device profile with all the existing transcode/codec settings.
+ */
+function getMpvDeviceProfile() {
     const CodecProfiles = [];
 
     if (jmpInfo.settings.video.force_transcode_dovi) {
@@ -245,6 +344,13 @@ if (settingsDescriptionsFromStorage) {
 
 jmpInfo.settingsDescriptionsUpdate = [];
 jmpInfo.settingsUpdate = [];
+
+// Expose VLC mode flag globally for other scripts to check
+window.jmpVlcMode = vlcMode;
+if (vlcMode) {
+    console.log('[JMP] VLC mode active — DirectPlay preferred, no transcoding restrictions');
+}
+
 window.apiPromise = createApi();
 window.initCompleted = new Promise(async (resolve) => {
     window.api = await window.apiPromise;
@@ -408,6 +514,15 @@ async function showSettingsModal() {
     modalContents.style.marginBottom = "6.2em";
     modalContainer2.appendChild(modalContents);
 
+    // VLC mode indicator at top of settings
+    if (vlcMode) {
+        const vlcBanner = document.createElement("div");
+        vlcBanner.style.cssText = "background:#1a5276;color:#fff;padding:10px 16px;border-radius:6px;margin:0 16px 16px;font-size:14px;";
+        vlcBanner.innerHTML = "<strong>VLC Mode Active</strong> — Video plays in external VLC window. " +
+            "DirectPlay is preferred; transcoding settings below are ignored.";
+        modalContents.appendChild(vlcBanner);
+    }
+
     const settingUpdateHandlers = {};
     for (const sectionOrder of jmpInfo.sections.sort((a, b) => a.order - b.order)) {
         const section = sectionOrder.key;
@@ -442,6 +557,12 @@ async function showSettingsModal() {
                 label.className = "inputContainer";
                 label.style.marginBottom = "1.8em";
                 label.style.display = "block";
+
+                // In VLC mode, dim video transcoding settings since they don't apply
+                if (vlcMode && section === 'video') {
+                    label.style.opacity = '0.5';
+                    label.title = 'Not applicable in VLC mode';
+                }
 
                 let helpElement;
                 if (setting.help) {
