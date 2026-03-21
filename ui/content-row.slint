@@ -1,0 +1,97 @@
+// Jellyfin Pi TV App - Content Row Component
+// Horizontal scrolling row of MediaCards (Jellyfin Android TV home screen style)
+
+import { Theme, MediaItem } from "theme.slint";
+import { MediaCard } from "card.slint";
+
+export component ContentRow inherits VerticalLayout {
+    in property <string> title: "";
+    in property <[MediaItem]> items: [];
+    in property <bool> is-landscape: false;
+    in-out property <bool> row-focused: false;
+    in-out property <int> focused-index: 0;
+
+    callback item-selected(string);
+    callback item-play-requested(string);
+
+    private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
+    private property <length> scroll-target: root.focused-index * (root.card-width + Theme.card-gap);
+
+    spacing: 0px;
+
+    // Row title
+    Text {
+        text: root.title;
+        font-size: 15px;
+        font-weight: 700;
+        color: root.row-focused ? Theme.text-primary : Theme.text-secondary;
+        horizontal-alignment: left;
+
+        animate color {
+            duration: Theme.focus-duration;
+        }
+    }
+
+    // Spacer between title and cards
+    Rectangle {
+        height: 8px;
+    }
+
+    // Horizontal scrolling card strip
+    Flickable {
+        height: root.is-landscape ? Theme.landscape-height + 40px : Theme.poster-height + 40px;
+        viewport-width: self.width;
+
+        viewport-x: -root.scroll-target + Theme.overscan-h;
+
+        animate viewport-x {
+            duration: Theme.transition-duration;
+            easing: ease-in-out;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.card-gap;
+            padding-left: Theme.overscan-h;
+            padding-right: Theme.overscan-h;
+
+            for item[index] in root.items : MediaCard {
+                item: item;
+                is-landscape: root.is-landscape;
+                focused: root.row-focused && index == root.focused-index;
+
+                selected(id) => {
+                    root.item-selected(id);
+                }
+            }
+        }
+    }
+
+    // Focus scope for keyboard/gamepad navigation
+    FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.row-focused;
+
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow) {
+                if (root.focused-index < root.items.length - 1) {
+                    root.focused-index += 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                if (root.focused-index > 0) {
+                    root.focused-index -= 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.Return || event.text == " ") {
+                if (root.focused-index >= 0 && root.focused-index < root.items.length) {
+                    root.item-selected(root.items[root.focused-index].id);
+                }
+                return accept;
+            }
+            return reject;
+        }
+    }
+}

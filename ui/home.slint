@@ -1,0 +1,174 @@
+// Jellyfin Pi TV App - Home Screen Component
+// Main browse screen with horizontal content rows (Jellyfin Android TV layout)
+
+import { Theme, MediaItem, ContentRowData, UserInfo } from "theme.slint";
+import { MediaCard } from "card.slint";
+import { ContentRow } from "content-row.slint";
+
+export component HomeScreen inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    // -- Public API -----------------------------------------------------------
+
+    in property <[ContentRowData]> rows: [];
+    in property <UserInfo> current-user;
+    in property <string> current-time: "00:00";
+
+    in-out property <int> focused-row: 0;
+
+    callback item-selected(/* item_id */ string);
+    callback item-play(/* item_id */ string);
+    callback open-search();
+    callback open-settings();
+    callback open-library(/* library_id */ string);
+
+    // -- Internal state -------------------------------------------------------
+
+    // Height of each content row (title + cards + spacing)
+    pure function row-block-height() -> length {
+        return Theme.row-height + Theme.font-body-large + Theme.spacing-sm + Theme.spacing-lg;
+    }
+
+    // Target scroll offset to keep focused row visible
+    pure function target-scroll-y() -> length {
+        // Scroll so focused row is near the top with some margin
+        return -max(0px, root.focused-row * root.row-block-height() - Theme.spacing-lg);
+    }
+
+    // -- Focus handling -------------------------------------------------------
+
+    focus-scope := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) {
+                if (root.focused-row > 0) {
+                    root.focused-row -= 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                if (root.focused-row < root.rows.length - 1) {
+                    root.focused-row += 1;
+                }
+                return accept;
+            }
+            // Y button / F2 → settings
+            if (event.text == "y" || event.text == "Y" || event.text == Key.F2) {
+                root.open-settings();
+                return accept;
+            }
+            // X button / F3 → search
+            if (event.text == "x" || event.text == "X" || event.text == Key.F3) {
+                root.open-search();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    // -- Layout ---------------------------------------------------------------
+
+    VerticalLayout {
+        padding-left: Theme.overscan-h;
+        padding-right: Theme.overscan-h;
+        padding-top: Theme.overscan-v;
+        padding-bottom: Theme.overscan-v;
+
+        // == Top bar ==========================================================
+        top-bar := HorizontalLayout {
+            height: 48px;
+            alignment: end;
+            spacing: Theme.spacing-md;
+            padding-bottom: Theme.spacing-sm;
+
+            // Spacer to push items right
+            Rectangle { horizontal-stretch: 1; }
+
+            // Clock
+            Text {
+                text: root.current-time;
+                font-size: Theme.font-body-medium;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+            }
+
+            // Separator dot
+            Text {
+                text: "\u{2022}";
+                font-size: Theme.font-body-medium;
+                color: Theme.text-tertiary;
+                vertical-alignment: center;
+            }
+
+            // User name
+            Text {
+                text: root.current-user.name;
+                font-size: Theme.font-body-medium;
+                color: Theme.text-secondary;
+                vertical-alignment: center;
+                font-weight: 600;
+            }
+
+            // User avatar
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: Theme.surface-variant;
+                clip: true;
+
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.current-user.avatar;
+                    image-fit: cover;
+                }
+
+                // Fallback initial when no avatar
+                Text {
+                    visible: root.current-user.name != "";
+                    text: root.current-user.name;
+                    font-size: Theme.font-body-small;
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // == Scrollable content rows ==========================================
+        Flickable {
+            vertical-stretch: 1;
+            viewport-height: root.rows.length * root.row-block-height() + Theme.spacing-xxl;
+            viewport-y: root.target-scroll-y();
+
+            // Animate the scroll position for smooth transitions
+            animate viewport-y {
+                duration: Theme.transition-duration;
+                easing: ease-in-out;
+            }
+
+            VerticalLayout {
+                spacing: Theme.spacing-lg;
+
+                for row[index] in root.rows : ContentRow {
+                    title: row.title;
+                    items: row.items;
+                    is-landscape: row.row-type == "landscape";
+                    row-focused: index == root.focused-row;
+
+                    item-selected(id) => {
+                        root.item-selected(id);
+                    }
+                    item-play-requested(id) => {
+                        root.item-play(id);
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,191 @@
+// Jellyfin Pi TV App - Media Card Component
+// Individual content card matching Jellyfin Android TV card design.
+// Used in content rows on home screen, library grids, etc.
+
+import { Theme, MediaItem } from "theme.slint";
+
+export component MediaCard inherits Rectangle {
+    in property <MediaItem> item;
+    in property <bool> is-landscape: false;
+    in property <bool> show-title: true;
+    in-out property <bool> focused: false;
+
+    callback selected(string);
+    callback play-requested(string);
+
+    // Outer container: sized to accommodate the scaled-up card
+    private property <length> card-w: is-landscape ? Theme.landscape-width : Theme.poster-width;
+    private property <length> card-h: is-landscape ? Theme.landscape-height : Theme.poster-height;
+    private property <length> title-block-h: show-title ? 40px : 0px;
+    private property <length> scale-pad-w: card-w * (Theme.focus-scale - 1.0) / 2.0;
+    private property <length> scale-pad-h: card-h * (Theme.focus-scale - 1.0) / 2.0;
+
+    width: card-w + scale-pad-w * 2;
+    height: card-h + scale-pad-h * 2 + title-block-h;
+    background: transparent;
+
+    // Card wrapper for centering + scale animation
+    card-wrapper := VerticalLayout {
+        alignment: center;
+        padding-left: scale-pad-w;
+        padding-right: scale-pad-w;
+        padding-top: scale-pad-h;
+        padding-bottom: scale-pad-h;
+
+        card-outer := Rectangle {
+            width: root.card-w;
+            height: root.card-h;
+            opacity: 0.7;
+
+            animate width { duration: Theme.focus-duration; easing: ease-out; }
+            animate height { duration: Theme.focus-duration; easing: ease-out; }
+            animate opacity { duration: Theme.focus-duration; easing: ease-out; }
+
+            states [
+                focused when root.focused : {
+                    width: root.card-w * Theme.focus-scale;
+                    height: root.card-h * Theme.focus-scale;
+                    opacity: 1.0;
+                }
+            ]
+
+            // Focus glow border
+            border-glow := Rectangle {
+                width: parent.width + 4px;
+                height: parent.height + 4px;
+                x: -2px;
+                y: -2px;
+                border-radius: Theme.card-radius + 2px;
+                border-width: 2px;
+                border-color: root.focused ? Theme.accent : transparent;
+                background: transparent;
+
+                animate border-color { duration: Theme.focus-duration; easing: ease-out; }
+            }
+
+            // Main card body
+            card-body := Rectangle {
+                width: parent.width;
+                height: parent.height;
+                border-radius: Theme.card-radius;
+                background: root.focused ? Theme.card-focused : Theme.card-background;
+                clip: true;
+
+                animate background { duration: Theme.focus-duration; easing: ease-out; }
+
+                // Poster / thumbnail image
+                poster := Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.item.image-source;
+                    image-fit: cover;
+                }
+
+                // -- Overlay indicators --
+
+                // Top-left: Favorite heart badge
+                if root.item.is-favorite : Rectangle {
+                    x: 6px;
+                    y: 6px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Theme.favorite;
+
+                    Text {
+                        text: "\u{2665}";
+                        font-size: 12px;
+                        color: #ffffff;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Top-right: Played checkmark badge
+                if root.item.is-played && root.item.unplayed-count <= 0 : Rectangle {
+                    x: parent.width - self.width - 6px;
+                    y: 6px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Theme.played-badge;
+
+                    Text {
+                        text: "\u{2713}";
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: #ffffff;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Top-right: Unplayed count badge
+                if !root.item.is-played && root.item.unplayed-count > 0 : Rectangle {
+                    x: parent.width - self.width - 6px;
+                    y: 6px;
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 11px;
+                    background: Theme.played-badge;
+
+                    Text {
+                        text: root.item.unplayed-count;
+                        font-size: Theme.font-badge;
+                        font-weight: 700;
+                        color: #ffffff;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Bottom: Progress bar
+                if root.item.progress > 0.0 : Rectangle {
+                    y: parent.height - self.height;
+                    width: parent.width;
+                    height: 4px;
+                    background: Theme.progress-background;
+
+                    Rectangle {
+                        width: parent.width * root.item.progress;
+                        height: parent.height;
+                        background: Theme.progress-bar;
+                    }
+                }
+
+                // Touch / click area
+                touch := TouchArea {
+                    clicked => {
+                        root.selected(root.item.id);
+                    }
+                }
+            }
+        }
+
+        // Title area below card
+        if root.show-title : VerticalLayout {
+            padding-top: Theme.spacing-xs;
+            spacing: Theme.spacing-xs;
+            alignment: start;
+
+            // Title - max 2 lines
+            Text {
+                text: root.item.title;
+                font-size: Theme.font-body-small;
+                color: Theme.text-primary;
+                overflow: elide;
+                wrap: word-wrap;
+                horizontal-alignment: left;
+            }
+
+            // Subtitle
+            if root.item.subtitle != "" : Text {
+                text: root.item.subtitle;
+                font-size: Theme.font-caption;
+                color: Theme.text-secondary;
+                overflow: elide;
+                horizontal-alignment: left;
+            }
+        }
+    }
+}
