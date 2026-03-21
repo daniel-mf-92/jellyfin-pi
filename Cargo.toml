@@ -1,0 +1,33 @@
+[package]
+name = "jellyfin-tv"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "jellyfin-tv"
+path = "src/main.rs"
+
+[dependencies]
+slint = { version = "1", features = ["renderer-femtovg", "backend-linuxkms", "compat-1-2"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libmpv2 = "4"
+evdev = "0.12"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+directories = "5"
+toml = "0.8"
+uuid = { version = "1", features = ["v4"] }
+log = "0.4"
+env_logger = "0.11"
+chrono = { version = "0.4", features = ["serde"] }
+tokio-stream = "0.1"
+async-channel = "2"
+url = "2"
+anyhow = "1"
+dirs = "5"
+libc = "0.2"
+
+[build-dependencies]
+slint-build = "1"

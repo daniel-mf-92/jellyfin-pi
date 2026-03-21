@@ -1,0 +1,518 @@
+// Jellyfin Pi TV App - Detail / Info Screen
+// Full item detail page matching Jellyfin Android TV FullDetailsFragment.
+// Shows when user selects a movie, series, or episode.
+
+import { Theme, MediaItem } from "theme.slint";
+import { MediaCard } from "card.slint";
+import { ContentRow } from "content-row.slint";
+
+// ============================================================================
+// Action button used in the detail screen button row
+// ============================================================================
+
+component ActionButton inherits Rectangle {
+    in property <string> label;
+    in property <string> icon-text;
+    in property <bool> active: false;
+    in-out property <bool> focused: false;
+
+    callback activated();
+
+    width: 80px;
+    height: 60px;
+    border-radius: Theme.button-radius;
+    border-width: root.focused ? 2px : 0px;
+    border-color: root.focused ? Theme.accent : transparent;
+    background: root.focused ? Theme.surface-variant : transparent;
+
+    animate border-color { duration: Theme.focus-duration; easing: ease-out; }
+    animate background { duration: Theme.focus-duration; easing: ease-out; }
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        padding: 4px;
+
+        // Icon
+        Text {
+            text: root.icon-text;
+            font-size: 24px;
+            color: root.active ? Theme.accent : (root.focused ? Theme.text-primary : Theme.text-secondary);
+            horizontal-alignment: center;
+
+            animate color { duration: Theme.focus-duration; easing: ease-out; }
+        }
+
+        // Label
+        Text {
+            text: root.label;
+            font-size: Theme.font-body-small;
+            color: root.focused ? Theme.text-primary : Theme.text-secondary;
+            horizontal-alignment: center;
+            overflow: elide;
+
+            animate color { duration: Theme.focus-duration; easing: ease-out; }
+        }
+    }
+
+    TouchArea {
+        clicked => { root.activated(); }
+    }
+}
+
+// ============================================================================
+// DetailScreen
+// ============================================================================
+
+export component DetailScreen inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: Theme.background;
+
+    // -- Public API (matches app.slint contract) ------------------------------
+
+    in property <MediaItem> item;
+    in property <[MediaItem]> seasons: [];
+    in property <[MediaItem]> episodes: [];
+    in property <[MediaItem]> related-items: [];
+
+    in-out property <int> focused-section: 0;   // 0=buttons, 1=seasons, 2=episodes, 3=similar
+    in-out property <int> focused-button: 0;
+
+    callback play-item(/* item_id */ string);
+    callback navigate(/* screen */ string, /* param */ string);
+    callback toggle-favorite(/* item_id */ string);
+    callback mark-played(/* item_id */ string);
+    callback mark-unplayed(/* item_id */ string);
+    callback request-seasons(/* series_id */ string);
+    callback request-episodes(/* series_id */ string, /* season_id */ string);
+
+    // -- Helpers --------------------------------------------------------------
+
+    private property <bool> is-series: root.item.item-type == "Series";
+    private property <bool> has-seasons: root.seasons.length > 0;
+    private property <bool> has-episodes: root.episodes.length > 0;
+    private property <bool> has-related: root.related-items.length > 0;
+    private property <bool> has-progress: root.item.progress > 0.0;
+
+    // Number of action buttons (Play + optionally Resume + Favorite + Played)
+    private property <int> button-count: root.has-progress ? 4 : 3;
+
+    // Total number of navigable sections
+    pure function section-count() -> int {
+        if (root.is-series && root.has-seasons && root.has-episodes && root.has-related) {
+            return 4;
+        }
+        if (root.is-series && root.has-seasons && root.has-episodes) {
+            return 3;
+        }
+        if (root.is-series && root.has-seasons) {
+            return 2;
+        }
+        if (root.has-related) {
+            return 2;
+        }
+        return 1;
+    }
+
+    // Map section index to which content row (skipping buttons at 0)
+    // Section 0 = buttons
+    // Section 1 = seasons (if series) or similar
+    // Section 2 = episodes (if series+seasons) or similar
+    // Section 3 = similar (if series+seasons+episodes)
+
+    // Scroll offset for focused section
+    pure function target-scroll-y() -> length {
+        if (root.focused-section <= 0) { return 0px; }
+        // Scroll past the hero area when focus moves to content rows
+        return -(root.focused-section - 1) * 320px - 80px;
+    }
+
+    // -- Focus handling -------------------------------------------------------
+
+    focus-scope := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            // Back / Escape
+            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+                root.navigate("home", "");
+                return accept;
+            }
+
+            // Up
+            if (event.text == Key.UpArrow) {
+                if (root.focused-section > 0) {
+                    root.focused-section -= 1;
+                }
+                return accept;
+            }
+
+            // Down
+            if (event.text == Key.DownArrow) {
+                if (root.focused-section < root.section-count() - 1) {
+                    root.focused-section += 1;
+                }
+                return accept;
+            }
+
+            // Left/Right in button row
+            if (root.focused-section == 0) {
+                if (event.text == Key.LeftArrow) {
+                    if (root.focused-button > 0) {
+                        root.focused-button -= 1;
+                    }
+                    return accept;
+                }
+                if (event.text == Key.RightArrow) {
+                    if (root.focused-button < root.button-count - 1) {
+                        root.focused-button += 1;
+                    }
+                    return accept;
+                }
+                // Enter / Space on buttons
+                if (event.text == Key.Return || event.text == " ") {
+                    if (root.has-progress) {
+                        // 0=Play, 1=Resume, 2=Favorite, 3=Played
+                        if (root.focused-button == 0) {
+                            root.play-item(root.item.id);
+                        } else if (root.focused-button == 1) {
+                            root.play-item(root.item.id);
+                        } else if (root.focused-button == 2) {
+                            root.toggle-favorite(root.item.id);
+                        } else if (root.focused-button == 3) {
+                            if (root.item.is-played) {
+                                root.mark-unplayed(root.item.id);
+                            } else {
+                                root.mark-played(root.item.id);
+                            }
+                        }
+                    } else {
+                        // 0=Play, 1=Favorite, 2=Played
+                        if (root.focused-button == 0) {
+                            root.play-item(root.item.id);
+                        } else if (root.focused-button == 1) {
+                            root.toggle-favorite(root.item.id);
+                        } else if (root.focused-button == 2) {
+                            if (root.item.is-played) {
+                                root.mark-unplayed(root.item.id);
+                            } else {
+                                root.mark-played(root.item.id);
+                            }
+                        }
+                    }
+                    return accept;
+                }
+            }
+
+            return reject;
+        }
+    }
+
+    // -- Layout ---------------------------------------------------------------
+
+    Flickable {
+        width: 100%;
+        height: 100%;
+        viewport-height: self.height + 800px;
+        viewport-y: root.target-scroll-y();
+
+        animate viewport-y {
+            duration: Theme.transition-duration;
+            easing: ease-in-out;
+        }
+
+        VerticalLayout {
+            spacing: 0px;
+
+            // ================================================================
+            // 1. Backdrop hero area (~40% of screen)
+            // ================================================================
+            hero := Rectangle {
+                width: 100%;
+                height: 440px;
+                clip: true;
+
+                // Backdrop image
+                Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: root.item.backdrop-source;
+                    image-fit: cover;
+                }
+
+                // Gradient overlay: transparent top -> solid bottom
+                Rectangle {
+                    width: parent.width;
+                    height: parent.height;
+                    background: @linear-gradient(180deg,
+                        transparent 0%,
+                        #08080840 40%,
+                        #080808cc 70%,
+                        #080808 100%
+                    );
+                }
+
+                // Title and metadata overlay (bottom-left)
+                VerticalLayout {
+                    x: Theme.overscan-h;
+                    y: parent.height - self.height - 24px;
+                    width: parent.width - Theme.overscan-h * 2 - 260px;
+                    spacing: 6px;
+
+                    // Title
+                    Text {
+                        text: root.item.title;
+                        font-size: 30px;
+                        font-weight: 300;
+                        color: white;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        horizontal-alignment: left;
+                    }
+
+                    // Info row: year | rating | runtime
+                    HorizontalLayout {
+                        spacing: 0px;
+                        alignment: start;
+
+                        if root.item.year != "" : Text {
+                            text: root.item.year;
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        if root.item.year != "" && root.item.official-rating != "" : Text {
+                            text: "  |  ";
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-tertiary;
+                            vertical-alignment: center;
+                        }
+                        if root.item.official-rating != "" : Text {
+                            text: root.item.official-rating;
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                        if root.item.runtime != "" && (root.item.year != "" || root.item.official-rating != "") : Text {
+                            text: "  |  ";
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-tertiary;
+                            vertical-alignment: center;
+                        }
+                        if root.item.runtime != "" : Text {
+                            text: root.item.runtime;
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Genres row
+                    if root.item.genres != "" : Text {
+                        text: root.item.genres;
+                        font-size: Theme.font-body-medium;
+                        color: Theme.text-secondary;
+                        overflow: elide;
+                        horizontal-alignment: left;
+                    }
+                }
+
+                // Poster image (right side)
+                Rectangle {
+                    x: parent.width - 220px;
+                    y: parent.height - 225px - 24px;
+                    width: 150px;
+                    height: 225px;
+                    border-radius: Theme.card-radius;
+                    clip: true;
+                    background: Theme.card-background;
+
+                    // Subtle shadow
+                    drop-shadow-blur: 16px;
+                    drop-shadow-color: #00000080;
+                    drop-shadow-offset-x: 0px;
+                    drop-shadow-offset-y: 4px;
+
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: root.item.image-source;
+                        image-fit: cover;
+                    }
+
+                    // Subtle border
+                    Rectangle {
+                        width: parent.width;
+                        height: parent.height;
+                        border-radius: Theme.card-radius;
+                        border-width: 1px;
+                        border-color: #ffffff18;
+                        background: transparent;
+                    }
+                }
+            }
+
+            // ================================================================
+            // 2. Summary / Overview
+            // ================================================================
+            if root.item.overview != "" : Rectangle {
+                width: 100%;
+                height: overview-text.preferred-height + Theme.spacing-lg * 2;
+                background: transparent;
+
+                overview-text := Text {
+                    x: Theme.overscan-h;
+                    y: Theme.spacing-lg;
+                    width: parent.width - Theme.overscan-h - 260px;
+                    text: root.item.overview;
+                    font-size: Theme.font-body-large;
+                    font-weight: 300;
+                    color: Theme.text-primary;
+                    wrap: word-wrap;
+                    overflow: elide;
+                    horizontal-alignment: left;
+                }
+            }
+
+            // ================================================================
+            // 3. Action buttons row
+            // ================================================================
+            Rectangle {
+                width: 100%;
+                height: 80px;
+                background: transparent;
+
+                HorizontalLayout {
+                    x: Theme.overscan-h;
+                    y: 8px;
+                    spacing: Theme.spacing-lg;
+                    alignment: start;
+
+                    // Play button
+                    ActionButton {
+                        icon-text: "\u{25B6}";
+                        label: "Play";
+                        focused: root.focused-section == 0 && root.focused-button == 0;
+                        activated => { root.play-item(root.item.id); }
+                    }
+
+                    // Resume button (only if progress > 0)
+                    if root.has-progress : ActionButton {
+                        icon-text: "\u{23EF}";
+                        label: "Resume";
+                        focused: root.focused-section == 0 && root.focused-button == 1;
+                        activated => { root.play-item(root.item.id); }
+                    }
+
+                    // Favorite toggle
+                    ActionButton {
+                        icon-text: "\u{2665}";
+                        label: root.item.is-favorite ? "Unfavorite" : "Favorite";
+                        active: root.item.is-favorite;
+                        focused: root.focused-section == 0 &&
+                            (root.has-progress ? root.focused-button == 2 : root.focused-button == 1);
+                        activated => { root.toggle-favorite(root.item.id); }
+                    }
+
+                    // Mark played toggle
+                    ActionButton {
+                        icon-text: "\u{2713}";
+                        label: root.item.is-played ? "Unplayed" : "Played";
+                        active: root.item.is-played;
+                        focused: root.focused-section == 0 &&
+                            (root.has-progress ? root.focused-button == 3 : root.focused-button == 2);
+                        activated => {
+                            if (root.item.is-played) {
+                                root.mark-unplayed(root.item.id);
+                            } else {
+                                root.mark-played(root.item.id);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ================================================================
+            // 4. Content rows
+            // ================================================================
+
+            // Spacer
+            Rectangle {
+                height: Theme.spacing-lg;
+                background: transparent;
+            }
+
+            // -- Seasons row (series only) ------------------------------------
+            if root.is-series && root.has-seasons : VerticalLayout {
+                padding-left: Theme.overscan-h;
+                padding-right: Theme.overscan-h;
+                spacing: Theme.spacing-sm;
+
+                ContentRow {
+                    title: "Seasons";
+                    items: root.seasons;
+                    row-focused: root.focused-section == 1;
+
+                    item-selected(id) => {
+                        root.request-episodes(root.item.id, id);
+                    }
+                }
+            }
+
+            // -- Episodes row (series with selected season) -------------------
+            if root.is-series && root.has-episodes : VerticalLayout {
+                padding-left: Theme.overscan-h;
+                padding-right: Theme.overscan-h;
+                padding-top: Theme.spacing-md;
+                spacing: Theme.spacing-sm;
+
+                ContentRow {
+                    title: "Episodes";
+                    items: root.episodes;
+                    is-landscape: true;
+                    row-focused: root.is-series && root.has-seasons
+                        ? root.focused-section == 2
+                        : root.focused-section == 1;
+
+                    item-selected(id) => {
+                        root.navigate("detail", id);
+                    }
+                }
+            }
+
+            // -- Similar / Related row ----------------------------------------
+            if root.has-related : VerticalLayout {
+                padding-left: Theme.overscan-h;
+                padding-right: Theme.overscan-h;
+                padding-top: Theme.spacing-md;
+                spacing: Theme.spacing-sm;
+
+                ContentRow {
+                    title: "Similar";
+                    items: root.related-items;
+                    row-focused: {
+                        if (root.is-series && root.has-seasons && root.has-episodes) {
+                            root.focused-section == 3
+                        } else if (root.is-series && root.has-seasons) {
+                            root.focused-section == 2
+                        } else {
+                            root.focused-section == 1
+                        }
+                    };
+
+                    item-selected(id) => {
+                        root.navigate("detail", id);
+                    }
+                }
+            }
+
+            // Bottom padding
+            Rectangle {
+                height: Theme.overscan-v + Theme.spacing-xxl;
+                background: transparent;
+            }
+        }
+    }
+}
