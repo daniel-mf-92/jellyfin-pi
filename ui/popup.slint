@@ -1,0 +1,184 @@
+// Jellyfin Pi TV App - Confirmation / Info Dialog Popup
+
+import { Theme } from "theme.slint";
+
+export component ConfirmPopup inherits Rectangle {
+    in property <bool> visible-popup: false;
+    in property <string> title: "";
+    in property <string> message: "";
+    in property <bool> show-cancel: true;
+    in-out property <int> focused-button: 0;  // 0 = confirm, 1 = cancel
+
+    callback confirm();
+    callback cancel();
+
+    visible: visible-popup;
+    width: 100%;
+    height: 100%;
+    background: Theme.scrim;
+
+    // Keyboard / remote navigation
+    forward-focus: key-handler;
+
+    key-handler := FocusScope {
+        width: 0;
+        height: 0;
+
+        key-pressed(event) => {
+            if (!root.visible-popup) {
+                return reject;
+            }
+
+            if (event.text == Key.LeftArrow) {
+                if (root.focused-button > 0) {
+                    root.focused-button = root.focused-button - 1;
+                }
+                return accept;
+            }
+
+            if (event.text == Key.RightArrow) {
+                if (root.show-cancel && root.focused-button < 1) {
+                    root.focused-button = root.focused-button + 1;
+                }
+                return accept;
+            }
+
+            if (event.text == Key.Return) {
+                if (root.focused-button == 0) {
+                    root.confirm();
+                } else {
+                    root.cancel();
+                }
+                return accept;
+            }
+
+            // B key or Escape -> cancel
+            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+                root.cancel();
+                return accept;
+            }
+
+            return reject;
+        }
+    }
+
+    // Center the dialog card
+    VerticalLayout {
+        alignment: center;
+
+        HorizontalLayout {
+            alignment: center;
+
+            // Dialog card
+            Rectangle {
+                width: 500px;
+                background: Theme.surface;
+                border-radius: 16px;
+
+                VerticalLayout {
+                    padding: 32px;
+                    spacing: 0;
+
+                    // Title
+                    Text {
+                        text: root.title;
+                        font-size: 20px;
+                        font-weight: 700;
+                        color: Theme.text-primary;
+                        horizontal-alignment: left;
+                        wrap: word-wrap;
+                    }
+
+                    // Spacer between title and message
+                    Rectangle {
+                        height: 16px;
+                    }
+
+                    // Message
+                    Text {
+                        text: root.message;
+                        font-size: Theme.font-body-large;
+                        color: Theme.text-secondary;
+                        horizontal-alignment: left;
+                        wrap: word-wrap;
+                    }
+
+                    // Spacer before buttons
+                    Rectangle {
+                        height: 32px;
+                    }
+
+                    // Button row
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 16px;
+
+                        // Confirm button
+                        Rectangle {
+                            width: 120px;
+                            height: 44px;
+                            border-radius: Theme.button-radius;
+                            background: root.focused-button == 0 ? Theme.accent : Theme.surface-variant;
+
+                            animate background {
+                                duration: Theme.focus-duration;
+                            }
+
+                            Text {
+                                text: "Confirm";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: root.focused-button == 0 ? Theme.on-background : Theme.text-secondary;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+
+                                animate color {
+                                    duration: Theme.focus-duration;
+                                }
+                            }
+
+                            TouchArea {
+                                clicked => {
+                                    root.focused-button = 0;
+                                    root.confirm();
+                                }
+                            }
+                        }
+
+                        // Cancel button (conditional)
+                        if root.show-cancel: Rectangle {
+                            width: 120px;
+                            height: 44px;
+                            border-radius: Theme.button-radius;
+                            background: root.focused-button == 1 ? Theme.accent : Theme.surface-variant;
+
+                            animate background {
+                                duration: Theme.focus-duration;
+                            }
+
+                            Text {
+                                text: "Cancel";
+                                font-size: 14px;
+                                font-weight: 600;
+                                color: root.focused-button == 1 ? Theme.on-background : Theme.text-secondary;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+
+                                animate color {
+                                    duration: Theme.focus-duration;
+                                }
+                            }
+
+                            TouchArea {
+                                clicked => {
+                                    root.focused-button = 1;
+                                    root.cancel();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

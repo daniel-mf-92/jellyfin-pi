@@ -1,0 +1,170 @@
+// Jellyfin Pi TV App - Theme & Design Tokens
+// Based on Jellyfin Android TV dark theme color palette
+
+// ============================================================================
+// Shared Data Structures
+// ============================================================================
+
+export struct MediaItem {
+    id: string,
+    title: string,
+    subtitle: string,
+    item-type: string,
+    image-source: image,
+    backdrop-source: image,
+    progress: float,
+    is-played: bool,
+    is-favorite: bool,
+    unplayed-count: int,
+    year: string,
+    rating: string,
+    official-rating: string,
+    runtime: string,
+    overview: string,
+    genres: string,
+}
+
+export struct ContentRowData {
+    title: string,
+    items: [MediaItem],
+    row-type: string,
+}
+
+export struct UserInfo {
+    id: string,
+    name: string,
+    avatar: image,
+    has-password: bool,
+}
+
+export struct PlayerState {
+    is-playing: bool,
+    is-paused: bool,
+    position-ms: int,
+    duration-ms: int,
+    title: string,
+    subtitle: string,
+    audio-tracks: [string],
+    subtitle-tracks: [string],
+    current-audio: int,
+    current-subtitle: int,
+    volume: float,
+    is-muted: bool,
+}
+
+export struct SearchResult {
+    id: string,
+    title: string,
+    subtitle: string,
+    item-type: string,
+    image-source: image,
+    year: string,
+}
+
+// ============================================================================
+// Theme Global - Colors, Spacing, Typography, Animation, Shape, Card Dimensions
+// ============================================================================
+
+export global Theme {
+    // -- Colors ---------------------------------------------------------------
+
+    // Core backgrounds
+    out property <color> background:        #080808;
+    out property <color> surface:            #1c2026;
+    out property <color> surface-variant:    #2a2f38;
+
+    // On-surface text
+    out property <color> on-background:      #fcfcfd;
+    out property <color> on-surface:         #e0e0e6;
+    out property <color> on-surface-variant:  #8e9099;
+
+    // Accent
+    out property <color> accent:             #00a4dd;
+    out property <color> accent-dim:         #007aa3;
+    out property <color> secondary-accent:   #aa5cc3;
+
+    // Text hierarchy
+    out property <color> text-primary:       #e8e8ed;
+    out property <color> text-secondary:     #8e9099;
+    out property <color> text-tertiary:      #5a5d66;
+
+    // Cards
+    out property <color> card-background:    #1c2026;
+    out property <color> card-focused:       #2a3040;
+
+    // Overlays
+    out property <color> scrim:              #000000aa;
+    out property <color> overlay-dark:       #10101094;
+
+    // Status colors
+    out property <color> error:              #cf6679;
+    out property <color> recording:          #e53935;
+    out property <color> favorite:           #e53935;
+    out property <color> played-badge:       #00a4dd;
+
+    // Progress
+    out property <color> progress-bar:       #00a4dd;
+    out property <color> progress-background:#303030;
+
+    // -- Spacing --------------------------------------------------------------
+
+    out property <length> spacing-xxs:       2px;
+    out property <length> spacing-xs:        4px;
+    out property <length> spacing-sm:        8px;
+    out property <length> spacing-md:        16px;
+    out property <length> spacing-lg:        24px;
+    out property <length> spacing-xl:        32px;
+    out property <length> spacing-xxl:       40px;
+    out property <length> spacing-xxxl:      48px;
+
+    // TV overscan safe area
+    out property <length> overscan-h:        48px;
+    out property <length> overscan-v:        27px;
+
+    // -- Typography (size tokens) ---------------------------------------------
+
+    out property <string> default-font-family: "sans-serif";
+    out property <length> default-font-size:   16px;
+
+    out property <length> font-title-large:  32px;
+    out property <length> font-title-medium: 24px;
+    out property <length> font-title-small:  18px;
+    out property <length> font-body-large:   16px;
+    out property <length> font-body-medium:  14px;
+    out property <length> font-body-small:   12px;
+    out property <length> font-caption:      10px;
+    out property <length> font-badge:        11px;
+
+    // -- Animation ------------------------------------------------------------
+
+    out property <duration> focus-duration:      200ms;
+    out property <duration> transition-duration: 300ms;
+    out property <duration> backdrop-fade:       800ms;
+
+    // -- Shape ----------------------------------------------------------------
+
+    out property <length> card-radius:       12px;
+    out property <length> button-radius:     8px;
+    out property <length> badge-radius:      14px;
+
+    // -- Card Dimensions ------------------------------------------------------
+
+    // Poster cards (2:3 aspect)
+    out property <length> poster-width:      150px;
+    out property <length> poster-height:     225px;
+
+    // Landscape cards (16:9 aspect)
+    out property <length> landscape-width:   267px;
+    out property <length> landscape-height:  150px;
+
+    // Square cards (1:1 aspect)
+    out property <length> square-width:      150px;
+    out property <length> square-height:     150px;
+
+    // Card layout
+    out property <length> card-gap:          16px;
+    out property <length> row-height:        280px;
+
+    // Focus scale factor
+    out property <float> focus-scale:        1.15;
+}

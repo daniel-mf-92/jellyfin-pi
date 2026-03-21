@@ -1,0 +1,491 @@
+// Jellyfin Pi TV App - Player Overlay / Transport Controls
+// Matches Jellyfin Android TV LeanbackOverlayFragment layout
+
+import { Theme, PlayerState } from "theme.slint";
+
+// ============================================================================
+// Helper: Format a transport control button with focus state
+// ============================================================================
+
+component TransportButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> is-focused: false;
+    in property <bool> is-enabled: true;
+    callback activated();
+
+    width: 48px;
+    height: 48px;
+    border-radius: 24px;
+    background: is-focused ? #ffffff20 : transparent;
+    opacity: is-enabled ? (is-focused ? 1.0 : 0.7) : 0.3;
+
+    animate background { duration: Theme.focus-duration; }
+    animate opacity { duration: Theme.focus-duration; }
+
+    Text {
+        text: root.label;
+        font-size: is-focused ? 28px : 24px;
+        color: is-focused ? white : Theme.text-secondary;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        animate font-size { duration: Theme.focus-duration; }
+        animate color { duration: Theme.focus-duration; }
+    }
+}
+
+// ============================================================================
+// Helper: Seek bar with scrubber
+// ============================================================================
+
+component SeekBar inherits Rectangle {
+    in property <float> progress: 0.0;        // 0.0 - 1.0
+    in property <bool> is-focused: false;
+    in property <string> position-text: "0:00";
+    in property <string> duration-text: "0:00";
+    in property <string> remaining-text: "-0:00";
+
+    height: 40px;
+
+    // Time label: current position
+    Text {
+        x: 0;
+        y: 0;
+        text: root.position-text;
+        font-size: Theme.font-body-medium;
+        color: white;
+        vertical-alignment: center;
+    }
+
+    // Time label: duration
+    Text {
+        x: parent.width - self.width;
+        y: 0;
+        text: root.duration-text;
+        font-size: Theme.font-body-medium;
+        color: Theme.text-secondary;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+    }
+
+    // Track background
+    Rectangle {
+        x: 0;
+        y: 22px;
+        width: parent.width;
+        height: is-focused ? 8px : 6px;
+        border-radius: self.height / 2;
+        background: Theme.progress-background;
+
+        animate height { duration: Theme.focus-duration; }
+
+        // Filled portion
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width * clamp(root.progress, 0.0, 1.0);
+            height: parent.height;
+            border-radius: parent.border-radius;
+            background: Theme.progress-bar;
+
+            animate width { duration: 200ms; easing: ease-out; }
+        }
+
+        // Scrubber handle
+        Rectangle {
+            x: parent.width * clamp(root.progress, 0.0, 1.0) - self.width / 2;
+            y: (parent.height - self.height) / 2;
+            width: is-focused ? 18px : 14px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: Theme.accent;
+            opacity: is-focused ? 1.0 : 0.0;
+
+            animate opacity { duration: Theme.focus-duration; }
+            animate width { duration: Theme.focus-duration; }
+        }
+    }
+
+    // Remaining time (below bar, right side)
+    Text {
+        x: parent.width - self.width;
+        y: 32px;
+        text: root.remaining-text;
+        font-size: Theme.font-body-small;
+        color: Theme.text-tertiary;
+        horizontal-alignment: right;
+    }
+}
+
+// ============================================================================
+// Helper: Volume indicator (vertical bar on right edge)
+// ============================================================================
+
+component VolumeIndicator inherits Rectangle {
+    in property <float> volume: 1.0;     // 0.0 - 1.0
+    in property <bool> is-muted: false;
+    in property <bool> show: false;
+
+    x: parent.width - 60px;
+    y: (parent.height - 200px) / 2;
+    width: 40px;
+    height: 200px;
+    opacity: show ? 1.0 : 0.0;
+
+    animate opacity { duration: Theme.transition-duration; }
+
+    // Background track
+    Rectangle {
+        x: (parent.width - 6px) / 2;
+        y: 30px;
+        width: 6px;
+        height: parent.height - 60px;
+        border-radius: 3px;
+        background: Theme.progress-background;
+
+        // Filled portion (grows upward)
+        Rectangle {
+            x: 0;
+            y: parent.height - self.height;
+            width: parent.width;
+            height: parent.height * (root.is-muted ? 0.0 : clamp(root.volume, 0.0, 1.0));
+            border-radius: parent.border-radius;
+            background: root.is-muted ? Theme.text-tertiary : Theme.accent;
+
+            animate height { duration: 150ms; easing: ease-out; }
+            animate background { duration: 150ms; }
+        }
+    }
+
+    // Volume / Mute icon
+    Text {
+        x: 0;
+        y: parent.height - 24px;
+        width: parent.width;
+        height: 24px;
+        text: root.is-muted ? "\u{1F507}" : "\u{1F50A}";
+        font-size: 16px;
+        color: root.is-muted ? Theme.text-tertiary : white;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// ============================================================================
+// Helper: Secondary control label button
+// ============================================================================
+
+component SecondaryControl inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> is-focused: false;
+    callback activated();
+
+    height: 32px;
+    width: 140px;
+    border-radius: Theme.button-radius;
+    background: is-focused ? #ffffff18 : transparent;
+
+    animate background { duration: Theme.focus-duration; }
+
+    VerticalLayout {
+        alignment: center;
+        padding-left: 8px;
+        padding-right: 8px;
+
+        Text {
+            text: root.label;
+            font-size: Theme.font-body-small;
+            color: is-focused ? Theme.accent : Theme.text-tertiary;
+            horizontal-alignment: center;
+
+            animate color { duration: Theme.focus-duration; }
+        }
+
+        Text {
+            text: root.value;
+            font-size: Theme.font-body-medium;
+            color: is-focused ? white : Theme.text-secondary;
+            horizontal-alignment: center;
+
+            animate color { duration: Theme.focus-duration; }
+        }
+    }
+}
+
+// ============================================================================
+// Main: PlayerOverlay
+// ============================================================================
+
+export component PlayerOverlay inherits Rectangle {
+    in property <PlayerState> state;
+    in-out property <bool> visible-overlay: false;
+    in-out property <int> focused-control: 2;      // 0=prev, 1=rw, 2=play/pause, 3=ff, 4=next
+    in-out property <bool> show-track-menu: false;
+
+    // Pre-formatted time strings from Rust
+    in property <string> position-text: "0:00";
+    in property <string> duration-text: "0:00";
+    in property <string> remaining-text: "-0:00";
+
+    // Focus zone: 0 = seek bar, 1 = transport controls, 2 = secondary controls
+    in-out property <int> focus-zone: 1;
+
+    // Volume flash
+    in-out property <bool> volume-visible: false;
+
+    // Secondary controls focus: 0=audio, 1=subtitle, 2=speed
+    in-out property <int> secondary-focus: 0;
+
+    // Callbacks
+    callback play-pause();
+    callback seek(int);
+    callback seek-relative(int);
+    callback next-track();
+    callback prev-track();
+    callback set-audio(int);
+    callback set-subtitle(int);
+    callback toggle-mute();
+    callback set-volume(float);
+    callback dismiss();
+
+    // Progress ratio
+    property <float> progress: state.duration-ms > 0 ? clamp(state.position-ms * 1.0 / state.duration-ms, 0.0, 1.0) : 0.0;
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    // ---- Scrim overlay ----
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000066;
+        opacity: root.visible-overlay ? 1.0 : 0.0;
+
+        animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
+    }
+
+    // ---- Top panel (title bar) ----
+    Rectangle {
+        x: 0;
+        y: root.visible-overlay ? 0 : -120px;
+        width: 100%;
+        height: 100px;
+        background: #000000cc;
+
+        animate y { duration: Theme.transition-duration; easing: ease-out; }
+
+        // Title
+        Text {
+            x: Theme.overscan-h;
+            y: 16px;
+            text: state.title;
+            font-size: Theme.font-title-large;
+            color: white;
+            overflow: elide;
+            width: parent.width - Theme.overscan-h * 2 - 100px;
+        }
+
+        // Subtitle
+        Text {
+            x: Theme.overscan-h;
+            y: 56px;
+            text: state.subtitle;
+            font-size: 20px;
+            color: Theme.text-secondary;
+            overflow: elide;
+            width: parent.width - Theme.overscan-h * 2 - 100px;
+        }
+    }
+
+    // ---- Bottom transport panel ----
+    Rectangle {
+        x: 0;
+        y: root.visible-overlay ? (parent.height - 220px) : parent.height;
+        width: 100%;
+        height: 220px;
+
+        animate y { duration: Theme.transition-duration; easing: ease-out; }
+
+        // Gradient background: transparent at top, dark at bottom
+        Rectangle {
+            width: 100%;
+            height: 100%;
+            background: @linear-gradient(180deg, transparent 0%, #000000cc 40%);
+        }
+
+        // Seek bar
+        SeekBar {
+            x: Theme.overscan-h;
+            y: 12px;
+            width: parent.width - Theme.overscan-h * 2;
+            progress: root.progress;
+            is-focused: root.focus-zone == 0;
+            position-text: root.position-text;
+            duration-text: root.duration-text;
+            remaining-text: root.remaining-text;
+        }
+
+        // Transport control buttons row
+        HorizontalLayout {
+            x: (parent.width - self.width) / 2;
+            y: 70px;
+            spacing: Theme.spacing-xl;
+            alignment: center;
+
+            // Skip Previous
+            TransportButton {
+                label: "\u{23EE}";
+                is-focused: root.focus-zone == 1 && root.focused-control == 0;
+                activated => { root.prev-track(); }
+            }
+
+            // Rewind 10s
+            TransportButton {
+                label: "\u{23EA}";
+                is-focused: root.focus-zone == 1 && root.focused-control == 1;
+                activated => { root.seek-relative(-10000); }
+            }
+
+            // Play / Pause
+            TransportButton {
+                label: state.is-paused ? "\u{25B6}" : "\u{23F8}";
+                is-focused: root.focus-zone == 1 && root.focused-control == 2;
+                activated => { root.play-pause(); }
+            }
+
+            // Fast Forward 30s
+            TransportButton {
+                label: "\u{23E9}";
+                is-focused: root.focus-zone == 1 && root.focused-control == 3;
+                activated => { root.seek-relative(30000); }
+            }
+
+            // Skip Next
+            TransportButton {
+                label: "\u{23ED}";
+                is-focused: root.focus-zone == 1 && root.focused-control == 4;
+                activated => { root.next-track(); }
+            }
+        }
+
+        // Secondary controls row
+        HorizontalLayout {
+            x: (parent.width - self.width) / 2;
+            y: 140px;
+            spacing: Theme.spacing-md;
+            alignment: center;
+
+            SecondaryControl {
+                label: "Audio";
+                value: state.current-audio >= 0 && state.current-audio < state.audio-tracks.length
+                    ? state.audio-tracks[state.current-audio]
+                    : "Default";
+                is-focused: root.focus-zone == 2 && root.secondary-focus == 0;
+                activated => { root.show-track-menu = true; }
+            }
+
+            SecondaryControl {
+                label: "Subtitles";
+                value: state.current-subtitle >= 0 && state.current-subtitle < state.subtitle-tracks.length
+                    ? state.subtitle-tracks[state.current-subtitle]
+                    : "None";
+                is-focused: root.focus-zone == 2 && root.secondary-focus == 1;
+                activated => { root.show-track-menu = true; }
+            }
+
+            SecondaryControl {
+                label: "Speed";
+                value: "1.0x";
+                is-focused: root.focus-zone == 2 && root.secondary-focus == 2;
+            }
+        }
+    }
+
+    // ---- Volume indicator (right edge) ----
+    VolumeIndicator {
+        volume: state.volume;
+        is-muted: state.is-muted;
+        show: root.volume-visible;
+    }
+
+    // ---- Key handling ----
+    fs := FocusScope {
+        enabled: root.visible-overlay;
+
+        key-pressed(event) => {
+            if event.text == Key.Escape {
+                root.dismiss();
+                return accept;
+            }
+
+            if event.text == Key.Return {
+                if root.focus-zone == 1 {
+                    if root.focused-control == 0 {
+                        root.prev-track();
+                    } else if root.focused-control == 1 {
+                        root.seek-relative(-10000);
+                    } else if root.focused-control == 2 {
+                        root.play-pause();
+                    } else if root.focused-control == 3 {
+                        root.seek-relative(30000);
+                    } else if root.focused-control == 4 {
+                        root.next-track();
+                    }
+                } else if root.focus-zone == 0 {
+                    // Enter on seek bar: no-op (seek via left/right)
+                } else if root.focus-zone == 2 {
+                    root.show-track-menu = true;
+                }
+                return accept;
+            }
+
+            if event.text == Key.LeftArrow {
+                if root.focus-zone == 1 {
+                    if root.focused-control > 0 {
+                        root.focused-control -= 1;
+                    }
+                } else if root.focus-zone == 0 {
+                    root.seek-relative(-10000);
+                } else if root.focus-zone == 2 {
+                    if root.secondary-focus > 0 {
+                        root.secondary-focus -= 1;
+                    }
+                }
+                return accept;
+            }
+
+            if event.text == Key.RightArrow {
+                if root.focus-zone == 1 {
+                    if root.focused-control < 4 {
+                        root.focused-control += 1;
+                    }
+                } else if root.focus-zone == 0 {
+                    root.seek-relative(10000);
+                } else if root.focus-zone == 2 {
+                    if root.secondary-focus < 2 {
+                        root.secondary-focus += 1;
+                    }
+                }
+                return accept;
+            }
+
+            if event.text == Key.UpArrow {
+                if root.focus-zone > 0 {
+                    root.focus-zone -= 1;
+                }
+                return accept;
+            }
+
+            if event.text == Key.DownArrow {
+                if root.focus-zone < 2 {
+                    root.focus-zone += 1;
+                }
+                return accept;
+            }
+
+            return reject;
+        }
+    }
+}

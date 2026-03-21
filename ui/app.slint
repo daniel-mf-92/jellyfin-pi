@@ -1,0 +1,331 @@
+import { Theme, MediaItem, ContentRowData, UserInfo, PlayerState, SearchResult } from "theme.slint";
+import { HomeScreen } from "home.slint";
+import { DetailScreen } from "detail.slint";
+import { PlayerOverlay } from "player.slint";
+import { LoginScreen } from "login.slint";
+import { SearchScreen } from "search.slint";
+import { LibraryScreen } from "library.slint";
+import { SettingsScreen } from "settings.slint";
+import { Screensaver } from "screensaver.slint";
+import { LoadingSpinner } from "loading.slint";
+import { ConfirmPopup } from "popup.slint";
+
+export global AppBridge {
+    // Navigation
+    callback navigate(/* screen */ string, /* param */ string);
+    callback go-back();
+
+    // Auth
+    callback login(/* user_id */ string, /* password */ string);
+    callback logout();
+
+    // Content loading
+    callback request-home-data();
+    callback request-library(/* library_id */ string, /* sort */ string, /* filter */ string);
+    callback request-item-detail(/* item_id */ string);
+    callback request-search(/* query */ string);
+    callback request-seasons(/* series_id */ string);
+    callback request-episodes(/* series_id */ string, /* season_id */ string);
+
+    // Playback
+    callback play-item(/* item_id */ string);
+    callback play-pause();
+    callback seek(/* position_ms */ int);
+    callback stop-playback();
+    callback next-track();
+    callback prev-track();
+    callback set-audio-track(/* index */ int);
+    callback set-subtitle-track(/* index */ int);
+    callback set-volume(/* level */ float);
+    callback toggle-mute();
+
+    // User actions
+    callback toggle-favorite(/* item_id */ string);
+    callback mark-played(/* item_id */ string);
+    callback mark-unplayed(/* item_id */ string);
+
+    // State properties (set by Rust)
+    in-out property <string> current-screen: "login";
+    in-out property <bool> is-loading: false;
+    in-out property <string> error-message: "";
+
+    // Data properties (populated by Rust)
+    in-out property <[UserInfo]> users: [];
+    in-out property <[ContentRowData]> home-rows: [];
+    in-out property <MediaItem> detail-item;
+    in-out property <[MediaItem]> detail-related: [];
+    in-out property <[MediaItem]> detail-seasons: [];
+    in-out property <[MediaItem]> detail-episodes: [];
+    in-out property <[MediaItem]> library-items: [];
+    in-out property <string> library-title: "";
+    in-out property <[SearchResult]> search-results: [];
+    in-out property <PlayerState> player-state;
+    in-out property <UserInfo> current-user;
+    in-out property <bool> show-screensaver: false;
+    in-out property <bool> show-popup: false;
+    in-out property <string> popup-title: "";
+    in-out property <string> popup-message: "";
+}
+
+export component AppWindow inherits Window {
+    title: "Jellyfin";
+    background: Theme.background;
+    // Note: default-font-family and default-font-size set by system defaults
+    width: 1920px;
+    height: 1080px;
+
+    // Global key handler
+    FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                AppBridge.go-back();
+                return accept;
+            }
+            // Home key navigates to home screen
+            if (event.text == Key.F1) {
+                AppBridge.navigate("home", "");
+                return accept;
+            }
+            return reject;
+        }
+
+        // Screen layers - only one visible at a time based on current-screen
+
+        if AppBridge.current-screen == "login" : LoginScreen {
+            width: 100%;
+            height: 100%;
+            users: AppBridge.users;
+            select-user(id) => {
+                AppBridge.login(id, "");
+            }
+            submit-password(user-id, password) => {
+                AppBridge.login(user-id, password);
+            }
+        }
+
+        if AppBridge.current-screen == "home" : HomeScreen {
+            width: 100%;
+            height: 100%;
+            rows: AppBridge.home-rows;
+            current-user: AppBridge.current-user;
+            item-selected(id) => {
+                AppBridge.navigate("detail", id);
+            }
+            item-play(id) => {
+                AppBridge.play-item(id);
+            }
+            open-search() => {
+                AppBridge.navigate("search", "");
+            }
+            open-settings() => {
+                AppBridge.navigate("settings", "");
+            }
+            open-library(id) => {
+                AppBridge.navigate("library", id);
+            }
+        }
+
+        if AppBridge.current-screen == "detail" : DetailScreen {
+            width: 100%;
+            height: 100%;
+            item: AppBridge.detail-item;
+            related-items: AppBridge.detail-related;
+            seasons: AppBridge.detail-seasons;
+            episodes: AppBridge.detail-episodes;
+            play-item(item-id) => {
+                AppBridge.play-item(item-id);
+            }
+            navigate(screen, param) => {
+                AppBridge.navigate(screen, param);
+            }
+            toggle-favorite(item-id) => {
+                AppBridge.toggle-favorite(item-id);
+            }
+            mark-played(item-id) => {
+                AppBridge.mark-played(item-id);
+            }
+            mark-unplayed(item-id) => {
+                AppBridge.mark-unplayed(item-id);
+            }
+            request-seasons(series-id) => {
+                AppBridge.request-seasons(series-id);
+            }
+            request-episodes(series-id, season-id) => {
+                AppBridge.request-episodes(series-id, season-id);
+            }
+        }
+
+        if AppBridge.current-screen == "search" : SearchScreen {
+            width: 100%;
+            height: 100%;
+            results: AppBridge.search-results;
+            search(query) => {
+                AppBridge.request-search(query);
+            }
+            select-result(id) => {
+                AppBridge.navigate("detail", id);
+            }
+            go-back() => {
+                AppBridge.go-back();
+            }
+        }
+
+        if AppBridge.current-screen == "library" : LibraryScreen {
+            width: 100%;
+            height: 100%;
+            items: AppBridge.library-items;
+            title: AppBridge.library-title;
+            item-selected(id) => {
+                AppBridge.navigate("detail", id);
+            }
+            sort-changed(sort) => {
+                AppBridge.request-library("", sort, "");
+            }
+            filter-changed(filter) => {
+                AppBridge.request-library("", "", filter);
+            }
+            go-back() => {
+                AppBridge.go-back();
+            }
+        }
+
+        if AppBridge.current-screen == "settings" : SettingsScreen {
+            width: 100%;
+            height: 100%;
+            username: AppBridge.current-user.name;
+            logout() => {
+                AppBridge.logout();
+            }
+            go-back() => {
+                AppBridge.go-back();
+            }
+        }
+
+        // Player overlay - sits on top of content screens when playing
+        if AppBridge.current-screen == "player" : PlayerOverlay {
+            width: 100%;
+            height: 100%;
+            state: AppBridge.player-state;
+            play-pause() => {
+                AppBridge.play-pause();
+            }
+            seek(position-ms) => {
+                AppBridge.seek(position-ms);
+            }
+            seek-relative(offset-ms) => {
+                AppBridge.seek(AppBridge.player-state.position-ms + offset-ms);
+            }
+            next-track() => {
+                AppBridge.next-track();
+            }
+            prev-track() => {
+                AppBridge.prev-track();
+            }
+            set-audio(index) => {
+                AppBridge.set-audio-track(index);
+            }
+            set-subtitle(index) => {
+                AppBridge.set-subtitle-track(index);
+            }
+            set-volume(level) => {
+                AppBridge.set-volume(level);
+            }
+            toggle-mute() => {
+                AppBridge.toggle-mute();
+            }
+            dismiss() => {
+                AppBridge.stop-playback();
+            }
+        }
+
+        // Loading overlay - visible on top of all screens when loading
+        if AppBridge.is-loading : Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.background.with-alpha(0.7);
+
+            LoadingSpinner {
+                width: 80px;
+                height: 80px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                active: true;
+            }
+        }
+
+        // Error message overlay
+        if AppBridge.error-message != "" : Rectangle {
+            width: 100%;
+            height: 100%;
+            background: Theme.background.with-alpha(0.85);
+
+            Rectangle {
+                width: 600px;
+                height: 200px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - self.height) / 2;
+                background: Theme.surface;
+                border-radius: 12px;
+                border-width: 1px;
+                border-color: Theme.error;
+
+                VerticalLayout {
+                    alignment: center;
+                    padding: 32px;
+                    spacing: 16px;
+
+                    Text {
+                        text: "Error";
+                        color: Theme.error;
+                        font-size: 24px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: AppBridge.error-message;
+                        color: Theme.on-surface;
+                        font-size: 16px;
+                        horizontal-alignment: center;
+                        wrap: word-wrap;
+                    }
+
+                    Text {
+                        text: "Press Escape to dismiss";
+                        color: Theme.text-secondary;
+                        font-size: 14px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+        }
+
+        // Confirm popup overlay
+        if AppBridge.show-popup : ConfirmPopup {
+            width: 100%;
+            height: 100%;
+            visible-popup: true;
+            title: AppBridge.popup-title;
+            message: AppBridge.popup-message;
+            confirm() => {
+                AppBridge.show-popup = false;
+            }
+            cancel() => {
+                AppBridge.show-popup = false;
+            }
+        }
+
+        // Screensaver - topmost layer
+        if AppBridge.show-screensaver : Screensaver {
+            active: true;
+            width: 100%;
+            height: 100%;
+            dismiss() => {
+                AppBridge.show-screensaver = false;
+            }
+        }
+    }
+}

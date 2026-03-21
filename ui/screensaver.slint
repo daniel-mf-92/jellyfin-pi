@@ -1,0 +1,136 @@
+// Jellyfin Pi TV App - Screensaver
+// Matches Jellyfin Android TV InAppScreensaver behavior
+
+import { Theme } from "theme.slint";
+
+export component Screensaver inherits Rectangle {
+    in property <bool> active: false;
+    in property <string> current-time: "";
+    in property <string> now-playing-title: "";
+    in property <image> artwork;
+
+    callback dismiss();
+
+    visible: self.opacity > 0;
+    opacity: active ? 1.0 : 0.0;
+    background: #000000;
+    width: 100%;
+    height: 100%;
+
+    animate opacity { duration: 1000ms; easing: ease-in-out; }
+
+    // Vignette - top edge
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height * 0.25;
+        background: @linear-gradient(180deg, #000000cc 0%, #00000000 100%);
+    }
+
+    // Vignette - bottom edge
+    Rectangle {
+        x: 0;
+        y: parent.height * 0.75;
+        width: parent.width;
+        height: parent.height * 0.25;
+        background: @linear-gradient(0deg, #000000cc 0%, #00000000 100%);
+    }
+
+    // Vignette - left edge
+    Rectangle {
+        x: 0;
+        y: 0;
+        width: parent.width * 0.20;
+        height: parent.height;
+        background: @linear-gradient(90deg, #000000aa 0%, #00000000 100%);
+    }
+
+    // Vignette - right edge
+    Rectangle {
+        x: parent.width * 0.80;
+        y: 0;
+        width: parent.width * 0.20;
+        height: parent.height;
+        background: @linear-gradient(270deg, #000000aa 0%, #00000000 100%);
+    }
+
+    // Center content
+    VerticalLayout {
+        alignment: center;
+        spacing: Theme.spacing-md;
+        padding-left: parent.width * 0.25;
+        padding-right: parent.width * 0.25;
+
+        // Artwork
+        Rectangle {
+            horizontal-stretch: 0;
+            height: 400px;
+            visible: now-playing-title != "";
+
+            Rectangle {
+                width: 400px;
+                height: 400px;
+                x: (parent.width - self.width) / 2;
+                border-radius: Theme.card-radius;
+                clip: true;
+                opacity: 0.8;
+
+                Image {
+                    source: artwork;
+                    width: parent.width;
+                    height: parent.height;
+                    image-fit: cover;
+                }
+            }
+        }
+
+        // Spacer between artwork and time
+        Rectangle {
+            visible: now-playing-title != "";
+            height: Theme.spacing-lg;
+        }
+
+        // Clock
+        Text {
+            text: current-time;
+            font-size: 48px;
+            font-weight: 300;
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+        }
+
+        // Now playing info
+        Text {
+            visible: now-playing-title != "";
+            text: now-playing-title;
+            font-size: Theme.font-body-large;
+            color: Theme.text-tertiary;
+            horizontal-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // Catch all key presses to dismiss
+    FocusScope {
+        width: 0;
+        height: 0;
+        enabled: active;
+
+        key-pressed(event) => {
+            dismiss();
+            accept
+        }
+    }
+
+    // Catch touch/click to dismiss
+    TouchArea {
+        width: parent.width;
+        height: parent.height;
+        enabled: active;
+
+        clicked => {
+            dismiss();
+        }
+    }
+}
