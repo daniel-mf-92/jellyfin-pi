@@ -1,0 +1,104 @@
+// Jellyfin Pi TV App - Loading Spinner Component
+
+import { Theme } from "theme.slint";
+
+export component LoadingSpinner inherits Rectangle {
+    in property <bool> active: false;
+    in property <string> message: "Loading...";
+
+    // Internal animation timer (0.0 -> 1.0 looping)
+    property <float> phase: 0;
+
+    visible: active;
+    width: 100%;
+    height: 100%;
+    background: Theme.scrim;
+
+    // Drive the animation loop
+    animate phase {
+        duration: 1200ms;
+        iteration-count: -1;
+    }
+
+    states [
+        running when active: {
+            phase: 1.0;
+        }
+    ]
+
+    VerticalLayout {
+        alignment: center;
+
+        HorizontalLayout {
+            alignment: center;
+
+            // Pulsing dots container
+            HorizontalLayout {
+                spacing: 12px;
+                alignment: center;
+                height: 56px;
+
+                // Dot 1 - leads the pulse
+                Rectangle {
+                    property <float> dot-phase: mod(root.phase + 0.0, 1.0);
+                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
+
+                    width: 12px + (pulse * 6px);
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: Theme.accent;
+                    opacity: 0.4 + (pulse * 0.6);
+
+                    animate width, height, opacity {
+                        duration: 50ms;
+                    }
+                }
+
+                // Dot 2 - offset by 1/3
+                Rectangle {
+                    property <float> dot-phase: mod(root.phase + 0.67, 1.0);
+                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
+
+                    width: 12px + (pulse * 6px);
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: Theme.accent;
+                    opacity: 0.4 + (pulse * 0.6);
+
+                    animate width, height, opacity {
+                        duration: 50ms;
+                    }
+                }
+
+                // Dot 3 - offset by 2/3
+                Rectangle {
+                    property <float> dot-phase: mod(root.phase + 0.34, 1.0);
+                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
+
+                    width: 12px + (pulse * 6px);
+                    height: self.width;
+                    border-radius: self.width / 2;
+                    background: Theme.accent;
+                    opacity: 0.4 + (pulse * 0.6);
+
+                    animate width, height, opacity {
+                        duration: 50ms;
+                    }
+                }
+            }
+        }
+
+        // Message text
+        HorizontalLayout {
+            alignment: center;
+            padding-top: Theme.spacing-md;
+
+            Text {
+                text: root.message;
+                font-size: Theme.font-body-large;
+                color: Theme.text-secondary;
+                horizontal-alignment: center;
+            }
+        }
+    }
+}

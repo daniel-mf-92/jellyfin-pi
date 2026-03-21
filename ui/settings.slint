@@ -1,0 +1,361 @@
+import { Theme } from "theme.slint";
+
+export component SettingsScreen inherits Rectangle {
+    in-out property <int> focused-item: 0;
+    in property <string> server-url: "";
+    in property <string> username: "";
+    in property <string> device-name: "";
+    in property <string> version: "1.0.0";
+    in property <string> audio-output: "Default";
+    in property <bool> hardware-decode: true;
+    in property <int> subtitle-size: 100;
+
+    callback logout();
+    callback change-server();
+    callback toggle-hw-decode();
+    callback change-subtitle-size(int);
+    callback go-back();
+
+    property <int> item-count: 7;
+
+    background: Theme.background;
+
+    forward-focus: key-handler;
+
+    key-handler := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            if (event.text == Key.UpArrow) {
+                if (root.focused-item > 0) {
+                    root.focused-item -= 1;
+                }
+                return accept;
+            } else if (event.text == Key.DownArrow) {
+                if (root.focused-item < root.item-count - 1) {
+                    root.focused-item += 1;
+                }
+                return accept;
+            } else if (event.text == Key.Return || event.text == "a" || event.text == "A") {
+                if (root.focused-item == 1) {
+                    root.logout();
+                } else if (root.focused-item == 3) {
+                    root.toggle-hw-decode();
+                }
+                return accept;
+            } else if (event.text == Key.LeftArrow) {
+                if (root.focused-item == 4) {
+                    root.change-subtitle-size(root.subtitle-size - 10);
+                }
+                return accept;
+            } else if (event.text == Key.RightArrow) {
+                if (root.focused-item == 4) {
+                    root.change-subtitle-size(root.subtitle-size + 10);
+                }
+                return accept;
+            } else if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+                root.go-back();
+                return accept;
+            }
+            return reject;
+        }
+
+        VerticalLayout {
+            padding-top: Theme.overscan-v;
+            padding-left: Theme.overscan-h;
+            padding-right: Theme.overscan-h;
+            padding-bottom: Theme.overscan-v;
+            spacing: 0px;
+
+            // Title
+            Text {
+                text: "Settings";
+                font-size: Theme.font-title-medium;
+                color: Theme.text-primary;
+                horizontal-alignment: left;
+            }
+
+            Rectangle {
+                height: Theme.spacing-lg;
+            }
+
+            // Setting items
+            VerticalLayout {
+                spacing: 2px;
+
+                // 0: Server
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 0 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 0 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "Server";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.server-url;
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // 1: User
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 1 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 1 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "User";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        HorizontalLayout {
+                            spacing: Theme.spacing-md;
+
+                            Text {
+                                text: root.username;
+                                font-size: Theme.font-body-large;
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: root.focused-item == 1 ? "[Switch User]" : "";
+                                font-size: Theme.font-body-medium;
+                                color: Theme.accent;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // 2: Audio Output
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 2 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 2 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "Audio Output";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.audio-output;
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // 3: Hardware Decoding
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 3 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 3 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "Hardware Decoding";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.hardware-decode ? "On" : "Off";
+                            font-size: Theme.font-body-large;
+                            color: root.hardware-decode ? Theme.accent : Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // 4: Subtitle Size
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 4 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 4 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "Subtitle Size";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        HorizontalLayout {
+                            spacing: Theme.spacing-sm;
+
+                            Text {
+                                text: root.focused-item == 4 ? "<" : "";
+                                font-size: Theme.font-body-large;
+                                color: Theme.accent;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: root.subtitle-size + "%";
+                                font-size: Theme.font-body-large;
+                                color: Theme.text-primary;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: root.focused-item == 4 ? ">" : "";
+                                font-size: Theme.font-body-large;
+                                color: Theme.accent;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+                }
+
+                // 5: Device Name
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 5 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 5 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "Device Name";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: root.device-name;
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // 6: About
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 6 ? Theme.surface : transparent;
+
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: root.focused-item == 6 ? 3px : 0px;
+                        height: parent.height;
+                        background: Theme.accent;
+                    }
+
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl;
+                        padding-right: Theme.spacing-xxxl;
+                        alignment: space-between;
+
+                        Text {
+                            text: "About";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+
+                        Text {
+                            text: "Jellyfin TV v" + root.version + " - Slint + Rust";
+                            font-size: Theme.font-body-large;
+                            color: Theme.text-primary;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+            }
+
+            // Spacer to push content up
+            Rectangle {
+                vertical-stretch: 1;
+            }
+        }
+    }
+}
