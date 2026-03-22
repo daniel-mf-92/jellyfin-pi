@@ -65,7 +65,7 @@ except ImportError:
 CONTROLLER_MAC = "98:41:5C:37:CB:EB"
 CONTROLLER_NAMES = ["Pro Controller"]
 IDLE_TIMEOUT = 900           # 15 minutes → auto-disconnect
-FOREGROUND_POLL_S = 2.0      # how often to check foreground app
+FOREGROUND_POLL_S = 0.5      # how often to check foreground app
 RECONNECT_POLL_S = 5.0       # how often to check for reconnected controller
 
 # D-pad repeat with acceleration
@@ -76,8 +76,8 @@ DPAD_REPEAT_ACCEL = 0.080    # 80ms repeat rate (accelerated)
 
 # Analog stick thresholds
 STICK_DIGITAL_DEAD = 8000    # left stick → digital direction threshold
-MOUSE_DEAD = 6000            # left stick → mouse cursor dead zone
-SCROLL_DEAD = 6000           # right stick → scroll dead zone
+MOUSE_DEAD = 12000            # left stick → mouse cursor dead zone
+SCROLL_DEAD = 10000           # right stick → scroll dead zone
 MOUSE_SPEED = 12             # pixels per poll tick at full deflection
 SCROLL_SPEED = 3.0           # scroll units per poll tick at full deflection
 MOUSE_POLL_S = 0.012         # ~83Hz mouse output
@@ -93,6 +93,9 @@ HAPTIC_SELECT_MS = 50        # both motors, select/confirm
 LAUNCHER_APPS = {"flex-launcher", "flex_launcher"}
 NAVIGATION_APPS = {"kodi", "org.videolan.vlc", "vlc", "mpv", "chromium", "chromium-browser", "jellyfin-media-player",
                    "com.github.iwalton3.jellyfin-media-player", "jmp", "firefox", "moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
+
+# Apps where mouse events must be suppressed (TV mode keyboard navigation)
+JELLYFIN_APPS = {"com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player", "jellyfin", "jmp"}
 
 # Accelerating hold config
 ACCEL_INITIAL_DELAY = 0.300     # delay before first repeat when held
@@ -386,33 +389,39 @@ class HapticEngine:
 # ─── Virtual Input (UInput) — SPLIT into Keyboard + Mouse ─────────────────
 
 class VirtualInput:
-    """Create and manage TWO UInput devices:
-    - Switch-Pro-Keyboard: EV_KEY only (arrows, enter, esc, media keys, etc.)
-    - Switch-Pro-Mouse: EV_REL + BTN_LEFT/BTN_RIGHT only
+    """Keyboard output via wtype (Wayland virtual keyboard protocol).
+    Mouse output via UInput (for cursor movement and scroll).
     """
-
-    KEYBOARD_KEYS = [
-        ecodes.KEY_UP, ecodes.KEY_DOWN, ecodes.KEY_LEFT, ecodes.KEY_RIGHT,
-        ecodes.KEY_ENTER, ecodes.KEY_ESC, ecodes.KEY_BACKSPACE, ecodes.KEY_TAB,
-        ecodes.KEY_SPACE, ecodes.KEY_F, ecodes.KEY_PAGEUP, ecodes.KEY_PAGEDOWN,
-        ecodes.KEY_HOME,
-        ecodes.KEY_PLAYPAUSE, ecodes.KEY_VOLUMEUP, ecodes.KEY_VOLUMEDOWN,
-        ecodes.KEY_NEXTSONG, ecodes.KEY_PREVIOUSSONG,
-        ecodes.KEY_SUBTITLE,
-        ecodes.KEY_V, ecodes.KEY_LEFTSHIFT,
-        ecodes.KEY_F5, ecodes.KEY_F11,
-    ]
 
     MOUSE_KEYS = [
         ecodes.BTN_LEFT, ecodes.BTN_RIGHT,
     ]
 
-    def __init__(self):
-        kbd_caps = {
-            ecodes.EV_KEY: list(self.KEYBOARD_KEYS),
-        }
-        self.kbd = UInput(kbd_caps, name="Switch-Pro-Keyboard")
+    # Map evdev key codes to wtype key names
+    _WTYPE_KEYS = {
+        ecodes.KEY_UP: "Up", ecodes.KEY_DOWN: "Down",
+        ecodes.KEY_LEFT: "Left", ecodes.KEY_RIGHT: "Right",
+        ecodes.KEY_ENTER: "Return", ecodes.KEY_ESC: "Escape",
+        ecodes.KEY_BACKSPACE: "BackSpace", ecodes.KEY_TAB: "Tab",
+        ecodes.KEY_SPACE: "space", ecodes.KEY_F: "f",
+        ecodes.KEY_PAGEUP: "Prior", ecodes.KEY_PAGEDOWN: "Next",
+        ecodes.KEY_HOME: "Home",
+        ecodes.KEY_PLAYPAUSE: "XF86AudioPlay",
+        ecodes.KEY_VOLUMEUP: "XF86AudioRaiseVolume",
+        ecodes.KEY_VOLUMEDOWN: "XF86AudioLowerVolume",
+        ecodes.KEY_NEXTSONG: "XF86AudioNext",
+        ecodes.KEY_PREVIOUSSONG: "XF86AudioPrev",
+        ecodes.KEY_SUBTITLE: "v",
+        ecodes.KEY_V: "v", ecodes.KEY_LEFTSHIFT: "Shift_L",
+        ecodes.KEY_F5: "F5", ecodes.KEY_F11: "F11",
+    }
 
+    _WTYPE_ENV = {
+        "WAYLAND_DISPLAY": "wayland-0",
+        "XDG_RUNTIME_DIR": "/run/user/1000",
+    }
+
+    def __init__(self):
         mouse_caps = {
             ecodes.EV_KEY: list(self.MOUSE_KEYS),
             ecodes.EV_REL: [
@@ -421,26 +430,36 @@ class VirtualInput:
             ],
         }
         self.mouse = UInput(mouse_caps, name="Switch-Pro-Mouse")
-        log("Virtual input devices created (Switch-Pro-Keyboard + Switch-Pro-Mouse)")
+        log("Virtual input: wtype (keyboard) + UInput (mouse)")
 
     def _is_mouse_key(self, key):
         return key in self.MOUSE_KEYS
+
+    def _wtype_key(self, key):
+        """Send a key tap via wtype."""
+        name = self._WTYPE_KEYS.get(key)
+        if name:
+            try:
+                subprocess.Popen(
+                    ["wtype", "-k", name],
+                    env={**os.environ, **self._WTYPE_ENV},
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception as e:
+                log(f"wtype error: {e}")
 
     def key_press(self, key):
         if self._is_mouse_key(key):
             self.mouse.write(ecodes.EV_KEY, key, 1)
             self.mouse.syn()
         else:
-            self.kbd.write(ecodes.EV_KEY, key, 1)
-            self.kbd.syn()
+            self._wtype_key(key)
 
     def key_release(self, key):
         if self._is_mouse_key(key):
             self.mouse.write(ecodes.EV_KEY, key, 0)
             self.mouse.syn()
-        else:
-            self.kbd.write(ecodes.EV_KEY, key, 0)
-            self.kbd.syn()
 
     def key_tap(self, key):
         if self._is_mouse_key(key):
@@ -449,30 +468,31 @@ class VirtualInput:
             self.mouse.write(ecodes.EV_KEY, key, 0)
             self.mouse.syn()
         else:
-            self.kbd.write(ecodes.EV_KEY, key, 1)
-            self.kbd.syn()
-            self.kbd.write(ecodes.EV_KEY, key, 0)
-            self.kbd.syn()
+            self._wtype_key(key)
 
     def key_combo(self, *keys):
-        kbd_keys = [k for k in keys if not self._is_mouse_key(k)]
         mouse_keys = [k for k in keys if self._is_mouse_key(k)]
-
-        for k in kbd_keys:
-            self.kbd.write(ecodes.EV_KEY, k, 1)
+        kbd_keys = [k for k in keys if not self._is_mouse_key(k)]
         if kbd_keys:
-            self.kbd.syn()
+            names = [self._WTYPE_KEYS.get(k) for k in kbd_keys if k in self._WTYPE_KEYS]
+            if len(names) >= 2:
+                cmd = ["wtype"]
+                for n in names[:-1]:
+                    cmd.extend(["-M", n])
+                cmd.extend(["-k", names[-1]])
+                for n in reversed(names[:-1]):
+                    cmd.extend(["-m", n])
+                try:
+                    subprocess.Popen(cmd, env={**os.environ, **self._WTYPE_ENV},
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                except Exception:
+                    pass
+            elif names:
+                self._wtype_key(kbd_keys[0])
         for k in mouse_keys:
             self.mouse.write(ecodes.EV_KEY, k, 1)
-        if mouse_keys:
             self.mouse.syn()
-        for k in reversed(kbd_keys):
-            self.kbd.write(ecodes.EV_KEY, k, 0)
-        if kbd_keys:
-            self.kbd.syn()
-        for k in reversed(mouse_keys):
             self.mouse.write(ecodes.EV_KEY, k, 0)
-        if mouse_keys:
             self.mouse.syn()
 
     def mouse_move(self, dx, dy):
@@ -493,10 +513,6 @@ class VirtualInput:
             self.mouse.syn()
 
     def close(self):
-        try:
-            self.kbd.close()
-        except Exception:
-            pass
         try:
             self.mouse.close()
         except Exception:
@@ -669,6 +685,11 @@ class UnifiedController:
         self.scroll_accum_x = 0.0
         self.scroll_accum_y = 0.0
 
+        # Right stick arrow key tracking (for JMP/Jellyfin mode)
+        self.rstick_digital_y = 0
+        self._rstick_next_fire = 0.0
+        self._jmp_foreground = False
+
         # Button state tracking (for edge detection)
         self.btn_state = defaultdict(bool)
 
@@ -747,6 +768,9 @@ class UnifiedController:
         apps = get_foreground_app()
         new_mode = detect_mode(apps)
 
+        # Track if JMP is in foreground (suppresses mouse, uses arrow keys)
+        self._jmp_foreground = bool(set(a.lower() for a in apps) & JELLYFIN_APPS)
+
         if self.media_mode_active and new_mode == Mode.NAVIGATION:
             new_mode = Mode.MEDIA
 
@@ -761,16 +785,36 @@ class UnifiedController:
             self._launcher_switch_count = 0
 
     def _go_home(self):
-        """Kill media apps and return to flex-launcher."""
+        """Minimize media apps and return to flex-launcher (elegant transition)."""
         wl_env = {**os.environ, "WAYLAND_DISPLAY": "wayland-0",
                   "XDG_RUNTIME_DIR": "/run/user/1000"}
-        # Kill JMP and other media apps (they restart fresh from launcher)
-        for proc_name in ["jellyfinmedia", "moonlight-qt", "kodi", "vlc", "mpv"]:
-            subprocess.run(["pkill", "-f", proc_name],
+        # Minimize persistent apps — they stay running for instant re-entry
+        for app_id in ["com.github.iwalton3.jellyfin-media-player",
+                       "com.moonlight_stream.Moonlight"]:
+            try:
+                subprocess.run(["wlrctl", "toplevel", "minimize",
+                               f"app_id:{app_id}"],
+                               env=wl_env, capture_output=True, timeout=2)
+            except Exception:
+                pass
+        # Kill only ephemeral players (VLC, mpv)
+        for proc_name in ["vlc", "mpv"]:
+            subprocess.run(["pkill", "-x", proc_name],
                            capture_output=True, timeout=2)
         self.is_fullscreen = False
         self.media_mode_active = False
         self.mode = Mode.LAUNCHER
+        # Reset right stick tracking
+        self.rstick_digital_y = 0
+        self._rstick_next_fire = 0.0
+        self._jmp_foreground = False
+        # Focus flex-launcher (also restores from minimize on labwc)
+        try:
+            subprocess.run(["wlrctl", "toplevel", "focus",
+                           "app_id:flex-launcher"],
+                           env=wl_env, capture_output=True, timeout=2)
+        except Exception:
+            pass
         # Ensure flex-launcher is running
         try:
             r = subprocess.run(["pgrep", "-f", "flex-launcher"],
@@ -789,7 +833,7 @@ class UnifiedController:
                 f.write("flex-launcher")
         except Exception:
             pass
-        log("GO HOME: killed media apps, focused launcher")
+        log("GO HOME: minimized apps, focused launcher")
 
     def _mpv_seek(self, seconds):
         """Seek via MPRIS first (for JMP), then mpv IPC, then arrow keys."""
@@ -1052,11 +1096,36 @@ class UnifiedController:
         if self.mode == Mode.LAUNCHER:
             return
 
+        # JMP/Jellyfin TV mode: suppress ALL mouse events to keep keyboard
+        # navigation mode active. Right stick → arrow keys for page scrolling.
+        if self._jmp_foreground:
+            # Right stick Y → UP/DOWN arrow key taps with repeat
+            ry_digital = stick_to_digital(self.ry, SCROLL_DEAD)
+            now = time.monotonic()
+            if ry_digital != self.rstick_digital_y:
+                # Direction changed — fire immediately
+                self.rstick_digital_y = ry_digital
+                if ry_digital != 0:
+                    key = ecodes.KEY_UP if ry_digital == -1 else ecodes.KEY_DOWN
+                    self.vinput.key_tap(key)
+                    self._rstick_next_fire = now + DPAD_INITIAL_DELAY
+            elif ry_digital != 0 and now >= self._rstick_next_fire:
+                # Held — repeat with acceleration
+                key = ecodes.KEY_UP if ry_digital == -1 else ecodes.KEY_DOWN
+                self.vinput.key_tap(key)
+                held_duration = now - (self._rstick_next_fire - DPAD_INITIAL_DELAY) if self._rstick_next_fire > 0 else 0
+                rate = DPAD_REPEAT_ACCEL if held_duration > DPAD_ACCEL_THRESHOLD else DPAD_REPEAT_FAST
+                self._rstick_next_fire = now + rate
+            # No mouse movement, no scroll — keeps JMP in keyboard nav mode
+            return
+
+        # Normal mode: left stick → mouse cursor
         dx = stick_to_mouse(self.lx, MOUSE_DEAD, MOUSE_SPEED, STICK_MAX)
         dy = stick_to_mouse(self.ly, MOUSE_DEAD, MOUSE_SPEED, STICK_MAX)
         if dx != 0 or dy != 0:
             self.vinput.mouse_move(dx, dy)
 
+        # Normal mode: right stick → mouse scroll
         sy = stick_to_scroll(self.ry, SCROLL_DEAD, SCROLL_SPEED, STICK_MAX)
         sx = stick_to_scroll(self.rx, SCROLL_DEAD, SCROLL_SPEED, STICK_MAX)
 
