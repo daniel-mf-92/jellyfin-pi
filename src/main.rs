@@ -251,7 +251,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let ui_weak = ui.as_weak();
         let client_clone = client.clone();
         let image_cache_clone = image_cache.clone();
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             load_public_users(ui_weak, client_clone, image_cache_clone).await;
         });
     }
@@ -276,7 +276,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let client_clone = client.clone();
             let image_clone = image_cache.clone();
             let state_clone = state.clone();
-            tokio::spawn(async move {
+            let _ = slint::spawn_local(async move {
                 match load_home_data(
                     ui_handle.clone(),
                     client_clone.clone(),
@@ -363,7 +363,7 @@ fn setup_navigation_callbacks(
         let screen_str = screen.to_string();
         let param_str = param.to_string();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             debug!("Navigate requested: screen={}, param={}", screen_str, param_str);
 
             // Reset idle timer on navigation
@@ -490,7 +490,7 @@ fn setup_navigation_callbacks(
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             // Clear error message on back
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_error_message("".into());
@@ -555,7 +555,7 @@ fn setup_auth_callbacks(
         let user_id_str = user_id.to_string();
         let password_str = password.to_string();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
                 ui.global::<AppBridge>().set_error_message("".into());
@@ -605,9 +605,9 @@ fn setup_auth_callbacks(
                     let avatar =
                         load_user_avatar(&result.user, &server_url, &image_cache).await;
                     let user_info = user_dto_to_user_info(&result.user, &server_url, avatar);
-                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    if let Some(ui) = ui_weak.upgrade() {
                         ui.global::<AppBridge>().set_current_user(user_info);
-                    });
+                    }
 
                     // Navigate to home and load data
                     state.navigate_replace(Screen::Home).await;
@@ -1150,7 +1150,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let state = state_clone.clone();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
             });
@@ -1180,7 +1180,7 @@ fn setup_content_callbacks(
             let sort_str = sort.to_string();
             let filter_str = filter.to_string();
 
-            tokio::spawn(async move {
+            let _ = slint::spawn_local(async move {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
@@ -1226,7 +1226,7 @@ fn setup_content_callbacks(
             let image_cache = image_clone.clone();
             let item_id_str = item_id.to_string();
 
-            tokio::spawn(async move {
+            let _ = slint::spawn_local(async move {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
@@ -1258,7 +1258,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let query_str = query.to_string();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             if query_str.trim().is_empty() {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>()
@@ -1294,7 +1294,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let series_id_str = series_id.to_string();
 
-        tokio::spawn(async move {
+        let _ = slint::spawn_local(async move {
             if let Err(e) =
                 load_seasons(ui_weak.clone(), client, image_cache, &series_id_str).await
             {
@@ -1315,7 +1315,7 @@ fn setup_content_callbacks(
             let series_id_str = series_id.to_string();
             let season_id_str = season_id.to_string();
 
-            tokio::spawn(async move {
+            let _ = slint::spawn_local(async move {
                 if let Err(e) = load_episodes(
                     ui_weak.clone(),
                     client,
@@ -1472,11 +1472,11 @@ async fn load_public_users(
                 user_infos.push(user_dto_to_user_info(user, &server_url, avatar));
             }
 
-            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+            if let Some(ui) = ui_weak.upgrade() {
                 let model = VecModel::from(user_infos);
                 ui.global::<AppBridge>()
                     .set_users(ModelRc::new(model));
-            });
+            }
         }
         Err(e) => {
             error!("Failed to load public users: {}", e);
@@ -1565,12 +1565,12 @@ async fn load_home_data(
     }
 
     // Update UI
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         let model = VecModel::from(rows);
         ui.global::<AppBridge>()
             .set_home_rows(ModelRc::new(model));
         ui.global::<AppBridge>().set_is_loading(false);
-    });
+    }
 
     info!("Home data loaded successfully");
     Ok(())
@@ -1608,7 +1608,7 @@ async fn load_item_detail(
     let is_series = item.item_type == "Series";
     let series_id = item.id.clone();
 
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>().set_detail_item(detail_item);
         ui.global::<AppBridge>()
             .set_detail_related(ModelRc::new(VecModel::from(related_items)));
@@ -1618,7 +1618,7 @@ async fn load_item_detail(
         ui.global::<AppBridge>()
             .set_detail_episodes(ModelRc::default());
         ui.global::<AppBridge>().set_is_loading(false);
-    });
+    }
 
     // Auto-load seasons for series
     if is_series {
@@ -1646,10 +1646,10 @@ async fn load_seasons(
 
     let season_items = items_to_media_items(&seasons, &server_url, &image_cache).await;
 
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_detail_seasons(ModelRc::new(VecModel::from(season_items)));
-    });
+    }
 
     info!("Loaded {} seasons for series {}", seasons.len(), series_id);
     Ok(())
@@ -1673,10 +1673,10 @@ async fn load_episodes(
 
     let episode_items = items_to_media_items(&episodes, &server_url, &image_cache).await;
 
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_detail_episodes(ModelRc::new(VecModel::from(episode_items)));
-    });
+    }
 
     info!(
         "Loaded {} episodes for series {} season {}",
@@ -1721,13 +1721,13 @@ async fn load_library(
 
     let media_items = items_to_media_items(&result.items, &server_url, &image_cache).await;
 
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_library_items(ModelRc::new(VecModel::from(media_items)));
         ui.global::<AppBridge>()
             .set_library_title(SharedString::from(&library_name));
         ui.global::<AppBridge>().set_is_loading(false);
-    });
+    }
 
     info!(
         "Loaded {} library items for '{}'",
@@ -1767,12 +1767,12 @@ async fn perform_search(
         search_results.push(search_hint_to_result(hint, poster));
     }
 
-    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+    if let Some(ui) = ui_weak.upgrade() {
         let model = VecModel::from(search_results);
         ui.global::<AppBridge>()
             .set_search_results(ModelRc::new(model));
         ui.global::<AppBridge>().set_is_loading(false);
-    });
+    }
 
     info!("Search for '{}' returned {} results", query, hints.len());
     Ok(())

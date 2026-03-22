@@ -59,7 +59,7 @@ component SeekBar inherits Rectangle {
 
     // Time label: duration
     Text {
-        x: parent.width - self.width;
+        x: root.width - self.width;
         y: 0;
         text: root.duration-text;
         font-size: Theme.font-body-medium;
@@ -93,8 +93,8 @@ component SeekBar inherits Rectangle {
 
         // Scrubber handle
         Rectangle {
-            x: parent.width * clamp(root.progress, 0.0, 1.0) - self.width / 2;
-            y: (parent.height - self.height) / 2;
+            x: root.width * clamp(root.progress, 0.0, 1.0) - self.width / 2;
+            y: (root.height - self.height) / 2;
             width: is-focused ? 18px : 14px;
             height: self.width;
             border-radius: self.width / 2;
@@ -108,7 +108,7 @@ component SeekBar inherits Rectangle {
 
     // Remaining time (below bar, right side)
     Text {
-        x: parent.width - self.width;
+        x: root.width - self.width;
         y: 32px;
         text: root.remaining-text;
         font-size: Theme.font-body-small;
@@ -126,8 +126,8 @@ component VolumeIndicator inherits Rectangle {
     in property <bool> is-muted: false;
     in property <bool> show: false;
 
-    x: parent.width - 60px;
-    y: (parent.height - 200px) / 2;
+    x: root.width - 60px;
+    y: (root.height - 200px) / 2;
     width: 40px;
     height: 200px;
     opacity: show ? 1.0 : 0.0;

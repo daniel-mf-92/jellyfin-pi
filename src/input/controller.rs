@@ -221,7 +221,7 @@ impl ControllerManager {
         let tx = self.action_tx.clone();
 
         tokio::task::spawn_blocking(move || -> Result<()> {
-            let mut axis_states: HashMap<AbsoluteAxisType, AxisState> = HashMap::new();
+            let mut axis_states: HashMap<u16, AxisState> = HashMap::new();
             let mut repeat_states: HashMap<InputAction, RepeatState> = HashMap::new();
 
             // We use a small poll timeout so we can drive key-repeat even
@@ -380,11 +380,11 @@ impl ControllerManager {
     fn handle_axis(
         axis: AbsoluteAxisType,
         value: i32,
-        states: &mut HashMap<AbsoluteAxisType, AxisState>,
+        states: &mut HashMap<u16, AxisState>,
         tx: &mpsc::UnboundedSender<InputAction>,
     ) {
         let new_dir = AxisDirection::from_value(value);
-        let state = states.entry(axis).or_default();
+        let state = states.entry(axis.0).or_default();
         let old_dir = state.direction;
 
         if new_dir == old_dir {
