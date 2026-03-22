@@ -181,12 +181,6 @@ export component LibraryScreen inherits Rectangle {
             }
         }
 
-        // Pagination trigger: when focused item is in the last two rows
-        changed focused-item => {
-            if (root.focused-row >= root.total-rows - 2) {
-                root.load-more();
-            }
-        }
     }
 
     // =========================================================================
