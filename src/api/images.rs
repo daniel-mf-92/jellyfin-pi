@@ -146,48 +146,16 @@ impl ImageCache {
         );
     }
 
-    /// Download and cache multiple images concurrently, limited to
-    /// `MAX_CONCURRENT_DOWNLOADS` in-flight requests at a time.
+    /// Download and cache multiple images sequentially.
+    ///
+    /// Note: runs on the Slint event loop thread (not spawned to tokio)
+    /// because `SlintImage` is `!Send`.
     pub async fn preload_images(&self, urls: Vec<String>) {
-        use tokio::sync::Semaphore;
-
-        let semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_DOWNLOADS));
-        let mut handles = Vec::with_capacity(urls.len());
-
         for url in urls {
-            let permit = semaphore.clone().acquire_owned().await;
-            if permit.is_err() {
-                break;
+            if self.load_image(&url).await.is_none() {
+                warn!("Preload failed for: {}", url);
             }
-            let permit = permit.unwrap();
-
-            // We need a reference-counted self for the spawned tasks.
-            // Instead, capture the fields we need individually.
-            let http = self.http.clone();
-            let memory_cache = self.memory_cache.clone();
-            let cache_dir = self.cache_dir.clone();
-            let max_memory_items = self.max_memory_items;
-
-            handles.push(tokio::spawn(async move {
-                let _permit = permit; // held until task finishes
-
-                // Build a temporary lightweight cache handle for the spawned task.
-                let cache = ImageCache {
-                    cache_dir,
-                    memory_cache,
-                    http,
-                    max_memory_items,
-                };
-                if let None = cache.load_image(&url).await {
-                    warn!("Preload failed for: {}", url);
-                }
-            }));
         }
-
-        for handle in handles {
-            let _ = handle.await;
-        }
-
         debug!("Preload batch complete");
     }
 
