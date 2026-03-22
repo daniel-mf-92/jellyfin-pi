@@ -6,8 +6,8 @@ mod config;
 
 use api::{JellyfinClient, ImageCache};
 use api::models::*;
-use player::MpvPlayer;
-use player::mpv::PlayerEvent;
+use player::VlcPlayer;
+use player::vlc::PlayerEvent;
 use input::ControllerManager;
 use input::controller::InputAction;
 use state::{StateManager, Screen};
@@ -208,7 +208,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Arc::new(RwLock::new(config));
 
     // 3. Create MpvPlayer (lazy: created when playback starts)
-    let player: Arc<Mutex<Option<MpvPlayer>>> = Arc::new(Mutex::new(None));
+    let player: Arc<Mutex<Option<VlcPlayer>>> = Arc::new(Mutex::new(None));
 
     // 4. Create Slint UI
     let ui = AppWindow::new()?;
@@ -691,7 +691,7 @@ fn setup_playback_callbacks(
     ui: &AppWindow,
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
-    player: Arc<Mutex<Option<MpvPlayer>>>,
+    player: Arc<Mutex<Option<VlcPlayer>>>,
 ) {
     // play-item(item_id)
     let ui_weak = ui.as_weak();
@@ -814,16 +814,16 @@ fn setup_playback_callbacks(
                         )
                         .await;
 
-                    // Create or reuse mpv player
-                    let mpv_result = {
+                    // Create or reuse VLC player
+                    let vlc_result = {
                         let mut p = player.lock().await;
                         if p.is_none() {
-                            match MpvPlayer::new() {
+                            match VlcPlayer::new() {
                                 Ok(new_player) => {
                                     *p = Some(new_player);
                                 }
                                 Err(e) => {
-                                    error!("Failed to create MpvPlayer: {}", e);
+                                    error!("Failed to create VlcPlayer: {}", e);
                                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                                         ui.global::<AppBridge>().set_error_message(
                                             format!("Player error: {}", e).into(),
@@ -837,20 +837,20 @@ fn setup_playback_callbacks(
                         Ok::<(), ()>(())
                     };
 
-                    if mpv_result.is_err() {
+                    if vlc_result.is_err() {
                         return;
                     }
 
                     // Start playback
                     {
                         let p = player.lock().await;
-                        if let Some(ref mpv) = *p {
+                        if let Some(ref vlc) = *p {
                             let start_ms = if start_position_ms > 0 {
                                 Some(start_position_ms)
                             } else {
                                 None
                             };
-                            if let Err(e) = mpv.play_url(&stream_url, start_ms) {
+                            if let Err(e) = vlc.play_url(&stream_url, start_ms).await {
                                 error!("Failed to start playback: {}", e);
                                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                                     ui.global::<AppBridge>()
@@ -912,7 +912,7 @@ fn setup_playback_callbacks(
                         ui.global::<AppBridge>().set_player_state(ps);
                     });
 
-                    // Spawn mpv event loop handler
+                    // Spawn VLC event loop handler
                     let ui_weak_ev = ui_weak.clone();
                     let client_ev = client.clone();
                     let state_ev = state.clone();
@@ -945,8 +945,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.toggle_pause() {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.toggle_pause().await {
                     error!("Toggle pause failed: {}", e);
                 }
             }
@@ -959,8 +959,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.seek_to(position_ms as i64) {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.seek_to(position_ms as i64).await {
                     error!("Seek failed: {}", e);
                 }
             }
@@ -984,18 +984,18 @@ fn setup_playback_callbacks(
             // Get current position for reporting
             let position_ticks = {
                 let p = player.lock().await;
-                if let Some(ref mpv) = *p {
-                    mpv.get_position_ms().unwrap_or(0) * 10_000
+                if let Some(ref vlc) = *p {
+                    vlc.get_position_ms().await.unwrap_or(0) * 10_000
                 } else {
                     0
                 }
             };
 
-            // Stop mpv
+            // Stop VLC
             {
                 let p = player.lock().await;
-                if let Some(ref mpv) = *p {
-                    let _ = mpv.stop();
+                if let Some(ref vlc) = *p {
+                    let _ = vlc.stop().await;
                 }
             }
 
@@ -1033,16 +1033,16 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
+            if let Some(ref vlc) = *p {
                 // Cycle to next audio track
-                if let Ok((audio_tracks, _)) = mpv.get_tracks() {
+                if let Ok((audio_tracks, _)) = vlc.get_tracks().await {
                     let current_aid: i32 = 1; // default
                     let next = audio_tracks
                         .iter()
                         .find(|t| t.id > current_aid)
                         .or_else(|| audio_tracks.first());
                     if let Some(track) = next {
-                        let _ = mpv.set_audio_track(track.id);
+                        let _ = vlc.set_audio_track(track.id).await;
                         info!("Switched to audio track {}: {}", track.id, track.title);
                     }
                 }
@@ -1056,9 +1056,9 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
+            if let Some(ref vlc) = *p {
                 // Cycle subtitle tracks
-                if let Ok((_, sub_tracks)) = mpv.get_tracks() {
+                if let Ok((_, sub_tracks)) = vlc.get_tracks().await {
                     let current_sid: i32 = 0;
                     if sub_tracks.is_empty() {
                         return;
@@ -1068,7 +1068,7 @@ fn setup_playback_callbacks(
                         .find(|t| t.id > current_sid)
                         .or_else(|| sub_tracks.first());
                     if let Some(track) = next {
-                        let _ = mpv.set_subtitle_track(track.id);
+                        let _ = vlc.set_subtitle_track(track.id).await;
                         info!("Switched to subtitle track {}: {}", track.id, track.title);
                     }
                 }
@@ -1082,8 +1082,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.set_audio_track(index) {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.set_audio_track(index).await {
                     error!("Set audio track failed: {}", e);
                 }
             }
@@ -1096,8 +1096,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.set_subtitle_track(index) {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.set_subtitle_track(index).await {
                     error!("Set subtitle track failed: {}", e);
                 }
             }
@@ -1110,8 +1110,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.set_volume(level as f64) {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.set_volume(level as f64).await {
                     error!("Set volume failed: {}", e);
                 }
             }
@@ -1124,8 +1124,8 @@ fn setup_playback_callbacks(
         let player = player_clone.clone();
         tokio::spawn(async move {
             let p = player.lock().await;
-            if let Some(ref mpv) = *p {
-                if let Err(e) = mpv.toggle_mute() {
+            if let Some(ref vlc) = *p {
+                if let Err(e) = vlc.toggle_mute().await {
                     error!("Toggle mute failed: {}", e);
                 }
             }
@@ -1782,18 +1782,18 @@ async fn perform_search(
 // Player Event Handling
 // =============================================================================
 
-/// Handle mpv player events and relay them to the UI + Jellyfin server.
+/// Handle VLC player events and relay them to the UI + Jellyfin server.
 async fn handle_player_events(
     ui_weak: slint::Weak<AppWindow>,
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
-    player: Arc<Mutex<Option<MpvPlayer>>>,
+    player: Arc<Mutex<Option<VlcPlayer>>>,
 ) {
     // Take the event receiver from the player
     let mut event_rx = {
         let mut p = player.lock().await;
         match p.as_mut() {
-            Some(mpv) => match mpv.take_event_receiver() {
+            Some(vlc) => match vlc.take_event_receiver() {
                 Some(rx) => rx,
                 None => {
                     debug!("Player event receiver already taken");
@@ -1804,7 +1804,7 @@ async fn handle_player_events(
         }
     };
 
-    // Also start the mpv event loop to generate events.
+    // Also start the VLC event loop to generate events.
     // We check if the player exists, then spawn a task that briefly locks
     // the mutex only to get what it needs, releasing it before the long-running loop.
     {
@@ -1817,15 +1817,15 @@ async fn handle_player_events(
             // This is acceptable because it runs in a dedicated task, and
             // other player operations (pause/seek/stop) use try_lock or
             // short-lived locks that will retry. The event loop MUST have
-            // exclusive access to poll mpv events safely.
+            // exclusive access to poll VLC events safely.
             let player_for_loop = player.clone();
             tokio::spawn(async move {
                 loop {
                     // Acquire lock briefly to check if player exists and run one event poll cycle
                     let should_continue = {
                         let p = player_for_loop.lock().await;
-                        if let Some(ref mpv) = *p {
-                            mpv.run_event_loop().await;
+                        if let Some(ref vlc) = *p {
+                            vlc.run_event_loop().await;
                             true
                         } else {
                             false
@@ -1912,8 +1912,8 @@ async fn handle_player_events(
                     app_state.play_session_id.as_ref(),
                 ) {
                     let p = player.lock().await;
-                    let position_ms = if let Some(ref mpv) = *p {
-                        mpv.get_position_ms().unwrap_or(0)
+                    let position_ms = if let Some(ref vlc) = *p {
+                        vlc.get_position_ms().await.unwrap_or(0)
                     } else {
                         0
                     };
@@ -1945,8 +1945,8 @@ async fn handle_player_events(
                     app_state.play_session_id.as_ref(),
                 ) {
                     let p = player.lock().await;
-                    let position_ticks = if let Some(ref mpv) = *p {
-                        mpv.get_position_ms().unwrap_or(0) * 10_000
+                    let position_ticks = if let Some(ref vlc) = *p {
+                        vlc.get_position_ms().await.unwrap_or(0) * 10_000
                     } else {
                         0
                     };

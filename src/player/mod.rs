@@ -1,2 +1,2 @@
-pub mod mpv;
-pub use mpv::MpvPlayer;
+pub mod vlc;
+pub use vlc::VlcPlayer;

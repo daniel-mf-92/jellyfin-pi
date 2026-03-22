@@ -1,6 +1,6 @@
 {
-  "name": "Switch Pro Controller",
-  "idmatcher": "Switch-Pro.*",
+  "name": "Switch Pro Virtual Input",
+  "idmatcher": "Switch-Pro-Virtual.*",
   "mapping":
   {
     "(Shift\\+)?Left": "left",
