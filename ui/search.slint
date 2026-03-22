@@ -84,7 +84,6 @@ export component SearchScreen inherits Rectangle {
                     Text {
                         text: "\u{1F50D}";
                         font-size: 18px;
-                        vertical-alignment: center;
                     }
 
                     Rectangle { width: Theme.spacing-sm; }
@@ -97,7 +96,6 @@ export component SearchScreen inherits Rectangle {
                             text: query == "" ? "Search..." : query;
                             font-size: Theme.font-title-medium;
                             color: query == "" ? Theme.text-tertiary : Theme.text-primary;
-                            vertical-alignment: center;
                             overflow: elide;
                         }
 
@@ -107,7 +105,6 @@ export component SearchScreen inherits Rectangle {
                             height: 28px;
                             background: cursor-visible && focused-section == 0
                                 ? Theme.accent : transparent;
-                            vertical-alignment: center;
                         }
                     }
                 }
@@ -136,7 +133,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 0 && focused-key == idx
                                 ? white : Theme.text-primary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
                 }
@@ -162,7 +158,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 1 && focused-key == idx
                                 ? white : Theme.text-primary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
                 }
@@ -187,7 +182,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 2 && focused-key == idx
                                 ? white : Theme.text-primary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
                 }
@@ -211,7 +205,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 3 && focused-key == 0
                                 ? white : Theme.text-secondary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
 
@@ -230,7 +223,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 3 && focused-key == 1
                                 ? white : Theme.text-secondary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
 
@@ -249,7 +241,6 @@ export component SearchScreen inherits Rectangle {
                             color: focused-section == 0 && focused-key-row == 3 && focused-key == 2
                                 ? white : Theme.text-secondary;
                             horizontal-alignment: center;
-                            vertical-alignment: center;
                         }
                     }
                 }
@@ -289,8 +280,8 @@ export component SearchScreen inherits Rectangle {
                         spacing: Theme.spacing-md;
 
                         for col-idx in 3 :
-                        if row-idx * 3 + col-idx < results.length :
                         Rectangle {
+                            visible: row-idx * 3 + col-idx < results.length;
                             property <int> item-index: row-idx * 3 + col-idx;
                             property <bool> is-focused:
                                 focused-section == 1 && focused-result == item-index;
@@ -480,7 +471,7 @@ export component SearchScreen inherits Rectangle {
                         } else if focused-key == 1 {
                             // Backspace — remove last character
                             if query.character-count > 0 {
-                                query = query.to-float == 0 ? "" : query;
+                                // backspace handled by Rust via __BACKSPACE__ marker
                                 // Slint doesn't have substring; handled in Rust
                                 // Signal search with special marker
                                 search("__BACKSPACE__");
