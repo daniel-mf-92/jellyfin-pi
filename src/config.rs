@@ -28,12 +28,8 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaybackConfig {
-    /// Hardware decoding method (e.g. "v4l2m2m-copy").
-    pub hwdec: String,
-    /// Video output driver (e.g. "gpu", "drm").
-    pub vo: String,
-    /// GPU context for the video output (e.g. "drm").
-    pub gpu_context: String,
+    /// Extra VLC command-line arguments.
+    pub vlc_args: Vec<String>,
     /// ALSA audio device path.
     pub audio_device: String,
     /// Audio delay in milliseconds (negative = earlier). Useful for HDMI lip-sync.
@@ -79,9 +75,12 @@ impl Default for AppConfig {
                 saved_token: None,
             },
             playback: PlaybackConfig {
-                hwdec: "v4l2m2m-copy".to_string(),
-                vo: "gpu".to_string(),
-                gpu_context: "drm".to_string(),
+                vlc_args: vec![
+                    "--avcodec-hw".to_string(),
+                    "any".to_string(),
+                    "--network-caching".to_string(),
+                    "5000".to_string(),
+                ],
                 audio_device: "alsa/default".to_string(),
                 audio_delay_ms: -300.0,
                 subtitle_size: 48,

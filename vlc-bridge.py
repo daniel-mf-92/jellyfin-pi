@@ -418,8 +418,56 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None):
 # manager to intercept play requests and send stream URLs to us via console.log.
 CDP_INJECT_JS = r"""
 (function() {
-    // Avoid double-injection
-    if (window.__vlcBridgeInstalled) return 'already_installed';
+    // --- TV Navigation CSS: Force focus indicators to always be visible ---
+    // CSS injection runs EVERY time (idempotent, replaces existing style tag)
+    var tvStyle = document.createElement('style');
+    tvStyle.id = 'vlc-bridge-tv-css';
+    tvStyle.textContent = [
+        '/* Force focus visible on ALL interactive elements */',
+        '*:focus-visible { outline: 3px solid #00a4dc !important; outline-offset: 2px !important; }',
+        'button:focus, a:focus, [tabindex]:not([tabindex="-1"]):focus {',
+        '  outline: 3px solid #00a4dc !important; outline-offset: 2px !important;',
+        '  box-shadow: 0 0 0 4px rgba(0, 164, 220, 0.3) !important; }',
+        '.card:focus, .cardBox:focus, .card:focus-visible, .cardBox:focus-visible {',
+        '  outline: 3px solid #00a4dc !important; outline-offset: 2px !important;',
+        '  transform: scale(1.05); transition: transform 0.15s ease; }',
+        '.card.show-focus { outline: 3px solid #00a4dc !important; }',
+        '.itemsContainer-tv *:focus { outline: 3px solid #00a4dc !important; outline-offset: 2px !important; }',
+        '.listItem:focus, .listItem:focus-visible {',
+        '  outline: 3px solid #00a4dc !important; outline-offset: -1px !important;',
+        '  background-color: rgba(0, 164, 220, 0.15) !important; }',
+        '/* Override outline:none rules */',
+        'button, a, input, select, textarea { outline: revert !important; }',
+        '/* Hide cursor in TV mode */',
+        '.layout-tv { cursor: none !important; }',
+        '.layout-tv * { cursor: none !important; }',
+    ].join('\n');
+    if (!document.getElementById('vlc-bridge-tv-css')) {
+        document.head.appendChild(tvStyle);
+        console.log('VLC_BRIDGE:TV_CSS_INJECTED');
+    }
+
+    // --- Prevent mouse mode: intercept mousemove to preserve keyboard focus ---
+    // Jellyfin switches from keyboard to mouse mode on any mouse event.
+    // Block synthetic/virtual mouse events from triggering mode switch.
+    var origAddEventListener = EventTarget.prototype.addEventListener;
+    var mouseBlocked = false;
+    document.addEventListener('mousemove', function(e) {
+        // If movement is tiny (stick drift), prevent propagation
+        if (Math.abs(e.movementX) < 3 && Math.abs(e.movementY) < 3) {
+            e.stopImmediatePropagation();
+        }
+    }, true);
+
+    // Force keyboard focus mode after any keydown
+    document.addEventListener('keydown', function() {
+        // Re-add focus class to body if Jellyfin removed it
+        document.body.classList.add('keyboard-focus');
+        document.body.classList.remove('mouse-focus');
+    }, true);
+
+    // Avoid double-injection of playback hooks
+    if (window.__vlcBridgeInstalled) return 'css_refreshed';
     window.__vlcBridgeInstalled = true;
 
     console.log('VLC_BRIDGE:INJECTED');
