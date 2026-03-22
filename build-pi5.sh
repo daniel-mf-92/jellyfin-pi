@@ -33,7 +33,7 @@ install_deps() {
         libudev-dev \
         libxkbcommon-dev \
         libseat-dev \
-        libmpv-dev \
+        vlc vlc-plugin-base vlc-plugin-video-output \
         libasound2-dev \
         libfontconfig-dev \
         libfreetype-dev
