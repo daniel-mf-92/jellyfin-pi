@@ -748,3 +748,12 @@ QString SystemComponent::getCapabilitiesString()
 
   return capstring.arg(dtschannels).arg(ac3channels);
 }
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void SystemComponent::setCursorVisibility(bool visible)
+{
+  if (visible)
+    QGuiApplication::restoreOverrideCursor();
+  else
+    QGuiApplication::setOverrideCursor(QCursor(Qt::BlankCursor));
+}
