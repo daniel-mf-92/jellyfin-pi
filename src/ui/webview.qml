@@ -1,17 +1,71 @@
-import QtQuick 2.4
+import QtQuick
 import Konvergo 1.0
-import QtWebEngine 1.7
-import QtWebChannel 1.0
-import QtQuick.Window 2.2
-import QtQuick.Controls 1.4
+import QtWebEngine
+import QtWebChannel
+import QtQuick.Window
+import QtQuick.Controls
+import Qt.labs.platform as Labs
 
-KonvergoWindow
+Window
 {
   id: mainWindow
-  title: "Jellyfin Media Player"
+  title: "Jellyfin Desktop"
   objectName: "mainWindow"
-  minimumHeight: windowMinSize.height
-  minimumWidth: windowMinSize.width
+  width: 1280
+  height: 720
+  minimumWidth: 213
+  minimumHeight: 120
+  visible: true
+  color: "#000000"
+
+  // Properties previously from KonvergoWindow
+  property bool webDesktopMode: true
+  property bool showDebugLayer: false
+  property string debugInfo: ""
+  property string videoInfo: ""
+  property string webUrl: ""
+
+  property bool showSystemTrayIcon: webDesktopMode && components.system.isWindows &&
+                                    components.settings.windowsTrayIcon
+
+  signal reloadWebClient()
+
+  Component.onCompleted: {
+    if (components && components.settings) {
+      webUrl = components.settings.getWebClientUrl(webDesktopMode)
+    }
+  }
+
+  onClosing: function(close) {
+    if (showSystemTrayIcon) {
+      // Minimize to tray on close.
+      close.accepted = false
+      mainWindow.hide()
+    }
+  }
+
+  function toggleFullscreen() {
+    visibility = (visibility === Window.FullScreen) ? Window.Windowed : Window.FullScreen
+  }
+
+  function toggleDebug() {
+    showDebugLayer = !showDebugLayer
+  }
+
+  function setFullScreen(enable) {
+    visibility = enable ? Window.FullScreen : Window.Windowed
+  }
+
+  function minimizeWindow() {
+    if (visibility !== Window.FullScreen)
+      visibility = Window.Minimized
+  }
+
+  function restoreWindow() {
+    mainWindow.show()
+    mainWindow.raise()
+    mainWindow.requestActivate()
+  }
 
   function runWebAction(action)
   {
@@ -62,8 +116,8 @@ KonvergoWindow
   Action
   {
     enabled: mainWindow.webDesktopMode
-    shortcut: StandardKey.Quit
-    onTriggered: mainWindow.close()
+    shortcut: components.system.isWindows ? "Ctrl+Q" : StandardKey.Quit
+    onTriggered: Qt.quit()
   }
 
   Action
@@ -129,66 +183,127 @@ KonvergoWindow
     id: action_forward
   }
 
-  // MpvVideo removed - VLC renders in its own window
+  Action
+  {
+    enabled: mainWindow.webDesktopMode
+    shortcut: "Ctrl+0"
+    onTriggered: web.zoomFactor = 1.0
+  }
 
+  WebChannel
+  {
+    id: webChannelObject
+  }
+
+  Binding
+  {
+    target: web
+    property: "zoomFactor"
+    value: 1.0
+    when: !components.settings.allowBrowserZoom()
+  }
+
+  MpvVideoItem
+  {
+    id: video
+    objectName: "video"
+    enabled: true
+
+    width: mainWindow.contentItem.width
+    height: mainWindow.contentItem.height
+    anchors.left: mainWindow.contentItem.left
+    anchors.right: mainWindow.contentItem.right
+    anchors.top: mainWindow.contentItem.top
+
+    Component.onCompleted: {
+      console.log("MpvVideoItem size:", width, "x", height, "visible:", visible)
+    }
+    onWidthChanged: console.log("MpvVideoItem width changed:", width)
+    onHeightChanged: console.log("MpvVideoItem height changed:", height)
+  }
 
   WebEngineView
   {
     id: web
     objectName: "web"
+    width: mainWindow.width
+    height: mainWindow.height
+    z: 100
+    backgroundColor: "transparent"
+
+    // this is needed to prevent intermittent(?) black screens when unminizing
+    // or resumsing from suspend (linux/{x11/wayland}, possibly others).
+    layer.enabled: true
+
+    webChannel: webChannelObject
     settings.errorPageEnabled: false
     settings.localContentCanAccessRemoteUrls: true
     settings.localContentCanAccessFileUrls: true
     settings.allowRunningInsecureContent: true
     settings.playbackRequiresUserGesture: false
     profile.httpUserAgent: components.system.getUserAgent()
+    profile.httpCacheType: WebEngineProfile.DiskHttpCache
     url: mainWindow.webUrl
     focus: true
     property string currentHoveredUrl: ""
-    onLinkHovered: web.currentHoveredUrl = hoveredUrl
-    width: mainWindow.width
-    height: mainWindow.height
-    userScripts: [
-      WebEngineScript
-      {
-        sourceCode: components.system.getNativeShellScript()
-        injectionPoint: WebEngineScript.DocumentCreation
-        worldId: WebEngineScript.MainWorld
-      }
-    ]
+    onLinkHovered: function(hoveredUrl)
+    {
+      web.currentHoveredUrl = hoveredUrl;
+    }
+    profile.persistentCookiesPolicy: WebEngineProfile.AllowPersistentCookies
+    profile.offTheRecord: false
+    profile.storageName: "JellyfinDesktopStorage"
 
     Component.onCompleted:
     {
+      console.log("WebEngineView size:", width, "x", height, "backgroundColor:", backgroundColor)
       forceActiveFocus()
       mainWindow.reloadWebClient.connect(reload)
+
+      // Handle CSP workaround from C++
+      components.system.pageContentReady.connect(function(html, finalUrl, hadCSP) {
+        if (hadCSP) {
+          console.log("CSP workaround: navigating to", finalUrl);
+          web.url = finalUrl;
+        }
+      })
+
+      var nativeshell =
+      {
+        sourceCode: components.system.getNativeShellScript(),
+        injectionPoint: WebEngineScript.DocumentCreation,
+        worldId: WebEngineScript.MainWorld
+      }
+
+      web.userScripts.collection = [ nativeshell ];
     }
 
-    onLoadingChanged:
+    onLoadingChanged: function(loadingInfo)
     {
       // we use a timer here to switch to the webview since
       // it take a few moments for the webview to render
       // after it has loaded.
       //
-      if (loadRequest.status == WebEngineView.LoadStartedStatus)
+      if (loadingInfo.status == WebEngineView.LoadStartedStatus)
       {
-        console.log("WebEngineLoadRequest starting: " + loadRequest.url);
+        console.log("WebEngineLoadRequest starting: " + loadingInfo.url);
       }
-      else if (loadRequest.status == WebEngineView.LoadSucceededStatus)
+      else if (loadingInfo.status == WebEngineView.LoadSucceededStatus)
       {
-        console.log("WebEngineLoadRequest success: " + loadRequest.url);
+        console.log("WebEngineLoadRequest success: " + loadingInfo.url);
       }
-      else if (loadRequest.status == WebEngineView.LoadFailedStatus)
+      else if (loadingInfo.status == WebEngineView.LoadFailedStatus)
       {
-        console.log("WebEngineLoadRequest failure: " + loadRequest.url + " error code: " + loadRequest.errorCode);
+        console.log("WebEngineLoadRequest failure: " + loadingInfo.url + " error code: " + loadingInfo.errorCode);
         errorLabel.visible = true
         errorLabel.text = "Error loading client, this is bad and should not happen<br>" +
                           "You can try to <a href='reload'>reload</a> or head to our <a href='http://jellyfin.org'>support page</a><br><br>Actual Error: <pre>" +
-                          loadRequest.errorString + " [" + loadRequest.errorCode + "]</pre><br><br>" +
+                          loadingInfo.errorString + " [" + loadingInfo.errorCode + "]</pre><br><br>" +
                           "Provide the <a target='_blank' href='file://"+ components.system.logFilePath + "'>logfile</a> as well."
       }
     }
 
-    onNewViewRequested:
+    onNewWindowRequested:
     {
       if (request.userInitiated)
       {
@@ -204,16 +319,16 @@ KonvergoWindow
       request.accept()
     }
 
-    onJavaScriptConsoleMessage:
+    onJavaScriptConsoleMessage: function(level, message, lineNumber, sourceID)
     {
-      components.system.info(message)
+      components.system.jsLog(level, sourceID + ":" + lineNumber + " " + message);
     }
 
-    onCertificateError:
+    onCertificateError: function(error)
     {
       console.log(error.url + " :" + error.description + error.error)
       if (components.settings.ignoreSSLErrors()) {
-        error.ignoreCertificateError()
+        error.acceptCertificate()
       }
     }
   }
@@ -233,14 +348,14 @@ KonvergoWindow
     textFormat: Text.StyledText
     onLinkActivated:
     {
-      if (link == "reload")
+      if (url == "reload")
       {
         errorLabel.visible = false
         web.reload()
       }
       else
       {
-        Qt.openUrlExternally(link)
+        Qt.openUrlExternally(url)
       }
     }
   }
@@ -303,4 +418,34 @@ KonvergoWindow
   }
 
   property QtObject webChannel: web.webChannel
+
+  Labs.SystemTrayIcon {
+    visible: showSystemTrayIcon
+    icon.source: "qrc:/images/icon.png"
+    tooltip: "Jellyfin Desktop"
+
+    onActivated: function(reason) {
+      if (reason === Labs.SystemTrayIcon.Context) {
+        // Right click: open context menu
+        contextMenu.open()
+        components.window.setCursorVisibility(true)
+      } else {
+        // All other clicks: restore window
+        restoreWindow()
+      }
+    }
+
+    menu: Labs.Menu {
+      id: contextMenu
+      Labs.MenuItem {
+        text: qsTr("Restore")
+        onTriggered: restoreWindow()
+      }
+      Labs.MenuSeparator {}
+      Labs.MenuItem {
+        text: qsTr("Quit")
+        onTriggered: Qt.quit()
+      }
+    }
+  }
 }
