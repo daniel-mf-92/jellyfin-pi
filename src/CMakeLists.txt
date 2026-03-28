@@ -169,6 +169,10 @@ else()
   set(_PLAYER_LIB ${MPV_LIBRARY})
 endif()
 
+if(USE_STATIC_MPVQT)
+  target_link_libraries(${MAIN_TARGET} MpvQt)
+endif()
+
 target_link_libraries(${MAIN_TARGET}
   shared
   ${_PLAYER_LIB}
