@@ -34,10 +34,10 @@
     "KEY_GAMEPAD_LEFTSTICK": "",
     "KEY_GAMEPAD_RIGHTSTICK": "search",
 
-    "KEY_GAMEPAD_LEFTX_NEG": "left",
-    "KEY_GAMEPAD_LEFTX_POS": "right",
-    "KEY_GAMEPAD_LEFTY_NEG": "up",
-    "KEY_GAMEPAD_LEFTY_POS": "down",
+    "KEY_GAMEPAD_LEFTX_NEG": "",
+    "KEY_GAMEPAD_LEFTX_POS": "",
+    "KEY_GAMEPAD_LEFTY_NEG": "",
+    "KEY_GAMEPAD_LEFTY_POS": "",
 
     "KEY_GAMEPAD_RIGHTX_NEG": "decrease_audio_delay",
     "KEY_GAMEPAD_RIGHTX_POS": "increase_audio_delay",

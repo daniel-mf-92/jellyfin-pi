@@ -24,16 +24,11 @@
 #endif
 
 #define LONG_HOLD_MSEC 500
-#define INITAL_AUTOREPEAT_MSEC 650
+#define INITAL_AUTOREPEAT_MSEC 400
 
-// Synthetic key repeat events are emitted at 60ms intervals. The interval is
-// half of the fastest press-and-release time. Empirical key repeat intervals:
-//   * Key hold on macOS wireless USB keyboard with fastest key repeat preference: ~35s
-//   * Press and release on macOS wireless USB keyboard (like a meth monkey): ~120ms
-//   * Key hold on macOS Apple TV IR remote + FLiRC (3.8 firmware) with fastest key repeat preference: ~35s
-//   * Press and release on macOS Apple TV IR remote + FLiRC (3.8 firmware): ~150ms
-//
-#define AUTOREPEAT_MSEC 60
+// Synthetic key repeat events at 150ms intervals (gamepad-friendly).
+// Original was 60ms which caused double-inputs on gamepad D-pad.
+#define AUTOREPEAT_MSEC 150
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 InputComponent::InputComponent(QObject* parent) : ComponentBase(parent)
