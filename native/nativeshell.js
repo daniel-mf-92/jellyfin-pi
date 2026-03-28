@@ -856,3 +856,22 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     if (document.body) obs.observe(document.body, {childList: true, subtree: true});
     else document.addEventListener("DOMContentLoaded", function() { obs.observe(document.body, {childList: true, subtree: true}); });
 })();
+
+
+// Fix: Block native arrow key handling in web view.
+// JMP's InputComponent already processes arrow keys via hostInput/inputPlugin.
+// Without this, both InputComponent AND the native web view handle arrows = double-skip.
+(function() {
+    document.addEventListener("keydown", function(e) {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+    document.addEventListener("keyup", function(e) {
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }, true);
+})();
