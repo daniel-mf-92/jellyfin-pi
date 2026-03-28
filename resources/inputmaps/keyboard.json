@@ -4,10 +4,6 @@
   "mapping":
   {
     // standard navigation, we allow shift modifiers
-    "(Shift\\+)?Left": "left",
-    "(Shift\\+)?Right": "right",
-    "(Shift\\+)?Up": "up",
-    "(Shift\\+)?Down": "down",
     "(Return|Enter)": "enter",
     "(Esc|Backspace)": {
       "short": "back",
