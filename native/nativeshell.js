@@ -701,3 +701,43 @@ window.jmpInfo.settingsUpdate.push(function(section) {
         }
     }
 });
+
+// ─── Pi-home-A TV Fixes ───────────────────────────────────────────────────
+
+// Fix: Force single-item scroll on horizontal carousels (Recently Added, etc.)
+// Jellyfin web UI scrolls by visible-count per arrow key; override to scroll by 1.
+(function() {
+    function patchScrollers() {
+        document.querySelectorAll('.scrollSlider').forEach(function(slider) {
+            if (slider._patched) return;
+            slider._patched = true;
+            slider.addEventListener('keydown', function(e) {
+                if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+                    e.stopPropagation();
+                    var cards = slider.querySelectorAll('.card');
+                    var focused = document.activeElement;
+                    if (!focused || !slider.contains(focused)) return;
+                    
+                    var idx = Array.from(cards).indexOf(focused.closest('.card'));
+                    if (idx < 0) return;
+                    
+                    var nextIdx = e.key === 'ArrowRight' ? idx + 1 : idx - 1;
+                    if (nextIdx >= 0 && nextIdx < cards.length) {
+                        var target = cards[nextIdx].querySelector('[tabindex], button, a') || cards[nextIdx];
+                        target.focus();
+                        target.scrollIntoView({behavior: 'smooth', block: 'nearest', inline: 'center'});
+                    }
+                    e.preventDefault();
+                }
+            }, true);
+        });
+    }
+    
+    var observer = new MutationObserver(function() { setTimeout(patchScrollers, 500); });
+    document.addEventListener('DOMContentLoaded', function() {
+        observer.observe(document.body, {childList: true, subtree: true});
+        setTimeout(patchScrollers, 2000);
+    });
+    window.addEventListener('hashchange', function() { setTimeout(patchScrollers, 1000); });
+    setTimeout(patchScrollers, 3000);
+})();
