@@ -774,3 +774,28 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     setTimeout(disableLetterGrouping, 4000);
     window.addEventListener('hashchange', function() { setTimeout(disableLetterGrouping, 2000); });
 })();
+
+// Fix: Default to 500 items per page in library views
+(function() {
+    function setPageSize() {
+        if (!window.ApiClient || !window.ApiClient.getCurrentUserId) return;
+        var userId = window.ApiClient.getCurrentUserId();
+        if (!userId) return;
+        
+        if (window.userSettings && window.userSettings.libraryPageSize) {
+            window.userSettings.libraryPageSize = function() { return 500; };
+        }
+        
+        ['f137a2dd21bbc1b99aa5c0f6bf02a805', '767bffe4f11c93ef34b805451a696a4e'].forEach(function(libId) {
+            window.ApiClient.getJSON(window.ApiClient.getUrl('DisplayPreferences/' + libId, {
+                userId: userId, client: 'emby'
+            })).then(function(prefs) {
+                if (!prefs.CustomPrefs) prefs.CustomPrefs = {};
+                prefs.CustomPrefs['PageSize'] = '500';
+                window.ApiClient.updateDisplayPreferences(libId, prefs, userId, 'emby');
+            }).catch(function(){});
+        });
+    }
+    setTimeout(setPageSize, 4000);
+    window.addEventListener('hashchange', function() { setTimeout(setPageSize, 2000); });
+})();
