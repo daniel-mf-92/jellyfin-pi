@@ -799,3 +799,60 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     setTimeout(setPageSize, 4000);
     window.addEventListener('hashchange', function() { setTimeout(setPageSize, 2000); });
 })();
+
+
+// Feature: Random unwatched media button on home page
+(function() {
+    var DICE_SVG = '<svg viewBox="0 0 24 24" width="48" height="48" fill="white"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM7.5 18c-.83 0-1.5-.67-1.5-1.5S6.67 15 7.5 15s1.5.67 1.5 1.5S8.33 18 7.5 18zm0-9C6.67 9 6 8.33 6 7.5S6.67 6 7.5 6 9 6.67 9 7.5 8.33 9 7.5 9zm4.5 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm4.5 4.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm0-9c-.83 0-1.5-.67-1.5-1.5S15.67 6 16.5 6s1.5.67 1.5 1.5S17.33 9 16.5 9z"/></svg>';
+
+    function addRandomButton() {
+        if (document.getElementById("jmp-random-btn")) return;
+        if (!window.location.hash.includes("home")) return;
+        if (!window.ApiClient) return;
+
+        var btn = document.createElement("button");
+        btn.id = "jmp-random-btn";
+        btn.innerHTML = DICE_SVG + "<span style='display:block;font-size:14px;margin-top:4px'>Random</span>";
+        btn.style.cssText = "position:fixed;bottom:30px;right:30px;z-index:9999;background:rgba(100,60,180,0.85);border:2px solid rgba(255,255,255,0.3);border-radius:16px;padding:12px 18px;cursor:pointer;color:white;text-align:center;backdrop-filter:blur(10px);transition:transform 0.2s;";
+        btn.tabIndex = 0;
+
+        btn.addEventListener("focus", function() { btn.style.transform = "scale(1.15)"; btn.style.borderColor = "#e94560"; });
+        btn.addEventListener("blur", function() { btn.style.transform = "scale(1)"; btn.style.borderColor = "rgba(255,255,255,0.3)"; });
+        btn.addEventListener("click", playRandom);
+        btn.addEventListener("keydown", function(e) { if (e.key === "Enter") { e.preventDefault(); playRandom(); } });
+
+        document.body.appendChild(btn);
+    }
+
+    async function playRandom() {
+        if (!window.ApiClient) return;
+        var userId = window.ApiClient.getCurrentUserId();
+        if (!userId) return;
+        try {
+            var url = window.ApiClient.getUrl("Users/" + userId + "/Items", {
+                SortBy: "Random", Limit: 1, Recursive: true,
+                IncludeItemTypes: "Movie,Episode", Filters: "IsUnplayed", Fields: "Overview,Path"
+            });
+            var result = await window.ApiClient.getJSON(url);
+            if (result.Items && result.Items.length > 0) {
+                var item = result.Items[0];
+                console.log("Random pick: " + item.Name + " (" + item.Type + ")");
+                if (window.playbackManager) {
+                    window.playbackManager.play({ items: [item], startPositionTicks: 0 });
+                } else {
+                    window.location.hash = "#!/details?id=" + item.Id + "&serverId=" + item.ServerId;
+                }
+            }
+        } catch(e) { console.log("Random play error: " + e); }
+    }
+
+    setTimeout(addRandomButton, 3000);
+    window.addEventListener("hashchange", function() {
+        var old = document.getElementById("jmp-random-btn");
+        if (old) old.remove();
+        setTimeout(addRandomButton, 1500);
+    });
+    var obs = new MutationObserver(function() { setTimeout(addRandomButton, 500); });
+    if (document.body) obs.observe(document.body, {childList: true, subtree: true});
+    else document.addEventListener("DOMContentLoaded", function() { obs.observe(document.body, {childList: true, subtree: true}); });
+})();
