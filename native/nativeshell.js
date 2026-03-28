@@ -741,3 +741,36 @@ window.jmpInfo.settingsUpdate.push(function(section) {
     window.addEventListener('hashchange', function() { setTimeout(patchScrollers, 1000); });
     setTimeout(patchScrollers, 3000);
 })();
+
+// Fix: Remove alphabetical letter grouping in library views — show all items
+(function() {
+    function disableLetterGrouping() {
+        var style = document.createElement('style');
+        style.textContent = '.sectionTitle.sectionTitle-cards.padded-left ~ .itemsContainer .prefixContainer { display: none !important; }' +
+            '.alphabetPicker { display: none !important; }' +
+            '.itemsContainer .listPaging { display: none !important; }';
+        document.head.appendChild(style);
+        
+        if (window.ApiClient && window.ApiClient.getCurrentUserId) {
+            var userId = window.ApiClient.getCurrentUserId();
+            if (userId) {
+                ['f137a2dd21bbc1b99aa5c0f6bf02a805', '767bffe4f11c93ef34b805451a696a4e'].forEach(function(libId) {
+                    window.ApiClient.getJSON(window.ApiClient.getUrl('DisplayPreferences/' + libId, {
+                        userId: userId, client: 'emby'
+                    })).then(function(prefs) {
+                        if (!prefs.CustomPrefs) prefs.CustomPrefs = {};
+                        prefs.CustomPrefs[libId] = JSON.stringify({
+                            SortBy: 'SortName',
+                            SortOrder: 'Ascending',
+                            ViewMode: 'images'
+                        });
+                        prefs.ScrollDirection = 'Vertical';
+                        window.ApiClient.updateDisplayPreferences(libId, prefs, userId, 'emby');
+                    }).catch(function(){});
+                });
+            }
+        }
+    }
+    setTimeout(disableLetterGrouping, 4000);
+    window.addEventListener('hashchange', function() { setTimeout(disableLetterGrouping, 2000); });
+})();
