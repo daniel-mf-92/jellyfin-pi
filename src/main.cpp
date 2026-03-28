@@ -514,8 +514,8 @@ int main(int argc, char *argv[])
 
       QQuickWindow* window = Globals::MainWindow();
 
-      // Set window flags for proper popup handling (e.g., WebEngineView dropdowns)
-      window->setFlags(window->flags() | Qt::WindowFullscreenButtonHint);
+      // No server-side decorations (no blue outline on Wayland compositors)
+      window->setFlags(window->flags() | Qt::WindowFullscreenButtonHint | Qt::FramelessWindowHint);
 
       // Install event filter for proper event handling
       window->installEventFilter(new EventFilter(window));
