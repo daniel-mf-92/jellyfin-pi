@@ -1,6 +1,6 @@
 add_sources(PlayerComponent.cpp PlayerComponent.h)
 if(NOT USE_VLC)
-  add_sources(PlayerQuickItem.cpp PlayerQuickItem.h)
+  add_sources(MpvVideoItem.cpp MpvVideoItem.h)
 endif()
 add_sources(CodecsComponent.cpp CodecsComponent.h)
 add_sources(OpenGLDetect.cpp OpenGLDetect.h)
