@@ -26,8 +26,20 @@ class inputPlugin {
         (async () => {
             const api = await window.apiPromise;
 
+            var _lastCmd = {};
             api.input.hostInput.connect((actions) => {
                 actions.forEach(action => {
+                    // Debounce: skip duplicate nav commands within 150ms
+                    // QtWebEngine delivers key events to BOTH InputComponent (hostInput)
+                    // AND the web view's native handler — causing double navigation.
+                    // This debounce ensures only the first one fires.
+                    var navCmds = ["left","right","up","down","select","back"];
+                    var mapped = remap.hasOwnProperty(action) ? remap[action] : action;
+                    if (navCmds.indexOf(mapped) >= 0) {
+                        var now = Date.now();
+                        if (_lastCmd[mapped] && now - _lastCmd[mapped] < 150) return;
+                        _lastCmd[mapped] = now;
+                    }
                     if (action === 'shuffle') {
                         playbackManager.setQueueShuffleMode('Shuffle');
                     } else if (action === 'sorted') {
