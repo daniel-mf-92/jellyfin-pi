@@ -11,8 +11,6 @@
 #include <QtWebEngineCore/QWebEngineScript>
 #include <QCommandLineOption>
 #include <QDebug>
-#include <QFile>
-#include <QTextStream>
 #include <QSettings>
 
 #include "shared/Names.h"
