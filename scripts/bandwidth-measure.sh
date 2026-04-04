@@ -26,7 +26,7 @@ bandwidth_measure() {
         bw_bps=$(python3 -c "
 bw = float($bw_bytes)
 total_bps = int(bw * 8)
-video_bps = int(total_bps * 0.65)
+video_bps = int(total_bps * 0.49)  # 65% base minus 25% safety margin
 # Clamp between 200kbps and 8Mbps
 video_bps = max(200000, min(8000000, video_bps))
 # Round to nearest 50kbps for finer granularity at low bitrates

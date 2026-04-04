@@ -159,13 +159,24 @@ streaming_mpv_monitor() {
 
     [[ ! -f "$MPV_LOG" ]] && return 0
 
+    # --- Hysteresis: read last bitrate-change timestamp ---
+    local last_change_epoch=0 now_epoch elapsed_since_change
+    now_epoch=$(date +%s)
+    if [[ -f "$STATE_DIR/bitrate-last-change" ]]; then
+        last_change_epoch=$(cat "$STATE_DIR/bitrate-last-change" 2>/dev/null || echo 0)
+    fi
+    elapsed_since_change=$(( now_epoch - last_change_epoch ))
+
     local buffering_count
     buffering_count=$(tail -100 "$MPV_LOG" 2>/dev/null | awk '/(Buffering)/{c++} END{print c+0}')
 
     if [[ "$buffering_count" -gt 3 ]]; then
-        log "STREAM" "mpv excessive buffering ($buffering_count occurrences). Reducing bitrate..."
+        # Downscale hold: require 2 min since last bitrate change
+        if [[ "$elapsed_since_change" -lt 120 ]]; then
+            log "STREAM" "mpv buffering ($buffering_count) but hold-time not met (${elapsed_since_change}s < 120s). Skipping downscale."
+        elif check_circuit_breaker "$STREAMING_CB" "$STREAMING_MAX_ADJUST"; then
+            log "STREAM" "mpv excessive buffering ($buffering_count occurrences). Reducing bitrate..."
 
-        if check_circuit_breaker "$STREAMING_CB" "$STREAMING_MAX_ADJUST"; then
             local playing_item
             playing_item=$(get_jellyfin_playing_item)
             read_current_bitrates
@@ -206,6 +217,10 @@ with open('$BW_FILE', 'w') as f:
             pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
             sleep 2
 
+            # Record change timestamp and reset upscale counter
+            echo "$now_epoch" > "$STATE_DIR/bitrate-last-change"
+            echo "0" > "$STATE_DIR/upscale-good-count"
+
             if [[ -n "$playing_item" ]]; then
                 launch_mpv_jellyfin "$playing_item" "$new_video_br" "$new_audio_br"
                 record_restart "$STREAMING_CB"
@@ -214,29 +229,58 @@ with open('$BW_FILE', 'w') as f:
             fi
         fi
 
-    # Auto-upscale when bandwidth improves
+    # Auto-upscale when bandwidth improves (with hysteresis)
     elif [[ "$buffering_count" -eq 0 ]] && [[ -f "$STATE_DIR/mpv-launched-bitrate" ]]; then
         local launched_br
         launched_br=$(cat "$STATE_DIR/mpv-launched-bitrate" 2>/dev/null || echo 0)
         read_current_bitrates
-        local should_upscale
-        should_upscale=$(python3 -c "
+
+        # Threshold raised to 2.0x (was 1.5x) — only upscale when bandwidth genuinely doubles
+        local meets_threshold
+        meets_threshold=$(python3 -c "
 lb = int('$launched_br' or 0)
 cb = int('$VIDEO_BR_CURRENT' or 0)
-print('yes' if lb > 0 and cb > lb * 1.5 else 'no')
+print('yes' if lb > 0 and cb > lb * 2.0 else 'no')
 " 2>/dev/null || echo "no")
 
-        if [[ "$should_upscale" == "yes" ]]; then
-            local playing_item
-            playing_item=$(get_jellyfin_playing_item)
-            if [[ -n "$playing_item" ]]; then
-                log "STREAM" "Bandwidth improved: launched at ${launched_br}, now ${VIDEO_BR_CURRENT}. Upscaling..."
-                > "$MPV_LOG"
-                pkill -f "mpv.*localhost" 2>/dev/null
-                pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
-                sleep 2
-                launch_mpv_jellyfin "$playing_item" "$VIDEO_BR_CURRENT" "$AUDIO_BR_CURRENT"
+        if [[ "$meets_threshold" == "yes" ]]; then
+            # Require 3 consecutive good readings before upscaling
+            local good_count=0
+            if [[ -f "$STATE_DIR/upscale-good-count" ]]; then
+                good_count=$(cat "$STATE_DIR/upscale-good-count" 2>/dev/null || echo 0)
             fi
+            good_count=$(( good_count + 1 ))
+            echo "$good_count" > "$STATE_DIR/upscale-good-count"
+
+            if [[ "$good_count" -ge 3 ]] && [[ "$elapsed_since_change" -ge 300 ]]; then
+                local playing_item
+                playing_item=$(get_jellyfin_playing_item)
+                if [[ -n "$playing_item" ]]; then
+                    log "STREAM" "Bandwidth stable: launched at ${launched_br}, now ${VIDEO_BR_CURRENT} (${good_count} good readings, ${elapsed_since_change}s hold). Upscaling..."
+                    > "$MPV_LOG"
+                    pkill -f "mpv.*localhost" 2>/dev/null
+                    pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
+                    sleep 2
+                    launch_mpv_jellyfin "$playing_item" "$VIDEO_BR_CURRENT" "$AUDIO_BR_CURRENT"
+                    # Record change timestamp and reset counter
+                    echo "$now_epoch" > "$STATE_DIR/bitrate-last-change"
+                    echo "0" > "$STATE_DIR/upscale-good-count"
+                fi
+            elif [[ "$good_count" -ge 3 ]]; then
+                log "STREAM" "Upscale conditions met (${good_count} readings) but hold-time not met (${elapsed_since_change}s < 300s). Waiting..."
+            else
+                log "STREAM" "Upscale candidate: ${good_count}/3 consecutive good readings (bw ${VIDEO_BR_CURRENT} > 2x launched ${launched_br})"
+            fi
+        else
+            # Conditions not met — reset consecutive counter
+            if [[ -f "$STATE_DIR/upscale-good-count" ]]; then
+                local prev_count
+                prev_count=$(cat "$STATE_DIR/upscale-good-count" 2>/dev/null || echo 0)
+                if [[ "$prev_count" -gt 0 ]]; then
+                    log "STREAM" "Upscale good-count reset (was ${prev_count}, bandwidth no longer 2x threshold)"
+                fi
+            fi
+            echo "0" > "$STATE_DIR/upscale-good-count"
         fi
     fi
 }

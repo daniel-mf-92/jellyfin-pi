@@ -2,7 +2,7 @@
 # =============================================================================
 # @section media-streaming-qos
 # @frequency L0 (every 2 min)
-# @description QoS: SIGSTOP go2rtc, tc rate limit wg0, priority management
+# @description QoS: SIGSTOP go2rtc, priority management, bandwidth-hog killing
 # =============================================================================
 
 QOS_STATE_FILE="$STATE_DIR/media-qos-active"
@@ -33,15 +33,12 @@ media_qos_enable() {
         sudo renice -15 -p $pid 2>/dev/null
     done
 
-    # tc rate limiting: cap go2rtc camera traffic on wg0
-    sudo tc qdisc del dev wg0 root 2>/dev/null
-    sudo tc qdisc add dev wg0 root handle 1: htb default 10
-    sudo tc class add dev wg0 parent 1: classid 1:1 htb rate 3600kbit ceil 3600kbit
-    sudo tc class add dev wg0 parent 1:1 classid 1:10 htb rate 3200kbit ceil 3600kbit prio 0
-    sudo tc class add dev wg0 parent 1:1 classid 1:20 htb rate 400kbit ceil 400kbit prio 1
-    sudo tc filter add dev wg0 parent 1: protocol ip prio 1 u32 match ip sport 8554 0xffff flowid 1:20
-    sudo tc filter add dev wg0 parent 1: protocol ip prio 2 u32 match ip src 0.0.0.0/0 flowid 1:10
-    log "QOS" "tc rate limiting: camera capped at 400kbit, media gets 3200kbit priority"
+    # tc rate limiting removed: tc only shapes egress traffic, but the Pi is a
+    # *receiver* for Jellyfin streams — the bottleneck is inbound bandwidth, not
+    # outbound. The htb qdisc added kernel overhead on every outbound packet with
+    # zero benefit for inbound stream quality. SIGSTOP on go2rtc (above) is the
+    # effective mechanism — it stops inbound camera relay traffic at the source.
+    log "QOS" "Skipping tc (egress-only, ineffective for inbound streams — SIGSTOP is the effective control)"
 
     # Deprioritize go2rtc (fallback if SIGSTOP failed)
     for pid in $(pgrep -f go2rtc 2>/dev/null); do
@@ -102,9 +99,7 @@ media_qos_disable() {
         "\$HOME/bin/jellyfin-qos.sh disable" >>/tmp/azure-qos-call.log 2>&1 &
     log "QOS" "Azure VM QoS disable requested (background)"
 
-    # Remove tc rate limiting
-    sudo tc qdisc del dev wg0 root 2>/dev/null
-    log "QOS" "tc rate limiting removed from wg0"
+    # tc teardown removed: no local tc rules to clean up (see media_qos_enable)
 
     # Restore go2rtc priority
     for pid in $(pgrep -f go2rtc 2>/dev/null); do

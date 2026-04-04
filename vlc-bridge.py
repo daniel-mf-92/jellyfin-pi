@@ -277,7 +277,9 @@ class JellyfinAuth:
         status, body = http_get(url, headers=self.headers())
         if status == 200:
             return json.loads(body)
-        return []
+        if status == 0:
+            raise ConnectionError("Could not connect to Jellyfin server")
+        return []  # HTTP error but server reachable — treat as empty
 
     def get_playback_info(self, item_id):
         """Get playback info for an item (media sources, stream URLs)."""
@@ -330,11 +332,15 @@ class JellyfinAuth:
         status, _ = http_post(url, data=data, headers=self.headers())
         log.debug(f"Report playback stop: HTTP {status}")
 
-    def build_stream_url(self, item_id, media_source_id, start_time_secs=0):
+    def build_stream_url(self, item_id, media_source_id, start_time_secs=0,
+                         source_bitrate_bps=None):
         """Build stream URL, transcoding to match available bandwidth.
 
         Uses startTimeTicks for resume positions so Jellyfin starts transcoding
         at the right point. VLC cannot seek in transcoded HTTP streams.
+
+        Returns:
+            tuple: (url, play_method, effective_bitrate_bps)
         """
         bw = _get_bandwidth_config()
         # Conservative defaults — the WireGuard pipe is often < 1 Mbps
@@ -371,7 +377,8 @@ class JellyfinAuth:
             f"{audio_br/1000:.0f}kbps audio, {max_w}x{max_h} "
             f"(total={effective_bps/1000:.0f}kbps)"
         )
-        return f"{self.server_url}/Videos/{item_id}/stream.mkv?{params}"
+        return (f"{self.server_url}/Videos/{item_id}/stream.mkv?{params}",
+                "Transcode", effective_bps)
 
 
 # ---------------------------------------------------------------------------
@@ -734,14 +741,31 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
 
     # -- Persistent RAM cache: serve from /dev/shm if available -------------
     play_url = url
+    _deferred_cache_download = None  # (item_id, url) when bg download was skipped
     if item_id:
         cached_path = stream_cache.get(item_id)
         if cached_path:
             play_url = cached_path
             log.info(f"Playing from RAM cache: {cached_path}")
         else:
-            # Download to cache in background while VLC streams from network
-            stream_cache.start_download(item_id, url)
+            # Check if bandwidth is too narrow to share with a background download
+            _bw_cfg = _get_bandwidth_config()
+            _bw_total = _bw_cfg.get("total_bps", 0)
+            if _bw_total and _bw_total < 3_000_000:
+                log.info(
+                    f"Skipping background cache download: bandwidth too low "
+                    f"({_bw_total / 1000:.0f} kbps < 3000 kbps) — "
+                    f"would starve VLC playback"
+                )
+                _deferred_cache_download = (item_id, url)
+            else:
+                reason = "adequate" if _bw_total else "unknown (no config)"
+                log.info(
+                    f"Starting background cache download: bandwidth {reason} "
+                    f"({_bw_total / 1000:.0f} kbps)"
+                )
+                stream_cache.start_download(item_id, url)
+                _deferred_cache_download = None
         stream_cache.pin(item_id)
 
     cache = get_adaptive_cache_params(stream_bitrate_bps)
@@ -861,6 +885,24 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
 
         # Unpin but keep cached — LRU timestamp refreshed, data stays in RAM
         stream_cache.unpin()
+
+        # Deferred cache download: if we skipped during playback due to low
+        # bandwidth, start it now so the file is cached for next time.
+        if _deferred_cache_download:
+            _post_bw = _get_bandwidth_config()
+            _post_total = _post_bw.get("total_bps", 0)
+            if not _post_total or _post_total >= 3_000_000:
+                _did, _durl = _deferred_cache_download
+                log.info(
+                    f"Starting deferred cache download for {_did} "
+                    f"(post-playback bandwidth: {_post_total / 1000:.0f} kbps)"
+                )
+                stream_cache.start_download(_did, _durl)
+            else:
+                log.info(
+                    f"Skipping deferred cache download: bandwidth still low "
+                    f"({_post_total / 1000:.0f} kbps)"
+                )
 
         # Return focus to JMP
         set_foreground("jellyfin")
@@ -1252,19 +1294,19 @@ class CDPBridge:
                 if start_secs == 0 and item_id and self.auth:
                     start_secs = self._get_resume_position(item_id)
 
-                # Rebuild URL through adaptive build_stream_url if possible
+                # Rebuild URL through adaptive build_stream_url
                 effective_bps = None
                 if self.auth and item_id and media_source_id:
                     try:
-                        pinfo = self.auth.get_playback_info(item_id)
-                        src_bps = None
-                        if pinfo:
-                            msources = pinfo.get("MediaSources", [])
-                            if msources:
-                                src_bps = int(msources[0].get("Bitrate") or 0) or None
+                        src_bps = self._get_source_bitrate(item_id)
                         url, _method, effective_bps = self.auth.build_stream_url(
-                            item_id, media_source_id, source_bitrate_bps=src_bps
+                            item_id, media_source_id,
+                            start_time_secs=start_secs,
+                            source_bitrate_bps=src_bps,
                         )
+                        # Server handled seek — don't double-seek in VLC
+                        if "startTimeTicks" in url:
+                            start_secs = 0
                     except Exception as e:
                         log.warning(f"CDP URL rebuild failed, using JS URL: {e}")
 
@@ -1295,14 +1337,43 @@ class CDPBridge:
                 media_source_id = m2.group(1)
 
             start_secs = 0
+            effective_bps = None
             if item_id and self.auth:
                 start_secs = self._get_resume_position(item_id)
+                try:
+                    src_bps = self._get_source_bitrate(item_id)
+                    url, _method, effective_bps = self.auth.build_stream_url(
+                        item_id, media_source_id,
+                        start_time_secs=start_secs,
+                        source_bitrate_bps=src_bps,
+                    )
+                    if "startTimeTicks" in url:
+                        start_secs = 0
+                except Exception as e:
+                    log.warning(f"CDP simple URL rebuild failed: {e}")
 
             self._stop_jmp_playback()
-            self._launch_vlc_for_item(url, item_id, media_source_id, start_secs)
+            self._launch_vlc_for_item(url, item_id, media_source_id, start_secs,
+                                      stream_bitrate_bps=effective_bps)
 
         elif msg.startswith("VLC_BRIDGE:"):
             log.info(f"Bridge JS: {msg}")
+
+    def _get_source_bitrate(self, item_id):
+        """Fetch the source bitrate (bps) for an item via PlaybackInfo API."""
+        if not self.auth:
+            return None
+        try:
+            pinfo = self.auth.get_playback_info(item_id)
+            if not pinfo:
+                return None
+            sources = pinfo.get("MediaSources", [])
+            if sources:
+                bps = int(sources[0].get("Bitrate") or 0)
+                return bps if bps > 0 else None
+        except (ValueError, TypeError, KeyError) as e:
+            log.debug(f"Could not extract source bitrate: {e}")
+        return None
 
     def _get_resume_position(self, item_id):
         """Get the resume position for an item in seconds."""
@@ -1432,9 +1503,11 @@ class APIPoller:
         """
         Main loop: poll sessions and intercept playback.
         Blocks until shutdown_event is set.
+        Uses exponential backoff on connection failures.
         """
         self.running = True
         log.info("API poller running, polling sessions...")
+        consecutive_failures = 0
 
         while self.running and not shutdown_event.is_set():
             try:
@@ -1461,11 +1534,34 @@ class APIPoller:
                         # Nothing playing — reset tracker
                         self._last_playing_item = None
 
-            except Exception as e:
-                log.debug(f"Session poll error: {e}")
+                # Success — reset backoff
+                if consecutive_failures > 0:
+                    log.info(
+                        f"API poll recovered after "
+                        f"{consecutive_failures} failures"
+                    )
+                consecutive_failures = 0
 
-            # Sleep between polls (interruptible)
-            shutdown_event.wait(SESSION_POLL_INTERVAL)
+            except Exception as e:
+                consecutive_failures += 1
+                if consecutive_failures == 1:
+                    log.info(f"API poll failed, backing off: {e}")
+                elif consecutive_failures % 20 == 0:
+                    log.info(
+                        f"API poll still failing "
+                        f"({consecutive_failures} consecutive): {e}"
+                    )
+                else:
+                    log.debug(f"Session poll error: {e}")
+
+            # Exponential backoff on failure, normal interval on success
+            if consecutive_failures > 0:
+                backoff = min(
+                    SESSION_POLL_INTERVAL * (2 ** consecutive_failures), 30
+                )
+            else:
+                backoff = SESSION_POLL_INTERVAL
+            shutdown_event.wait(backoff)
 
         log.info("API poller stopped")
 
@@ -1520,8 +1616,9 @@ class APIPoller:
             stream_bitrate_bps = None
 
         # Build stream URL with server-side seek for transcodes
-        stream_url = self.auth.build_stream_url(
-            item_id, media_source_id, start_time_secs=start_secs)
+        stream_url, play_method, effective_bps = self.auth.build_stream_url(
+            item_id, media_source_id, start_time_secs=start_secs,
+            source_bitrate_bps=stream_bitrate_bps)
         # Server handled the seek — don't double-seek in VLC
         if "startTimeTicks" in stream_url:
             start_secs = 0
@@ -1529,7 +1626,8 @@ class APIPoller:
         log.info(
             f"Intercepting: {item_name} "
             f"(resume={start_secs:.0f}s, source={media_source_id[:8]}..., "
-            f"bitrate={stream_bitrate_bps or 'unknown'})"
+            f"bitrate={stream_bitrate_bps or 'unknown'}, "
+            f"method={play_method}, effective={effective_bps}bps)"
         )
 
         # Stop JMP playback
@@ -1546,7 +1644,7 @@ class APIPoller:
         end_position = launch_vlc(
             stream_url, start_time_secs=start_secs,
             item_id=item_id, jellyfin_auth=self.auth,
-            stream_bitrate_bps=stream_bitrate_bps,
+            stream_bitrate_bps=effective_bps,
         )
 
         # Report playback stopped
@@ -1624,27 +1722,49 @@ def main():
     api_thread.start()
     log.info("Strategy 2 (API polling) active as background/fallback")
 
-    # --- Main loop ---
-    if cdp_bridge:
-        # CDP is primary — run it in the foreground
-        try:
-            cdp_bridge.run()
-        except Exception as e:
-            log.error(f"CDP bridge crashed: {e}")
-        finally:
-            cdp_bridge.close()
+    # --- Main loop (CDP with reconnection) ---
+    # Whether CDP was available at startup or not, we enter a loop that
+    # keeps trying to (re)establish CDP.  The API poller runs throughout.
+    while not shutdown_event.is_set():
+        if cdp_bridge:
+            # CDP is primary — run it in the foreground (blocks until drop)
+            try:
+                cdp_bridge.run()
+            except Exception as e:
+                log.error(f"CDP bridge crashed: {e}")
+            finally:
+                cdp_bridge.close()
 
-        # CDP died — API poller is still running as fallback
-        if not shutdown_event.is_set():
-            log.info("CDP lost, API poller continues as primary")
-            # Just wait for shutdown
-            while not shutdown_event.is_set():
-                shutdown_event.wait(1)
-    else:
-        # No CDP — just wait for shutdown while API poller runs
-        log.info("Running with API polling only (no CDP)")
+            if shutdown_event.is_set():
+                break
+
+            log.info("CDP lost, API poller active. Will retry CDP in 15s...")
+        else:
+            log.info("CDP not available, API poller is primary. Will retry CDP in 15s...")
+
+        # --- CDP retry loop ---
+        # Periodically check if CDP becomes available (JMP restart, etc.)
         while not shutdown_event.is_set():
-            shutdown_event.wait(1)
+            shutdown_event.wait(15)
+            if shutdown_event.is_set():
+                break
+
+            if not HAS_WEBSOCKET:
+                continue  # no websocket lib, can never use CDP
+
+            status, _ = http_get(f"{CDP_URL}/json", timeout=3)
+            if status != 200:
+                continue
+
+            log.info("CDP endpoint detected, attempting reconnect...")
+            cdp_bridge = CDPBridge(auth)
+            if cdp_bridge.connect():
+                log.info("CDP reconnected successfully")
+                break  # back to outer loop to run CDP
+            else:
+                log.warning("CDP connect failed, will retry in 15s...")
+                cdp_bridge.close()
+                cdp_bridge = CDPBridge(auth)  # fresh instance for next try
 
     # --- Cleanup ---
     api_poller.stop()
