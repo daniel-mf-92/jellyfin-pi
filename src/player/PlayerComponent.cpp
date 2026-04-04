@@ -15,6 +15,8 @@
 
 #include "MpvVideoItem.h"
 #include "AlbumArtProvider.h"
+#include "VlcBackend.h"
+#include "StreamCacheManager.h"
 #include "input/InputComponent.h"
 #include <MpvController>
 
@@ -63,6 +65,13 @@ PlayerComponent::PlayerComponent(QObject* parent)
 
   m_reloadAudioTimer.setSingleShot(true);
   connect(&m_reloadAudioTimer, &QTimer::timeout, this, &PlayerComponent::updateAudioDevice);
+
+  // Initialize VLC backend and stream cache
+  m_vlcBackend = new VlcBackend(this);
+  m_vlcBackend->initialize();
+  connectVlcSignals();
+
+  m_streamCache = new StreamCacheManager(this);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////
@@ -284,6 +293,13 @@ bool PlayerComponent::load(const QString& url, const QVariantMap& options, const
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::queueMedia(const QString& url, const QVariantMap& options, const QVariantMap &metadata, const QVariant& audioStream, const QVariant& subtitleStream)
 {
+  // Route to VLC backend if active
+  if (isVlcActive())
+  {
+    queueMediaVlc(url, options, metadata);
+    return;
+  }
+
   if (!m_mpv) {
     qWarning() << "PlayerComponent::queueMedia: mpv not initialized yet";
     return;
@@ -729,6 +745,7 @@ void PlayerComponent::setVideoOnlyMode(bool enable)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::play()
 {
+  if (isVlcActive()) { m_vlcBackend->unpause(); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::play: mpv not initialized yet";
     return;
@@ -812,6 +829,7 @@ void PlayerComponent::notifyVolumeChange(double volume)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::stop()
 {
+  if (isVlcActive()) { m_vlcBackend->stop(); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::stop: mpv not initialized yet";
     return;
@@ -834,6 +852,7 @@ void PlayerComponent::clearQueue()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::pause()
 {
+  if (isVlcActive()) { m_vlcBackend->pause(); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::pause: mpv not initialized yet";
     return;
@@ -845,6 +864,7 @@ void PlayerComponent::pause()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::seekTo(qint64 ms)
 {
+  if (isVlcActive()) { m_vlcBackend->seekTo(ms); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::seekTo: mpv not initialized yet";
     return;
@@ -877,17 +897,18 @@ void PlayerComponent::setAudioDevice(const QString& name)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setVolume(int volume)
 {
+  if (isVlcActive()) { m_vlcBackend->setVolume(volume); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setVolume: mpv not initialized yet";
     return;
   }
-  // Will fail if no audio output opened (i.e. no file playing)
   m_mpv->setProperty( "volume", volume);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 int PlayerComponent::volume()
 {
+  if (isVlcActive()) return m_vlcBackend->volume();
   if (!m_mpv) {
     qWarning() << "PlayerComponent::volume: mpv not initialized yet";
     return 0;
@@ -1098,6 +1119,7 @@ void PlayerComponent::setSubtitleDelay(qint64 milliseconds)
 /////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setPlaybackRate(int rate)
 {
+  if (isVlcActive()) { m_vlcBackend->setRate(rate / 1000.0); emit playbackRateChanged(rate / 1000.0); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setPlaybackRate: mpv not initialized yet";
     return;
@@ -1110,6 +1132,7 @@ void PlayerComponent::setPlaybackRate(int rate)
 /////////////////////////////////////////////////////////////////////////////////////////
 qint64 PlayerComponent::getPosition()
 {
+  if (isVlcActive()) return m_vlcBackend->getPosition();
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getPosition: mpv not initialized yet";
     return 0;
@@ -1123,6 +1146,7 @@ qint64 PlayerComponent::getPosition()
 /////////////////////////////////////////////////////////////////////////////////////////
 qint64 PlayerComponent::getDuration()
 {
+  if (isVlcActive()) return m_vlcBackend->getDuration();
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getDuration: mpv not initialized yet";
     return 0;
@@ -1648,4 +1672,136 @@ QVariantList PlayerComponent::getWebPlaylist() const
 QString PlayerComponent::getCurrentWebPlaylistItemId() const
 {
   return m_currentWebPlaylistItemId;
+}
+
+// ---------------------------------------------------------------------------
+// Dual backend: VLC integration
+// ---------------------------------------------------------------------------
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::setBackend(const QString& name)
+{
+  if (name != "mpv" && name != "vlc")
+  {
+    qWarning() << "Unknown backend:" << name << "(use 'mpv' or 'vlc')";
+    return;
+  }
+  if (name == m_activeBackendName)
+    return;
+
+  qInfo() << "Switching player backend:" << m_activeBackendName << "->" << name;
+  m_activeBackendName = name;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+QString PlayerComponent::currentBackend() const
+{
+  return m_activeBackendName;
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::connectVlcSignals()
+{
+  connect(m_vlcBackend, &VlcBackend::backendPlaying, this, [this]() {
+    m_inPlayback = true;
+    m_paused = false;
+    m_playbackActive = true;
+    updatePlaybackState();
+  });
+  connect(m_vlcBackend, &VlcBackend::backendPaused, this, [this]() {
+    m_paused = true;
+    updatePlaybackState();
+  });
+  connect(m_vlcBackend, &VlcBackend::backendFinished, this, [this]() {
+    m_inPlayback = false;
+    m_playbackCanceled = false;
+    m_playbackError.clear();
+    if (m_streamCache)
+      m_streamCache->unpin();
+    updatePlaybackState();
+    // Return focus to JMP web view
+    setVideoOnlyMode(false);
+  });
+  connect(m_vlcBackend, &VlcBackend::backendCanceled, this, [this]() {
+    m_inPlayback = false;
+    m_playbackCanceled = true;
+    if (m_streamCache)
+      m_streamCache->unpin();
+    updatePlaybackState();
+    setVideoOnlyMode(false);
+  });
+  connect(m_vlcBackend, &VlcBackend::backendError, this, [this](const QString& msg) {
+    m_inPlayback = false;
+    m_playbackError = msg;
+    if (m_streamCache)
+      m_streamCache->unpin();
+    updatePlaybackState();
+    setVideoOnlyMode(false);
+  });
+  connect(m_vlcBackend, &VlcBackend::backendPositionChanged, this, [this](qint64 ms) {
+    emit positionUpdate(static_cast<quint64>(ms));
+  });
+  connect(m_vlcBackend, &VlcBackend::backendDurationChanged, this, [this](qint64 ms) {
+    emit updateDuration(ms);
+  });
+  connect(m_vlcBackend, &VlcBackend::backendBuffering, this, [this](int pct) {
+    m_bufferingPercentage = pct;
+    updatePlaybackState();
+  });
+  connect(m_vlcBackend, &VlcBackend::backendVideoPlaybackActive, this, [this](bool active) {
+    m_videoPlaybackActive = active;
+    emit videoPlaybackActive(active);
+  });
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////
+void PlayerComponent::queueMediaVlc(const QString& url, const QVariantMap& options, const QVariantMap& metadata)
+{
+  InputComponent::Get().cancelAutoRepeat();
+
+  m_mediaFrameRate = metadata["frameRate"].toFloat();
+  m_serverMediaInfo = metadata["media"].toMap();
+
+  // Check /dev/shm cache first
+  QString itemId;
+  QUrl qurl(url);
+  // Extract item ID from URL path: /Videos/<id>/stream
+  QRegularExpression re("/Videos/([a-f0-9]+)/", QRegularExpression::CaseInsensitiveOption);
+  QRegularExpressionMatch match = re.match(qurl.path());
+  if (match.hasMatch())
+    itemId = match.captured(1);
+
+  QString playUrl = url;
+  if (!itemId.isEmpty() && m_streamCache)
+  {
+    QString cached = m_streamCache->getCached(itemId);
+    if (!cached.isEmpty())
+    {
+      playUrl = cached;
+      qInfo() << "Playing from RAM cache:" << cached;
+    }
+    else
+    {
+      m_streamCache->startDownload(itemId, url);
+    }
+    m_streamCache->pin(itemId);
+  }
+
+  // Hide web view immediately (black splash)
+  setVideoOnlyMode(true);
+
+  // Display refresh rate switching (synchronous, before VLC launches)
+  switchDisplayFrameRate();
+
+  // Build VLC options
+  QVariantMap vlcOptions;
+  quint64 startMs = options["startMilliseconds"].toLongLong();
+  vlcOptions["startTime"] = startMs / 1000.0;
+
+  m_vlcBackend->play(playUrl, vlcOptions);
+
+  // Emit metadata for OS media integration
+  QVariantMap jellyfinMetadata = metadata["metadata"].toMap();
+  QUrl jellyfinBaseUrl = qurl.adjusted(QUrl::RemovePath | QUrl::RemoveQuery);
+  emit onMetaData(jellyfinMetadata, jellyfinBaseUrl);
 }

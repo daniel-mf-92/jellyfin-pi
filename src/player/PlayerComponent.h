@@ -18,6 +18,8 @@
 
 class MpvController;
 class AlbumArtProvider;
+class VlcBackend;
+class StreamCacheManager;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 class PlayerComponent : public ComponentBase
@@ -122,6 +124,11 @@ public:
   Q_INVOKABLE qint64 getPosition();
   Q_INVOKABLE qint64 getDuration();
 
+  // Backend switching (mpv or vlc)
+  Q_INVOKABLE void setBackend(const QString& name);
+  Q_INVOKABLE QString currentBackend() const;
+  Q_PROPERTY(bool useVlc READ useVlc CONSTANT)
+
   Q_INVOKABLE QVariantList getWebPlaylist() const;
   Q_INVOKABLE QString getCurrentWebPlaylistItemId() const;
   Q_INVOKABLE void setWebPlaylist(const QVariantList& playlist, const QString& currentItemId);
@@ -129,6 +136,8 @@ public:
   QRect videoRectangle() { return m_videoRectangle; }
 
   AlbumArtProvider* albumArtProvider() const { return m_albumArtProvider; }
+  bool useVlc() const { return m_activeBackendName == "vlc"; }
+  bool isVlcActive() const { return m_activeBackendName == "vlc"; }
 
   void setMpvController(MpvController* controller) {
     if (!m_mpv)
@@ -245,7 +254,13 @@ private:
   QVariantList findStreamsForURL(const QString &url);
   void reselectStream(const QVariant &streamSelection, MediaType target);
 
+  void connectVlcSignals();
+  void queueMediaVlc(const QString& url, const QVariantMap& options, const QVariantMap& metadata);
+
   MpvController* m_mpv = nullptr;
+  VlcBackend* m_vlcBackend = nullptr;
+  StreamCacheManager* m_streamCache = nullptr;
+  QString m_activeBackendName = QStringLiteral("mpv");
 
   State m_state;
   bool m_paused;
