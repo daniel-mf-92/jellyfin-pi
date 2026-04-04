@@ -197,13 +197,15 @@ impl BufferManager {
             server_url, item_id, token
         );
         let http_client = reqwest::Client::new();
-        let item_info = http_client
+        let item_info = match http_client
             .get(&item_url)
             .timeout(Duration::from_secs(5))
             .send()
             .await
-            .ok()
-            .and_then(|r| futures::executor::block_on(r.json::<serde_json::Value>()).ok());
+        {
+            Ok(resp) => resp.json::<serde_json::Value>().await.ok(),
+            Err(_) => None,
+        };
 
         let expected_size = item_info.as_ref().and_then(|info| {
             let ticks = info["RunTimeTicks"].as_u64().unwrap_or(0);
