@@ -143,12 +143,28 @@ impl QosController {
     }
 
     /// Send SIGSTOP or SIGCONT to go2rtc.
+    /// go2rtc runs as root (systemd), so we need sudo kill.
     async fn signal_go2rtc(&self, sig: Signal) {
+        let sig_name = match sig {
+            Signal::SIGSTOP => "STOP",
+            Signal::SIGCONT => "CONT",
+            _ => return,
+        };
         let pids = get_pids("go2rtc").await;
         for pid in pids {
-            match signal::kill(Pid::from_raw(pid), sig) {
-                Ok(()) => info!("QoS: go2rtc (pid {}) sent {:?}", pid, sig),
-                Err(e) => warn!("QoS: Failed to send {:?} to go2rtc pid {}: {}", sig, pid, e),
+            match Command::new("sudo")
+                .args(["kill", &format!("-{}", sig_name), &pid.to_string()])
+                .output()
+                .await
+            {
+                Ok(out) if out.status.success() => {
+                    info!("QoS: go2rtc (pid {}) sent SIG{}", pid, sig_name);
+                }
+                Ok(out) => {
+                    warn!("QoS: Failed to send SIG{} to go2rtc pid {}: {}",
+                        sig_name, pid, String::from_utf8_lossy(&out.stderr));
+                }
+                Err(e) => warn!("QoS: sudo kill failed for pid {}: {}", pid, e),
             }
         }
     }
