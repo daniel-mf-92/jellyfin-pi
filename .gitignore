@@ -1,0 +1,7 @@
+target/
+*.bak
+*.bak.*
+Cargo.lock
+.env
+.env.*
+!.env.example

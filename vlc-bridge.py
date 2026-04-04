@@ -67,14 +67,24 @@ try:
 except ImportError:
     HAS_WEBSOCKET = False
 
+# Load .env from script directory
+from pathlib import Path
+_env_file = Path(__file__).resolve().parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            _k, _v = _k.strip(), _v.strip().strip("\"'")
+            if _k and _k not in os.environ:
+                os.environ[_k] = _v
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-JELLYFIN_URL = os.environ.get(
-    "JELLYFIN_URL", "http://10.100.0.2:8096"
-)
-JELLYFIN_USER = os.environ.get("JELLYFIN_USER", "daniel@garden-stack.com")
+JELLYFIN_URL = os.environ.get("JELLYFIN_URL", "http://localhost:8096")
+JELLYFIN_USER = os.environ.get("JELLYFIN_USER", "")
 JELLYFIN_PASS = os.environ.get("JELLYFIN_PASS", "")
 
 CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
