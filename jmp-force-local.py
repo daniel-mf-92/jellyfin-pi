@@ -8,17 +8,30 @@ and wires up window.api so nativeshell.js works properly.
 """
 
 import json
+import os
 import time
 import urllib.request
+from pathlib import Path
 
 try:
     import websocket
 except Exception:
     raise SystemExit(0)
 
-SERVER_BASE = "http://localhost:8096"
-USER = "your-email@example.com"
-PASSWORD = ""
+# Load .env from script directory
+_env_file = Path(__file__).resolve().parent / ".env"
+if _env_file.exists():
+    for _line in _env_file.read_text().splitlines():
+        _line = _line.strip()
+        if _line and not _line.startswith("#") and "=" in _line:
+            _k, _, _v = _line.partition("=")
+            _k, _v = _k.strip(), _v.strip().strip("\"'")
+            if _k and _k not in os.environ:
+                os.environ[_k] = _v
+
+SERVER_BASE = os.environ.get("JELLYFIN_URL", "http://localhost:8096")
+USER = os.environ.get("JELLYFIN_USER", "")
+PASSWORD = os.environ.get("JELLYFIN_PASS", "")
 CDP_JSON_URL = "http://127.0.0.1:9222/json"
 
 # Minified Qt5 QWebChannel + QObject — standard implementation
