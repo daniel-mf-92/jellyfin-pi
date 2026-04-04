@@ -267,6 +267,39 @@ sudo apt install cec-utils python3-evdev
 
 Moonlight is installed as a native `.deb` package (`moonlight-qt`), not via Flatpak. This provides better performance and simpler process management. The launcher's "Games" entry brings Moonlight to the foreground. The Y button on the controller kills Moonlight and returns to the launcher, same as for JMP.
 
+### Handling offline gaming VM from launcher
+
+`show-moonlight.sh` now supports a full startup/wait flow for a remote gaming VM. The launcher can expose this state directly to the user by reading `PI_HOME_GAMES_STATUS_FILE` (default: `/tmp/pi-home-a-games-status`).
+
+Status format:
+
+```text
+<unix_ts>|<state>|<message>
+```
+
+Current states emitted by the script: `checking`, `starting`, `waiting`, `ready`, `launching`, `error`.
+
+To enable VM orchestration, define commands in `~/.config/pi-home-a/gaming-vm.env`:
+
+```bash
+mkdir -p ~/.config/pi-home-a
+cat > ~/.config/pi-home-a/gaming-vm.env <<'EOF'
+# Exit 0 when VM is reachable and ready for Moonlight
+GAMING_VM_READY_CHECK_CMD="<your-ready-check-command>"
+
+# Command that boots the gaming VM when it is offline
+GAMING_VM_START_CMD="<your-start-command>"
+
+# Optional tuning
+GAMING_VM_WAIT_TIMEOUT_SEC=240
+GAMING_VM_POLL_INTERVAL_SEC=5
+GAMING_VM_AUTO_START=1
+GAMING_VM_NOTIFY=1
+EOF
+```
+
+If no VM commands are configured, behavior stays backward-compatible: the script launches/focuses Moonlight immediately.
+
 ---
 
 ## Prerequisites
