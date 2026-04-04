@@ -841,6 +841,7 @@ void PlayerComponent::stop()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::clearQueue()
 {
+  if (isVlcActive()) return;  // VLC plays single items, no queue
   if (!m_mpv) {
     qWarning() << "PlayerComponent::clearQueue: mpv not initialized yet";
     return;
@@ -877,6 +878,7 @@ void PlayerComponent::seekTo(qint64 ms)
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 QVariant PlayerComponent::getAudioDeviceList()
 {
+  if (isVlcActive()) return QVariantList();
   if (!m_mpv) {
     qWarning() << "PlayerComponent::getAudioDeviceList: mpv not initialized yet";
     return QVariant();
@@ -887,6 +889,7 @@ QVariant PlayerComponent::getAudioDeviceList()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setAudioDevice(const QString& name)
 {
+  if (isVlcActive()) return;  // VLC audio device set at launch
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setAudioDevice: mpv not initialized yet";
     return;
@@ -922,17 +925,18 @@ int PlayerComponent::volume()
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 void PlayerComponent::setMuted(bool muted)
 {
+  if (isVlcActive()) { m_vlcBackend->setMuted(muted); return; }
   if (!m_mpv) {
     qWarning() << "PlayerComponent::setMuted: mpv not initialized yet";
     return;
   }
-  // Will fail if no audio output opened (i.e. no file playing)
   m_mpv->setProperty( "mute", muted);
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 bool PlayerComponent::muted()
 {
+  if (isVlcActive()) return m_vlcBackend->muted();
   if (!m_mpv) {
     qWarning() << "PlayerComponent::muted: mpv not initialized yet";
     return false;
@@ -1576,6 +1580,9 @@ void PlayerComponent::appendAudioFormat(QTextStream& info, const QString& proper
 /////////////////////////////////////////////////////////////////////////////////////////
 QString PlayerComponent::videoInformation() const
 {
+  if (isVlcActive())
+    return m_vlcBackend->videoInformation();
+
   QString infoStr;
   QTextStream info(&infoStr);
 
