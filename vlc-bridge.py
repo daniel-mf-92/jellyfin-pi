@@ -306,14 +306,15 @@ class JellyfinAuth:
         log.info(f"Stop session {session_id}: HTTP {status}")
         return status == 204 or status == 200
 
-    def report_playback_start(self, item_id, media_source_id, position_ticks=0):
+    def report_playback_start(self, item_id, media_source_id, position_ticks=0,
+                             play_method="DirectStream"):
         """Report playback started to Jellyfin (so it tracks progress)."""
         url = f"{self.server_url}/Sessions/Playing"
         data = {
             "ItemId": item_id,
             "MediaSourceId": media_source_id,
             "PositionTicks": position_ticks,
-            "PlayMethod": "DirectStream",
+            "PlayMethod": play_method,
             "PlaySessionId": f"vlc-{int(time.time())}",
         }
         status, _ = http_post(url, data=data, headers=self.headers())
@@ -329,25 +330,395 @@ class JellyfinAuth:
         status, _ = http_post(url, data=data, headers=self.headers())
         log.debug(f"Report playback stop: HTTP {status}")
 
-    def build_stream_url(self, item_id, media_source_id):
-        """Build a direct stream URL for VLC."""
-        params = urllib.parse.urlencode({
-            "static": "true",
+    def build_stream_url(self, item_id, media_source_id, start_time_secs=0):
+        """Build stream URL, transcoding to match available bandwidth.
+
+        NOTE: startTimeTicks is NOT included — VLC handles seeking via
+        --start-time so the same URL can be cached in /dev/shm between plays.
+        """
+        bw = _get_bandwidth_config()
+        # Conservative defaults — the WireGuard pipe is often < 1 Mbps
+        video_br = bw.get("video_bitrate", 500000)
+        audio_br = bw.get("audio_bitrate", 64000)
+        max_w = bw.get("max_width", 854)
+        max_h = bw.get("max_height", 480)
+
+        # Extra safety: cut video bitrate by 20% below measured target
+        # to absorb jitter and TCP overhead
+        video_br = int(video_br * 0.80)
+        video_br = max(150000, (video_br // 50000) * 50000)  # floor + round
+
+        transcode_params = {
+            "Static": "false",
+            "VideoCodec": "h264",
+            "AudioCodec": "aac",
+            "MaxVideoBitDepth": "8",
+            "VideoBitRate": str(video_br),
+            "AudioBitRate": str(audio_br),
+            "MaxWidth": str(max_w),
+            "MaxHeight": str(max_h),
+            "SubtitleStreamIndex": "-1",
             "mediaSourceId": media_source_id,
             "api_key": self.token,
-        })
-        return f"{self.server_url}/Videos/{item_id}/stream?{params}"
+        }
+        # NO startTimeTicks — VLC seeks via --start-time instead,
+        # so the transcoded stream URL is stable and cacheable.
+
+        params = urllib.parse.urlencode(transcode_params)
+        effective_bps = video_br + audio_br
+        log.info(
+            f"Stream profile: {video_br/1000:.0f}kbps video, "
+            f"{audio_br/1000:.0f}kbps audio, {max_w}x{max_h} "
+            f"(total={effective_bps/1000:.0f}kbps)"
+        )
+        return f"{self.server_url}/Videos/{item_id}/stream.mkv?{params}"
+
+
+# ---------------------------------------------------------------------------
+# Bandwidth-aware streaming
+# ---------------------------------------------------------------------------
+
+BW_CONFIG_FILE = Path("/tmp/pi-home-wg-bandwidth.json")
+
+def _get_bandwidth_config():
+    """Read bandwidth config written by master script every 5 min."""
+    try:
+        if BW_CONFIG_FILE.exists():
+            with open(BW_CONFIG_FILE) as f:
+                cfg = json.load(f)
+            # Sanity: file must be < 30 min old
+            ts = cfg.get("timestamp", "")
+            if ts and ts != "now":
+                from datetime import datetime, timezone
+                try:
+                    written = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    age = (datetime.now(timezone.utc) - written).total_seconds()
+                    if age > 1800:
+                        log.debug(f"BW config stale ({age:.0f}s old), ignoring")
+                        return {}
+                except Exception:
+                    pass
+            return cfg
+    except Exception as e:
+        log.warning(f"Could not read bandwidth config: {e}")
+    return {}
+
+
+# ---------------------------------------------------------------------------
+# Adaptive RAM cache
+# ---------------------------------------------------------------------------
+
+# Tunables (override via environment)
+CACHE_RAM_RESERVE_GB = float(os.environ.get("VLC_CACHE_RAM_RESERVE_GB", "2"))
+CACHE_MAX_SECS = int(os.environ.get("VLC_CACHE_MAX_SECS", "300"))      # 5 min cap
+CACHE_MIN_SECS = int(os.environ.get("VLC_CACHE_MIN_SECS", "15"))       # floor
+CACHE_MAX_PREFETCH_MB = int(os.environ.get("VLC_CACHE_MAX_PREFETCH_MB", "512"))
+CACHE_DEFAULT_BITRATE_BPS = 4_000_000  # 4 Mbps fallback assumption
+
+
+def _get_available_ram_bytes():
+    """Read MemAvailable from /proc/meminfo."""
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    return int(line.split()[1]) * 1024  # kB -> bytes
+    except Exception as e:
+        log.warning(f"Could not read /proc/meminfo: {e}")
+    return 0
+
+
+def get_adaptive_cache_params(stream_bitrate_bps=None):
+    """
+    Calculate VLC cache parameters based on available system RAM and stream
+    bitrate.  Returns a dict with keys used by launch_vlc().
+
+    Strategy:
+      1. Read available RAM, subtract a safety reserve.
+      2. Given the stream bitrate, compute how many seconds of content the
+         remaining RAM can hold.
+      3. Clamp to [CACHE_MIN_SECS .. CACHE_MAX_SECS].
+      4. Size the prefetch buffer as 25 % of usable RAM (capped).
+    """
+    available = _get_available_ram_bytes()
+
+    if available <= 0:
+        # Cannot determine RAM — use conservative 30 s defaults
+        log.warning("RAM detection failed, using 30 s static cache")
+        return {
+            "network_caching_ms": 30_000,
+            "file_caching_ms": 30_000,
+            "live_caching_ms": 30_000,
+            "prefetch_buffer_size": 16 * 1024 * 1024,  # 16 MB
+        }
+
+    reserve = int(CACHE_RAM_RESERVE_GB * 1024 ** 3)
+    usable = max(available - reserve, 256 * 1024 * 1024)   # at least 256 MB
+    usable = min(usable, int(available * 0.75))             # never exceed 75 %
+
+    # Effective bitrate (bits/sec -> bytes/sec)
+    bitrate = stream_bitrate_bps if stream_bitrate_bps and stream_bitrate_bps > 0 else CACHE_DEFAULT_BITRATE_BPS
+    stream_Bps = bitrate / 8
+
+    # Time-based cache
+    max_cache_secs = usable / stream_Bps if stream_Bps > 0 else CACHE_MAX_SECS
+    cache_secs = max(CACHE_MIN_SECS, min(max_cache_secs, CACHE_MAX_SECS))
+    cache_ms = int(cache_secs * 1000)
+
+    # Prefetch buffer — 25 % of usable, capped
+    prefetch = min(usable // 4, CACHE_MAX_PREFETCH_MB * 1024 * 1024)
+    prefetch = max(prefetch, 1024 * 1024)  # at least 1 MB
+
+    # network-caching controls how long VLC buffers BEFORE showing the first
+    # frame — it must stay LOW (fast startup).  The deep read-ahead lives in
+    # prefetch-buffer-size which buffers in the background without blocking.
+    STARTUP_CACHE_MS = 15000  # 15 s — WireGuard via Azure has 150ms RTT + jitter
+    FILE_CACHE_MS = 300       # local /dev/shm files need almost nothing
+
+    log.info(
+        f"Adaptive cache: avail={available / 1024 ** 3:.1f}GB "
+        f"usable={usable / 1024 ** 3:.1f}GB "
+        f"bitrate={bitrate / 1e6:.1f}Mbps "
+        f"prefetch={prefetch / 1024 ** 2:.0f}MB"
+    )
+
+    return {
+        "network_caching_ms": STARTUP_CACHE_MS,
+        "file_caching_ms": FILE_CACHE_MS,
+        "live_caching_ms": STARTUP_CACHE_MS,
+        "prefetch_buffer_size": int(prefetch),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Persistent RAM cache  (/dev/shm — tmpfs, survives process exit)
+# ---------------------------------------------------------------------------
+#
+# Strategy: download every stream to /dev/shm while VLC plays it.  After VLC
+# exits the file stays in RAM.  Next play of the same item is instant from
+# file://.  When system MemAvailable drops below a floor, evict the OLDEST
+# accessed entry first (LRU).  The currently-playing entry is never evicted.
+#
+# /dev/shm is 8 GB on this Pi 5 (50 % of 16 GB).  We can resize it with
+# VLC_CACHE_SHM_SIZE_GB or via `sudo mount -o remount,size=12g /dev/shm`.
+
+CACHE_DIR = Path(os.environ.get("VLC_CACHE_DIR", "/dev/shm/vlc-cache"))
+CACHE_PRESSURE_FLOOR_GB = float(os.environ.get("VLC_CACHE_PRESSURE_FLOOR_GB", "2.0"))
+
+
+class StreamCache:
+    """
+    RAM-backed LRU media cache with memory-pressure eviction.
+
+    Eviction order (chronological):
+      1. Oldest-accessed entry first  (pure LRU)
+      2. Currently-playing entry is pinned — never evicted
+      3. Eviction only triggers when MemAvailable < CACHE_PRESSURE_FLOOR_GB
+    """
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._entries = {}              # item_id -> dict
+        self._download_stops = {}       # item_id -> threading.Event
+        self._playing_id = None         # pinned item
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        self._scan_existing()
+        threading.Thread(target=self._pressure_loop, daemon=True).start()
+        log.info(
+            f"StreamCache: dir={CACHE_DIR} "
+            f"floor={CACHE_PRESSURE_FLOOR_GB}GB "
+            f"existing={len(self._entries)} items"
+        )
+
+    # -- bootstrap -----------------------------------------------------------
+
+    def _scan_existing(self):
+        """Re-register files that survived a restart (oldest priority)."""
+        for f in CACHE_DIR.iterdir():
+            if f.is_file():
+                item_id = f.stem
+                try:
+                    st = f.stat()
+                except OSError:
+                    continue
+                self._entries[item_id] = {
+                    "path": f,
+                    "size": st.st_size,
+                    "complete": True,
+                    "downloading": False,
+                    "last_access": st.st_mtime,
+                }
+
+    # -- public API ----------------------------------------------------------
+
+    def get(self, item_id):
+        """Return local file path if fully cached, else None."""
+        with self._lock:
+            e = self._entries.get(item_id)
+            if e and e["complete"] and e["path"].exists():
+                e["last_access"] = time.time()
+                return str(e["path"])
+        return None
+
+    def pin(self, item_id):
+        """Mark item as currently playing (immune to eviction)."""
+        with self._lock:
+            self._playing_id = item_id
+            e = self._entries.get(item_id)
+            if e:
+                e["last_access"] = time.time()
+
+    def unpin(self):
+        """Clear the currently-playing pin (item stays cached, just evictable)."""
+        with self._lock:
+            if self._playing_id and self._playing_id in self._entries:
+                self._entries[self._playing_id]["last_access"] = time.time()
+            self._playing_id = None
+
+    def start_download(self, item_id, url):
+        """Begin background download of stream to /dev/shm (idempotent)."""
+        with self._lock:
+            e = self._entries.get(item_id)
+            if e and (e["complete"] or e.get("downloading")):
+                return                  # already done or in progress
+            stop_evt = threading.Event()
+            self._download_stops[item_id] = stop_evt
+            self._entries[item_id] = {
+                "path": CACHE_DIR / item_id,
+                "size": 0,
+                "complete": False,
+                "downloading": True,
+                "last_access": time.time(),
+            }
+        threading.Thread(
+            target=self._download, args=(item_id, url, stop_evt), daemon=True
+        ).start()
+
+    def cancel_download(self, item_id):
+        evt = self._download_stops.pop(item_id, None)
+        if evt:
+            evt.set()
+
+    def stats(self):
+        with self._lock:
+            total = sum(e["size"] for e in self._entries.values())
+            n = len(self._entries)
+            pinned = self._playing_id or "none"
+        return f"{n} items {total / 1024 ** 2:.0f}MB pinned={pinned}"
+
+    # -- download ------------------------------------------------------------
+
+    def _download(self, item_id, url, stop_evt):
+        entry = self._entries.get(item_id)
+        if not entry:
+            return
+        path = entry["path"]
+        log.info(f"Cache download start: {item_id[:8]}...")
+        try:
+            req = urllib.request.Request(url)
+            with urllib.request.urlopen(req, timeout=600) as resp:
+                with open(path, "wb") as f:
+                    while not stop_evt.is_set():
+                        chunk = resp.read(256 * 1024)   # 256 KB
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        with self._lock:
+                            entry["size"] += len(chunk)
+                        # Pause under pressure (don't make it worse)
+                        if _get_available_ram_bytes() < CACHE_PRESSURE_FLOOR_GB * 1024 ** 3:
+                            log.info(f"Cache download paused ({item_id[:8]}): RAM pressure")
+                            for _ in range(15):          # wait up to 30 s
+                                if stop_evt.wait(2):
+                                    break
+                                if _get_available_ram_bytes() >= CACHE_PRESSURE_FLOOR_GB * 1024 ** 3:
+                                    break
+                            else:
+                                log.warning(f"Cache download aborted ({item_id[:8]}): sustained pressure")
+                                with self._lock:
+                                    entry["downloading"] = False
+                                return
+
+            with self._lock:
+                entry["complete"] = True
+                entry["downloading"] = False
+            log.info(
+                f"Cache complete: {item_id[:8]} "
+                f"size={entry['size'] / 1024 ** 2:.0f}MB [{self.stats()}]"
+            )
+        except Exception as e:
+            log.warning(f"Cache download error ({item_id[:8]}): {e}")
+            with self._lock:
+                entry["downloading"] = False
+                # Partial file stays — might be useful for restart later
+
+    # -- pressure monitor (LRU eviction) ------------------------------------
+
+    def _pressure_loop(self):
+        """Every 5 s: if MemAvailable < floor, evict oldest non-pinned entry."""
+        while not shutdown_event.is_set():
+            shutdown_event.wait(5)
+            avail = _get_available_ram_bytes()
+            floor = CACHE_PRESSURE_FLOOR_GB * 1024 ** 3
+            if avail < floor:
+                self._evict_lru(avail)
+
+    def _evict_lru(self, avail_bytes):
+        with self._lock:
+            candidates = [
+                (k, v) for k, v in self._entries.items()
+                if k != self._playing_id and not v.get("downloading")
+            ]
+            if not candidates:
+                log.warning(
+                    f"RAM pressure ({avail_bytes / 1024 ** 3:.1f}GB free) "
+                    f"but nothing evictable"
+                )
+                return
+            # Pure LRU: oldest last_access first
+            candidates.sort(key=lambda kv: kv[1]["last_access"])
+            victim_id, victim = candidates[0]
+            try:
+                victim["path"].unlink(missing_ok=True)
+            except OSError:
+                pass
+            freed_mb = victim["size"] / 1024 ** 2
+            del self._entries[victim_id]
+        log.info(
+            f"Cache evict (LRU): {victim_id[:8]} "
+            f"freed={freed_mb:.0f}MB "
+            f"(was {avail_bytes / 1024 ** 3:.1f}GB free) [{self.stats()}]"
+        )
+
+    def cleanup(self):
+        """Remove everything (called on shutdown)."""
+        with self._lock:
+            for e in self._entries.values():
+                try:
+                    e["path"].unlink(missing_ok=True)
+                except OSError:
+                    pass
+            self._entries.clear()
+            self._playing_id = None
+
+
+# Global instance
+stream_cache = StreamCache()
 
 
 # ---------------------------------------------------------------------------
 # VLC launcher
 # ---------------------------------------------------------------------------
 
-def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None):
+def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
+               stream_bitrate_bps=None):
     """
     Launch VLC fullscreen with the given stream URL.
     Blocks until VLC exits. Handles foreground-app tracking.
     Returns the approximate playback position in seconds when VLC exited.
+
+    stream_bitrate_bps: if known, the total bitrate of the stream in bits/sec.
+    Used to size the adaptive RAM cache; falls back to a sensible default.
     """
     global current_vlc_proc
 
@@ -361,29 +732,90 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None):
             except subprocess.TimeoutExpired:
                 current_vlc_proc.kill()
 
+    # -- Persistent RAM cache: serve from /dev/shm if available -------------
+    play_url = url
+    if item_id:
+        cached_path = stream_cache.get(item_id)
+        if cached_path:
+            play_url = cached_path
+            log.info(f"Playing from RAM cache: {cached_path}")
+        else:
+            # Download to cache in background while VLC streams from network
+            stream_cache.start_download(item_id, url)
+        stream_cache.pin(item_id)
+
+    cache = get_adaptive_cache_params(stream_bitrate_bps)
+
     cmd = [
         VLC_BIN,
         "--fullscreen",
         "--play-and-exit",
         f"--audio-desync={VLC_AUDIO_DESYNC}",
+        f"--network-caching={cache['network_caching_ms']}",
+        f"--file-caching={cache['file_caching_ms']}",
+        f"--live-caching={cache['live_caching_ms']}",
+        "--http-reconnect",
+        "--http-continuous",
         "--no-video-title-show",
         "--quiet",
+        "--input-fast-seek",
+        f"--prefetch-buffer-size={cache['prefetch_buffer_size']}",
+        "--avcodec-threads=4",
     ]
 
     if start_time_secs > 0:
         cmd.append(f"--start-time={start_time_secs}")
 
-    cmd.append(url)
+    cmd.append(play_url)
 
     env = {**os.environ, **WAYLAND_ENV}
 
+    from_cache = play_url != url
     log.info(
-        f"Launching VLC: start_time={start_time_secs}s, "
-        f"audio_desync={VLC_AUDIO_DESYNC}ms"
+        f"Launching VLC: start={start_time_secs}s "
+        f"desync={VLC_AUDIO_DESYNC}ms "
+        f"net_cache={cache['network_caching_ms']}ms "
+        f"prefetch={cache['prefetch_buffer_size'] / 1024 ** 2:.0f}MB "
+        f"source={'RAM cache' if from_cache else 'network'}"
     )
-    log.debug(f"VLC command: {' '.join(cmd[:6])}... <url>")
+    log.debug(f"VLC command: {' '.join(cmd[:8])}... <url>")
 
     set_foreground("vlc")
+
+    # -- Instant black splash while VLC loads ------------------------------
+    splash_proc = None
+    splash_script = Path.home() / "bin" / "black-splash.py"
+    if splash_script.exists():
+        try:
+            splash_proc = subprocess.Popen(
+                ["python3", str(splash_script)],
+                env={**os.environ, **WAYLAND_ENV},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            log.debug("Black splash launched")
+        except Exception as e:
+            log.warning(f"Splash launch failed: {e}")
+
+    def _kill_splash_when_vlc_ready(splash, vlc):
+        """Background: poll for VLC window, then kill splash."""
+        for _ in range(60):          # up to 6 s
+            time.sleep(0.1)
+            if vlc.poll() is not None:
+                break                # VLC already exited
+            try:
+                r = subprocess.run(
+                    ["wlrctl", "toplevel", "focus", "app_id:vlc"],
+                    capture_output=True, timeout=1,
+                )
+                if r.returncode == 0:
+                    break
+            except Exception:
+                pass
+        if splash.poll() is None:
+            splash.terminate()
+            log.debug("Splash dismissed")
+
     vlc_start_time = time.time()
 
     try:
@@ -394,6 +826,14 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+
+        # Kill splash once VLC window appears (non-blocking)
+        if splash_proc:
+            threading.Thread(
+                target=_kill_splash_when_vlc_ready,
+                args=(splash_proc, current_vlc_proc),
+                daemon=True,
+            ).start()
 
         # Wait for VLC to exit
         current_vlc_proc.wait()
@@ -414,6 +854,13 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None):
     finally:
         with vlc_lock:
             current_vlc_proc = None
+
+        # Kill splash if still alive (safety net)
+        if splash_proc and splash_proc.poll() is None:
+            splash_proc.terminate()
+
+        # Unpin but keep cached — LRU timestamp refreshed, data stays in RAM
+        stream_cache.unpin()
 
         # Return focus to JMP
         set_foreground("jellyfin")
@@ -805,11 +1252,28 @@ class CDPBridge:
                 if start_secs == 0 and item_id and self.auth:
                     start_secs = self._get_resume_position(item_id)
 
+                # Rebuild URL through adaptive build_stream_url if possible
+                effective_bps = None
+                if self.auth and item_id and media_source_id:
+                    try:
+                        pinfo = self.auth.get_playback_info(item_id)
+                        src_bps = None
+                        if pinfo:
+                            msources = pinfo.get("MediaSources", [])
+                            if msources:
+                                src_bps = int(msources[0].get("Bitrate") or 0) or None
+                        url, _method, effective_bps = self.auth.build_stream_url(
+                            item_id, media_source_id, source_bitrate_bps=src_bps
+                        )
+                    except Exception as e:
+                        log.warning(f"CDP URL rebuild failed, using JS URL: {e}")
+
                 # Stop JMP's internal playback via JS
                 self._stop_jmp_playback()
 
                 # Launch VLC
-                self._launch_vlc_for_item(url, item_id, media_source_id, start_secs)
+                self._launch_vlc_for_item(url, item_id, media_source_id, start_secs,
+                                          stream_bitrate_bps=effective_bps)
 
             except json.JSONDecodeError as e:
                 log.error(f"Failed to parse VLC_PLAY_INFO: {e}")
@@ -892,16 +1356,18 @@ class CDPBridge:
         except Exception as e:
             log.warning(f"Failed to stop JMP playback: {e}")
 
-    def _launch_vlc_for_item(self, url, item_id, media_source_id, start_secs):
+    def _launch_vlc_for_item(self, url, item_id, media_source_id, start_secs,
+                             stream_bitrate_bps=None):
         """Launch VLC for a specific item (runs in a thread to not block CDP)."""
         thread = threading.Thread(
             target=self._vlc_playback_thread,
-            args=(url, item_id, media_source_id, start_secs),
+            args=(url, item_id, media_source_id, start_secs, stream_bitrate_bps),
             daemon=True,
         )
         thread.start()
 
-    def _vlc_playback_thread(self, url, item_id, media_source_id, start_secs):
+    def _vlc_playback_thread(self, url, item_id, media_source_id, start_secs,
+                              stream_bitrate_bps=None):
         """Thread: launch VLC, wait for exit, report position."""
         # Report playback start to Jellyfin
         if self.auth and item_id:
@@ -914,6 +1380,7 @@ class CDPBridge:
         end_position = launch_vlc(
             url, start_time_secs=start_secs,
             item_id=item_id, jellyfin_auth=self.auth,
+            stream_bitrate_bps=stream_bitrate_bps,
         )
 
         # Report playback stopped to Jellyfin with approximate position
@@ -1046,12 +1513,20 @@ class APIPoller:
         media_source = media_sources[0]
         media_source_id = media_source.get("Id", item_id)
 
-        # Build stream URL
-        stream_url = self.auth.build_stream_url(item_id, media_source_id)
+        # Extract bitrate for adaptive cache sizing
+        try:
+            stream_bitrate_bps = int(media_source.get("Bitrate") or 0) or None
+        except (ValueError, TypeError):
+            stream_bitrate_bps = None
+
+        # Build stream URL (no startTimeTicks — VLC handles seeking)
+        stream_url = self.auth.build_stream_url(
+            item_id, media_source_id, start_time_secs=start_secs)
 
         log.info(
             f"Intercepting: {item_name} "
-            f"(resume={start_secs:.0f}s, source={media_source_id[:8]}...)"
+            f"(resume={start_secs:.0f}s, source={media_source_id[:8]}..., "
+            f"bitrate={stream_bitrate_bps or 'unknown'})"
         )
 
         # Stop JMP playback
@@ -1068,6 +1543,7 @@ class APIPoller:
         end_position = launch_vlc(
             stream_url, start_time_secs=start_secs,
             item_id=item_id, jellyfin_auth=self.auth,
+            stream_bitrate_bps=stream_bitrate_bps,
         )
 
         # Report playback stopped
