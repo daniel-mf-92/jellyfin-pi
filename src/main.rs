@@ -3,6 +3,7 @@ mod player;
 mod input;
 mod state;
 mod config;
+mod daemon;
 
 use api::{JellyfinClient, ImageCache};
 use api::models::*;
@@ -205,10 +206,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let client = Arc::new(RwLock::new(JellyfinClient::new(&config)));
     let image_cache = Arc::new(ImageCache::new(reqwest::Client::new()));
     let state = Arc::new(StateManager::new(config.server.url.clone()));
+    let daemon_cb_max = config.daemon.circuit_breaker_max_per_hour;
     let config = Arc::new(RwLock::new(config));
 
     // 3. Create MpvPlayer (lazy: created when playback starts)
     let player: Arc<Mutex<Option<VlcPlayer>>> = Arc::new(Mutex::new(None));
+
+    // 3b. Create daemon manager (baked-in background tasks)
+    let mut daemon_mgr = daemon::DaemonManager::new(daemon_cb_max);
+    let daemon_event_rx = daemon_mgr.take_event_receiver();
+    let _daemon_shared = daemon_mgr.shared();
+    let daemon_player_tx = daemon_mgr.player_event_sender();
+    let daemon_screen_tx = daemon_mgr.screen_watch_sender();
+    daemon_mgr.start(client.clone(), config.clone(), state.clone());
+
 
     // 4. Create Slint UI
     let ui = AppWindow::new()?;
@@ -224,6 +235,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.clone(),
         image_cache.clone(),
         state.clone(),
+        daemon_screen_tx,
     );
     setup_auth_callbacks(
         &ui,
@@ -237,6 +249,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.clone(),
         state.clone(),
         player.clone(),
+        daemon_player_tx.clone(),
     );
     setup_content_callbacks(
         &ui,
@@ -333,6 +346,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
+    // 11b. Spawn daemon event consumer
+    if let Some(mut daemon_rx) = daemon_event_rx {
+        tokio::spawn(async move {
+            while let Some(event) = daemon_rx.recv().await {
+                match event {
+                    daemon::DaemonEvent::BufferReady { item_id, path } => {
+                        info!("Daemon: buffer ready for {}: {}", item_id, path);
+                    }
+                    daemon::DaemonEvent::BandwidthUpdated(profile) => {
+                        debug!("Daemon: bandwidth updated: {}bps video", profile.video_bitrate);
+                    }
+                    daemon::DaemonEvent::BitrateAdapted { video_bitrate, audio_bitrate } => {
+                        info!("Daemon: bitrate adapted: video={}bps audio={}bps", video_bitrate, audio_bitrate);
+                    }
+                    daemon::DaemonEvent::QosEnabled => {
+                        info!("Daemon: QoS streaming mode enabled");
+                    }
+                    daemon::DaemonEvent::QosDisabled => {
+                        info!("Daemon: QoS streaming mode disabled");
+                    }
+                }
+            }
+        });
+    }
+
     // 12. Run Slint event loop (blocks)
     ui.run()?;
 
@@ -349,6 +387,7 @@ fn setup_navigation_callbacks(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
     state: Arc<StateManager>,
+    daemon_screen_tx: tokio::sync::watch::Sender<String>,
 ) {
     // navigate(screen, param)
     let ui_weak = ui.as_weak();
@@ -362,6 +401,9 @@ fn setup_navigation_callbacks(
         let state = state_clone.clone();
         let screen_str = screen.to_string();
         let param_str = param.to_string();
+
+        // Notify daemon of screen change (for foreground-app tracking)
+        let _ = daemon_screen_tx.send(screen_str.clone());
 
         let _ = slint::spawn_local(async move {
             debug!("Navigate requested: screen={}, param={}", screen_str, param_str);
@@ -692,6 +734,7 @@ fn setup_playback_callbacks(
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
     player: Arc<Mutex<Option<VlcPlayer>>>,
+    daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
 ) {
     // play-item(item_id)
     let ui_weak = ui.as_weak();
@@ -703,6 +746,7 @@ fn setup_playback_callbacks(
         let client = client_clone.clone();
         let state = state_clone.clone();
         let player = player_clone.clone();
+        let daemon_player_tx = daemon_player_tx.clone();
         let item_id_str = item_id.to_string();
 
         tokio::spawn(async move {
@@ -917,12 +961,14 @@ fn setup_playback_callbacks(
                     let client_ev = client.clone();
                     let state_ev = state.clone();
                     let player_ev = player.clone();
+                    let daemon_tx_ev = daemon_player_tx.clone();
                     tokio::spawn(async move {
                         handle_player_events(
                             ui_weak_ev,
                             client_ev,
                             state_ev,
                             player_ev,
+                            daemon_tx_ev,
                         )
                         .await;
                     });
@@ -1788,6 +1834,7 @@ async fn handle_player_events(
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
     player: Arc<Mutex<Option<VlcPlayer>>>,
+    daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
 ) {
     // Take the event receiver from the player
     let mut event_rx = {
@@ -1847,6 +1894,9 @@ async fn handle_player_events(
     let progress_interval = tokio::time::Duration::from_secs(10);
 
     while let Some(event) = event_rx.recv().await {
+        // Forward all player events to daemon (QoS, streaming health, screen-alive)
+        let _ = daemon_player_tx.send(event.clone());
+
         match event {
             PlayerEvent::PositionChanged {
                 position_ms,
