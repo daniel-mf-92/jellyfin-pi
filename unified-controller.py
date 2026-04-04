@@ -72,7 +72,7 @@ except ImportError:
 CONTROLLER_MAC = "98:41:5C:37:CB:EB"
 CONTROLLER_NAMES = ["Pro Controller"]
 IDLE_TIMEOUT = 900           # 15 minutes → auto-disconnect
-FOREGROUND_POLL_S = 0.5      # how often to check foreground app
+FOREGROUND_POLL_S = 2.0      # how often to check foreground app (was 0.5, raised to reduce subprocess overhead)
 RECONNECT_POLL_S = 5.0       # how often to check for reconnected controller
 
 # D-pad repeat with acceleration
@@ -112,6 +112,17 @@ JELLYFIN_APPS = {
     "jellyfin-tv", "jellyfin", "jmp",
 }
 MOONLIGHT_APPS = {"moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
+
+# App families for alias matching (state file names vs wlrctl app_ids)
+_APP_FAMILIES = [JELLYFIN_APPS, MOONLIGHT_APPS, LAUNCHER_APPS]
+
+def _apps_are_aliases(a, b):
+    """Check if two app identifiers belong to the same known app family."""
+    a_lower, b_lower = a.lower(), b.lower()
+    for family in _APP_FAMILIES:
+        if a_lower in family and b_lower in family:
+            return True
+    return False
 
 # Accelerating hold config
 ACCEL_INITIAL_DELAY = 0.500     # delay before first repeat when held
@@ -401,8 +412,18 @@ def bt_disconnect():
 
 FOREGROUND_STATE_FILE = "/tmp/foreground-app"
 
+_wlrctl_cache = []
+_wlrctl_cache_time = 0.0
+_WLRCTL_CACHE_TTL = 5.0  # seconds — avoid spawning wlrctl more than once per 5s
+
+
 def _visible_wayland_apps():
-    """Best-effort visible app IDs from wlrctl to recover from stale state file."""
+    """Best-effort visible app IDs from wlrctl (cached to avoid subprocess spam)."""
+    global _wlrctl_cache, _wlrctl_cache_time
+    now = time.monotonic()
+    if now - _wlrctl_cache_time < _WLRCTL_CACHE_TTL:
+        return _wlrctl_cache
+
     try:
         env = {
             "WAYLAND_DISPLAY": "wayland-0",
@@ -423,13 +444,22 @@ def _visible_wayland_apps():
             app_id = line.split(":", 1)[0].strip().lower()
             if app_id:
                 apps.append(app_id)
+        _wlrctl_cache = apps
+        _wlrctl_cache_time = now
         return apps
     except Exception:
+        _wlrctl_cache = []
+        _wlrctl_cache_time = now
         return []
 
 
 def get_foreground_app():
-    """Get foreground app; validate state file against visible windows."""
+    """Get foreground app; state file takes priority over wlrctl.
+
+    The /tmp/foreground-app state file is the authoritative source set by
+    show-jellyfin.sh / show-games.sh. If it names a known app, trust it
+    immediately — don't override just because flex-launcher is also visible.
+    """
     state_app = ""
     try:
         with open(FOREGROUND_STATE_FILE, "r") as f:
@@ -439,20 +469,19 @@ def get_foreground_app():
     except Exception:
         state_app = ""
 
-    visible_apps = _visible_wayland_apps()
+    # If state file names a known app, trust it directly (no wlrctl needed)
+    if state_app and (state_app in NAVIGATION_APPS or state_app in LAUNCHER_APPS):
+        return [state_app]
 
+    # State file has unknown value — still trust over wlrctl if non-empty
     if state_app:
-        if not visible_apps:
-            return [state_app]
-        if state_app in visible_apps:
-            return [state_app]
+        return [state_app]
 
+    # No state file — fall back to wlrctl
+    visible_apps = _visible_wayland_apps()
     if visible_apps:
-        # If launcher is visible, default to launcher for responsive menu controls.
         if "flex-launcher" in visible_apps:
             return ["flex-launcher"]
-
-        # Otherwise, use the first visible app.
         return [visible_apps[0]]
 
     return ["flex-launcher"]
@@ -589,7 +618,17 @@ class VirtualInput:
         else:
             name = self._WTYPE_KEYS.get(key)
             if name:
-                self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn(); time.sleep(0.03); self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
+                try:
+                    subprocess.run(
+                        ["wtype", "-k", name],
+                        env={**os.environ, **self._WTYPE_ENV},
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=1,
+                    )
+                except Exception:
+                    self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn()
+                    self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
 
     def key_release(self, key):
         if self._is_mouse_key(key):
@@ -606,7 +645,17 @@ class VirtualInput:
         else:
             name = self._WTYPE_KEYS.get(key)
             if name:
-                self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn(); time.sleep(0.03); self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
+                try:
+                    subprocess.run(
+                        ["wtype", "-k", name],
+                        env={**os.environ, **self._WTYPE_ENV},
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                        timeout=1,
+                    )
+                except Exception:
+                    self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn()
+                    self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
 
     def key_combo(self, *keys):
         mouse_keys = [k for k in keys if self._is_mouse_key(k)]
@@ -970,14 +1019,18 @@ class UnifiedController:
         ])
 
     def _is_moonlight_running(self):
-        """Check whether Moonlight process is alive."""
+        """Check whether Moonlight process is alive (non-blocking /proc scan)."""
         try:
-            result = subprocess.run(
-                ["pgrep", "-f", "moonlight-qt|moonlight stream|com.moonlight_stream"],
-                capture_output=True,
-                timeout=1,
-            )
-            return result.returncode == 0
+            for entry in os.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                try:
+                    with open(f"/proc/{entry}/comm", "r") as f:
+                        if "moonlight" in f.read().strip().lower():
+                            return True
+                except (FileNotFoundError, PermissionError):
+                    continue
+            return False
         except Exception:
             return False
 
@@ -999,11 +1052,19 @@ class UnifiedController:
                 pass
 
         if moonlight_running:
+            # Check cmdline for active stream without subprocess
             try:
-                result = subprocess.run(['pgrep', '-f', 'moonlight stream'], capture_output=True, timeout=1)
-                if result.returncode == 0:
-                    return True
-            except (subprocess.TimeoutExpired, OSError):
+                for entry in os.listdir("/proc"):
+                    if not entry.isdigit():
+                        continue
+                    try:
+                        with open(f"/proc/{entry}/cmdline", "r") as f:
+                            cmdline = f.read()
+                        if "moonlight" in cmdline and "stream" in cmdline:
+                            return True
+                    except (FileNotFoundError, PermissionError):
+                        continue
+            except Exception:
                 pass
 
             try:
@@ -1548,8 +1609,12 @@ class UnifiedController:
                     await asyncio.sleep(30)
                     return "idle_disconnect"
 
-                self._check_mode()
-                self._self_heal_tick()
+                # Run mode/heal checks in thread executor to avoid blocking controller reads
+                _now = time.monotonic()
+                if _now - self.last_mode_check >= FOREGROUND_POLL_S:
+                    asyncio.get_event_loop().run_in_executor(None, self._check_mode)
+                if _now - self._last_self_heal >= SELF_HEAL_POLL_S:
+                    asyncio.get_event_loop().run_in_executor(None, self._self_heal_tick)
 
                 # ── GAMEPAD mode: controller is ungrabbed, Moonlight reads it directly ──
                 # We do NOT process any button/hat/stick events (would interfere with game).
