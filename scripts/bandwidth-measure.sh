@@ -10,22 +10,28 @@ bandwidth_measure() {
     local api="${JELLYFIN_API:-http://10.100.0.2:8096}"
     local api_key="${JELLYFIN_API_KEY:-}"
 
-    # Quick bandwidth test: download 2MB from Jellyfin and measure speed
+    # Bandwidth test: 3 samples of 512KB, use MINIMUM for reliability over flaky WiFi
+    local bw_samples="" _s
+    for _i in 1 2 3; do
+        _s=$(curl -o /dev/null -w %{speed_download} --max-time 8 --range 0-524287 \
+            "${api}/Videos/e6067924303046d641ce61f9f80e260d/stream?Static=true&api_key=${api_key}" 2>/dev/null)
+        [[ -n "$_s" ]] && [[ "$_s" != "0" ]] && bw_samples="$bw_samples $_s"
+    done
     local bw_bytes
-    bw_bytes=$(curl -o /dev/null -w %{speed_download} --max-time 10 --range 0-2097151 \
-        "${api}/Videos/e6067924303046d641ce61f9f80e260d/stream?Static=true&api_key=${api_key}" 2>/dev/null)
+    bw_bytes=$(echo "$bw_samples" | tr ' ' '
+' | sort -n | head -1)
 
     if [[ -n "$bw_bytes" ]] && [[ "$bw_bytes" != "0" ]]; then
         local bw_bps
         bw_bps=$(python3 -c "
 bw = float($bw_bytes)
 total_bps = int(bw * 8)
-video_bps = int(total_bps * 0.55)
-# Clamp between 150kbps and 8Mbps
-video_bps = max(150000, min(8000000, video_bps))
+video_bps = int(total_bps * 0.65)
+# Clamp between 200kbps and 8Mbps
+video_bps = max(200000, min(8000000, video_bps))
 # Round to nearest 50kbps for finer granularity at low bitrates
 video_bps = (video_bps // 50000) * 50000
-if video_bps < 150000: video_bps = 150000
+if video_bps < 200000: video_bps = 200000
 print(video_bps)
 " 2>/dev/null)
 
