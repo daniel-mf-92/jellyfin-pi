@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub playback: PlaybackConfig,
     pub controller: ControllerConfig,
     pub ui: UiConfig,
+    #[serde(default)]
+    pub daemon: DaemonConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -62,6 +64,53 @@ pub struct UiConfig {
     pub theme: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DaemonConfig {
+    /// Bandwidth test interval in seconds.
+    pub bandwidth_interval_sec: u64,
+    /// Buffer check interval in seconds.
+    pub buffer_interval_sec: u64,
+    /// Audio heal interval in seconds.
+    pub audio_heal_interval_sec: u64,
+    /// Flex-launcher heal interval in seconds.
+    pub flex_heal_interval_sec: u64,
+    /// Minimum free RAM in MB before buffer eviction.
+    pub buffer_min_free_ram_mb: u64,
+    /// QoS grace period in seconds after playback stops.
+    pub qos_grace_period_sec: u64,
+    /// Max circuit breaker restarts per hour.
+    pub circuit_breaker_max_per_hour: usize,
+    /// Known Jellyfin item ID for bandwidth speed test.
+    pub bandwidth_test_item_id: String,
+    /// Enable QoS (tc/renice/SIGSTOP).
+    pub qos_enabled: bool,
+    /// Enable audio healing.
+    pub audio_heal_enabled: bool,
+    /// Enable flex-launcher healing.
+    pub flex_heal_enabled: bool,
+    /// Enable buffer manager.
+    pub buffer_enabled: bool,
+}
+
+impl Default for DaemonConfig {
+    fn default() -> Self {
+        Self {
+            bandwidth_interval_sec: 300,
+            buffer_interval_sec: 120,
+            audio_heal_interval_sec: 120,
+            flex_heal_interval_sec: 120,
+            buffer_min_free_ram_mb: 2048,
+            qos_grace_period_sec: 600,
+            circuit_breaker_max_per_hour: 3,
+            bandwidth_test_item_id: "e6067924303046d641ce61f9f80e260d".to_string(),
+            qos_enabled: true,
+            audio_heal_enabled: true,
+            flex_heal_enabled: true,
+            buffer_enabled: true,
+        }
+    }
+}
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -97,6 +146,7 @@ impl Default for AppConfig {
                 screensaver_timeout_sec: 300,
                 theme: "dark".to_string(),
             },
+            daemon: DaemonConfig::default(),
         }
     }
 }
