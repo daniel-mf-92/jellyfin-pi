@@ -60,8 +60,11 @@ wlrctl toplevel minimize app_id:com.github.iwalton3.jellyfin-media-player 2>/dev
 
 # --- Pre-launch Moonlight (minimized) ---
 # Same strategy: pre-warm Moonlight so game streaming starts instantly.
-moonlight-qt --fullscreen > /tmp/moonlight.log 2>&1 &
-sleep 4
+moonlight-qt > /tmp/moonlight.log 2>&1 &
+for i in $(seq 1 20); do
+    sleep 0.5
+    wlrctl toplevel find app_id:com.moonlight_stream.Moonlight 2>/dev/null && break
+done
 wlrctl toplevel minimize app_id:com.moonlight_stream.Moonlight 2>/dev/null
 
 # --- Restore focus to launcher ---

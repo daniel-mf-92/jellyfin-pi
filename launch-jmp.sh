@@ -101,4 +101,7 @@ done
 
 echo jellyfinmediaplayer > /tmp/foreground-app
 
+# --- Inject QWebChannel + auto-login via CDP (background) ---
+(sleep 2 && python3 "$HOME/bin/jmp-force-local.py" >> /tmp/jmp-launch.log 2>&1) & disown
+
 exit 0
