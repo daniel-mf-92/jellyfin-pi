@@ -768,7 +768,7 @@ impl StreamCache {
         }
 
         // Background download via curl (thread-safe, no async runtime needed)
-        let entries_ref = unsafe {
+        let entries_ref: &std::sync::Mutex<std::collections::HashMap<String, CacheEntry>> = unsafe {
             // SAFETY: StreamCache lives for the entire program lifetime (static-like).
             // The background thread only accesses entries via Mutex.
             &*((&self.entries) as *const _)
