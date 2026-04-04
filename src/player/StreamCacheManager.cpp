@@ -4,6 +4,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
+#include <QProcess>
 #include <QUrl>
 
 static const char* CACHE_DIR = "/dev/shm/jmp-cache";
