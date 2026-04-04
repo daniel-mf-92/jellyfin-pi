@@ -42,6 +42,14 @@ pub struct PlaybackConfig {
     pub max_streaming_bitrate: i64,
     /// Whether to prefer direct play over transcoding.
     pub prefer_direct_play: bool,
+    /// Enable audio passthrough (AC3, DTS, TrueHD) via SPDIF/HDMI.
+    pub audio_passthrough: bool,
+    /// Subtitle font size override (0 = default).
+    pub subtitle_font_size: i32,
+    /// Subtitle color as hex string (e.g. "#FFFFFF").
+    pub subtitle_color: String,
+    /// Subtitle position (0 = bottom, 100 = top).
+    pub subtitle_position: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,6 +143,10 @@ impl Default for AppConfig {
                 subtitle_size: 48,
                 max_streaming_bitrate: 120_000_000,
                 prefer_direct_play: true,
+                audio_passthrough: true,
+                subtitle_font_size: 48,
+                subtitle_color: "#FFFFFF".to_string(),
+                subtitle_position: 10,
             },
             controller: ControllerConfig {
                 deadzone: 12000,

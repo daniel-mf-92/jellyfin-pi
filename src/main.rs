@@ -4,6 +4,9 @@ mod input;
 mod state;
 mod config;
 mod daemon;
+mod device_profile;
+mod power;
+mod mpris;
 
 use api::{JellyfinClient, ImageCache};
 use api::models::*;

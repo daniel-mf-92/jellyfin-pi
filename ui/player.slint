@@ -1,7 +1,7 @@
 // Jellyfin Pi TV App - Player Overlay / Transport Controls
 // Matches Jellyfin Android TV LeanbackOverlayFragment layout
 
-import { Theme, PlayerState } from "theme.slint";
+import { Theme, PlayerState, ChapterInfo, MediaSegmentInfo } from "theme.slint";
 
 // ============================================================================
 // Helper: Format a transport control button with focus state
@@ -237,6 +237,16 @@ export component PlayerOverlay inherits Rectangle {
     // Secondary controls focus: 0=audio, 1=subtitle, 2=speed
     in-out property <int> secondary-focus: 0;
 
+    // Chapters
+    in property <[ChapterInfo]> chapters: [];
+    in property <int> current-chapter: -1;
+    callback chapter-selected(int);
+
+    // Intro/credits skip
+    in property <bool> show-skip-button: false;
+    in property <string> skip-label: "Skip Intro";
+    callback skip-segment();
+
     // Callbacks
     callback play-pause();
     callback seek(int);
@@ -313,6 +323,15 @@ export component PlayerOverlay inherits Rectangle {
             width: 100%;
             height: 100%;
             background: @linear-gradient(180deg, transparent 0%, #000000cc 40%);
+        }
+
+        // Chapter name display (above seek bar when chapters exist)
+        if root.chapters.length > 0 && root.current-chapter >= 0 && root.current-chapter < root.chapters.length : Text {
+            x: Theme.overscan-h;
+            y: 2px;
+            text: root.chapters[root.current-chapter].name;
+            font-size: Theme.font-body-small;
+            color: Theme.text-secondary;
         }
 
         // Seek bar
@@ -408,6 +427,32 @@ export component PlayerOverlay inherits Rectangle {
         volume: state.volume;
         is-muted: state.is-muted;
         show: root.volume-visible;
+    }
+
+    // ---- Skip intro/credits button (bottom-right) ----
+    if root.show-skip-button : Rectangle {
+        x: parent.width - 280px;
+        y: parent.height - 120px;
+        width: 240px;
+        height: 48px;
+        border-radius: 24px;
+        background: Theme.accent;
+        opacity: 0.95;
+
+        animate opacity { duration: Theme.transition-duration; }
+
+        Text {
+            text: root.skip-label;
+            font-size: Theme.font-body-large;
+            font-weight: 600;
+            color: #ffffff;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+
+        TouchArea {
+            clicked => { root.skip-segment(); }
+        }
     }
 
     // ---- Key handling ----

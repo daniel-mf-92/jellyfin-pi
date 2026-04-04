@@ -481,16 +481,40 @@ impl JellyfinClient {
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
         let url = format!("{}/Items/{}/PlaybackInfo", self.server_url, item_id);
+
+        let profile = crate::device_profile::DeviceProfile::pi5_vlc();
+
+        #[derive(serde::Serialize)]
+        #[serde(rename_all = "PascalCase")]
+        struct Body {
+            device_profile: crate::device_profile::DeviceProfile,
+        }
+
         let resp = self
             .http
             .post(&url)
             .header("Authorization", self.auth_header())
             .query(&[("UserId", user_id)])
-            .json(&serde_json::json!({}))
+            .json(&Body { device_profile: profile })
             .send()
             .await?;
         let resp = self.check_response(resp).await?;
         Ok(resp.json().await?)
+    }
+
+    /// GET /MediaSegments/{itemId} — fetch intro/credits/recap markers.
+    pub async fn get_media_segments(&self, item_id: &str) -> ApiResult<Vec<MediaSegment>> {
+        let url = format!("{}/MediaSegments/{}", self.server_url, item_id);
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", self.auth_header())
+            .query(&[("IncludeSegmentTypes", "Intro,Outro,Recap,Preview")])
+            .send()
+            .await?;
+        let resp = self.check_response(resp).await?;
+        let result: MediaSegmentResult = resp.json().await?;
+        Ok(result.items)
     }
 
     /// POST /Sessions/Playing

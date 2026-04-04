@@ -10,13 +10,19 @@ export component SettingsScreen inherits Rectangle {
     in property <bool> hardware-decode: true;
     in property <int> subtitle-size: 100;
 
+    in property <bool> audio-passthrough: true;
+    in property <int> subtitle-font-size: 48;
+    callback toggle-passthrough();
+    callback change-subtitle-font-size(int);
+    callback power-action(string);
+
     callback logout();
     callback change-server();
     callback toggle-hw-decode();
     callback change-subtitle-size(int);
     callback go-back();
 
-    property <int> item-count: 7;
+    property <int> item-count: 10;
 
     background: Theme.background;
 
@@ -42,16 +48,24 @@ export component SettingsScreen inherits Rectangle {
                     root.logout();
                 } else if (root.focused-item == 3) {
                     root.toggle-hw-decode();
+                } else if (root.focused-item == 7) {
+                    root.toggle-passthrough();
+                } else if (root.focused-item == 9) {
+                    root.power-action("reboot");
                 }
                 return accept;
             } else if (event.text == Key.LeftArrow) {
                 if (root.focused-item == 4) {
                     root.change-subtitle-size(root.subtitle-size - 10);
+                } else if (root.focused-item == 8) {
+                    root.change-subtitle-font-size(root.subtitle-font-size - 2);
                 }
                 return accept;
             } else if (event.text == Key.RightArrow) {
                 if (root.focused-item == 4) {
                     root.change-subtitle-size(root.subtitle-size + 10);
+                } else if (root.focused-item == 8) {
+                    root.change-subtitle-font-size(root.subtitle-font-size + 2);
                 }
                 return accept;
             } else if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
@@ -348,6 +362,47 @@ export component SettingsScreen inherits Rectangle {
                             color: Theme.text-primary;
                             vertical-alignment: center;
                         }
+                    }
+                }
+
+                // 7: Audio Passthrough
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 7 ? Theme.surface : transparent;
+                    Rectangle { x: 0; y: 0; width: root.focused-item == 7 ? 3px : 0px; height: parent.height; background: Theme.accent; }
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl; padding-right: Theme.spacing-xxxl; alignment: space-between;
+                        Text { text: "Audio Passthrough"; font-size: Theme.font-body-large; color: Theme.text-secondary; vertical-alignment: center; }
+                        Text { text: root.audio-passthrough ? "On" : "Off"; font-size: Theme.font-body-large; color: root.audio-passthrough ? Theme.accent : Theme.text-primary; vertical-alignment: center; }
+                    }
+                }
+
+                // 8: Subtitle Font Size
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 8 ? Theme.surface : transparent;
+                    Rectangle { x: 0; y: 0; width: root.focused-item == 8 ? 3px : 0px; height: parent.height; background: Theme.accent; }
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl; padding-right: Theme.spacing-xxxl; alignment: space-between;
+                        Text { text: "Subtitle Size"; font-size: Theme.font-body-large; color: Theme.text-secondary; vertical-alignment: center; }
+                        HorizontalLayout {
+                            spacing: Theme.spacing-sm;
+                            Text { text: root.focused-item == 8 ? "<" : ""; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
+                            Text { text: root.subtitle-font-size + "px"; font-size: Theme.font-body-large; color: Theme.text-primary; vertical-alignment: center; }
+                            Text { text: root.focused-item == 8 ? ">" : ""; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
+                        }
+                    }
+                }
+
+                // 9: Power
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 9 ? Theme.surface : transparent;
+                    Rectangle { x: 0; y: 0; width: root.focused-item == 9 ? 3px : 0px; height: parent.height; background: Theme.accent; }
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl; padding-right: Theme.spacing-xxxl; alignment: space-between;
+                        Text { text: "Power"; font-size: Theme.font-body-large; color: Theme.text-secondary; vertical-alignment: center; }
+                        Text { text: root.focused-item == 9 ? "[Reboot]" : ""; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
                     }
                 }
             }
