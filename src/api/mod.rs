@@ -1,19 +1,7 @@
 pub mod client;
 pub mod models;
 pub mod images;
-pub mod music;
-pub mod tvshows;
-pub mod users;
-pub mod admin;
-pub mod favorites;
-pub mod activity;
 
 pub use client::JellyfinClient;
 pub use models::*;
 pub use images::ImageCache;
-pub use music::MusicApi;
-pub use tvshows::TvShowsApi;
-pub use users::UsersApi;
-pub use admin::AdminApi;
-pub use favorites::FavoritesApi;
-pub use activity::ActivityApi;
