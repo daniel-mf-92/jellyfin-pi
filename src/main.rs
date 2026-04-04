@@ -269,51 +269,115 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // 8. Try auto-login if saved credentials exist
+    // 8. Auto-login: saved token first, then hardcoded credentials
     {
-        let saved_user_id;
-        let saved_token;
-        {
-            let cfg = config.read().await;
-            saved_user_id = cfg.server.saved_user_id.clone();
-            saved_token = cfg.server.saved_token.clone();
-        }
+        let ui_handle = ui_weak.clone();
+        let client_clone = client.clone();
+        let image_clone = image_cache.clone();
+        let state_clone = state.clone();
+        let config_clone = config.clone();
+        let _ = slint::spawn_local(async move {
+            let mut authenticated = false;
 
-        if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
-            {
-                let mut c = client.write().await;
-                c.access_token = Some(token.clone());
-                c.user_id = Some(user_id.clone());
-            }
-            let ui_handle = ui_weak.clone();
-            let client_clone = client.clone();
-            let image_clone = image_cache.clone();
-            let state_clone = state.clone();
-            let _ = slint::spawn_local(async move {
+            // --- Try saved token (fast path) ---
+            let (saved_user_id, saved_token) = {
+                let cfg = config_clone.read().await;
+                (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
+            };
+
+            if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
+                {
+                    let mut c = client_clone.write().await;
+                    c.access_token = Some(token.clone());
+                    c.user_id = Some(user_id.clone());
+                }
                 match load_home_data(
                     ui_handle.clone(),
                     client_clone.clone(),
-                    image_clone,
+                    image_clone.clone(),
                     state_clone.clone(),
                 )
                 .await
                 {
                     Ok(()) => {
-                        info!("Auto-login succeeded");
+                        info!("Auto-login with saved token succeeded");
                         state_clone.navigate_replace(Screen::Home).await;
                         let _ = ui_handle.upgrade_in_event_loop(|ui| {
                             ui.global::<AppBridge>().set_current_screen("home".into());
                         });
+                        authenticated = true;
                     }
                     Err(e) => {
-                        warn!("Auto-login failed (token expired?): {}", e);
+                        warn!("Saved token expired: {}", e);
                         let mut c = client_clone.write().await;
                         c.access_token = None;
                         c.user_id = None;
                     }
                 }
-            });
-        }
+            }
+
+            // --- Fallback: authenticate with hardcoded credentials ---
+            if !authenticated {
+                let username = std::env::var("JELLYFIN_USERNAME")
+                    .unwrap_or_else(|_| "daniel".to_string());
+                let password = std::env::var("JELLYFIN_PASSWORD")
+                    .unwrap_or_else(|_| "5991".to_string());
+
+                info!("Auto-login with credentials for user: {}", username);
+
+                let auth_result = {
+                    let mut c = client_clone.write().await;
+                    c.authenticate(&username, &password).await
+                };
+
+                match auth_result {
+                    Ok(result) => {
+                        info!("Auto-login succeeded for user: {}", username);
+                        state_clone
+                            .set_user(result.user.clone(), result.access_token.clone())
+                            .await;
+
+                        // Save token for faster login next time
+                        {
+                            let mut cfg = config_clone.write().await;
+                            cfg.save_auth(&result.user.id, &result.access_token);
+                        }
+
+                        // Set current user in UI
+                        let server_url = {
+                            let c = client_clone.read().await;
+                            c.server_url.clone()
+                        };
+                        let avatar =
+                            load_user_avatar(&result.user, &server_url, &image_clone).await;
+                        let user_info =
+                            user_dto_to_user_info(&result.user, &server_url, avatar);
+                        if let Some(ui) = ui_handle.upgrade() {
+                            ui.global::<AppBridge>().set_current_user(user_info);
+                        }
+
+                        state_clone.navigate_replace(Screen::Home).await;
+                        let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_current_screen("home".into());
+                        });
+
+                        if let Err(e) = load_home_data(
+                            ui_handle.clone(),
+                            client_clone,
+                            image_clone,
+                            state_clone,
+                        )
+                        .await
+                        {
+                            error!("Failed to load home after auto-login: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Auto-login failed: {}. Showing login screen.", e);
+                    }
+                }
+            }
+        });
     }
 
     // 9. Spawn controller input task
