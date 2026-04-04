@@ -4,9 +4,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDateTime>
-#include <QNetworkAccessManager>
-#include <QNetworkRequest>
-#include <QNetworkReply>
 #include <QUrl>
 
 static const char* CACHE_DIR = "/dev/shm/jmp-cache";
@@ -211,78 +208,68 @@ void StreamCacheManager::doDownload(const QString& itemId, const QString& url)
 
   qInfo() << "StreamCacheManager: downloading" << itemId.left(8) << "...";
 
-  QFile file(path);
-  if (!file.open(QIODevice::WriteOnly))
+  // Use curl in a blocking subprocess — safe from any thread, no Qt event loop needed.
+  QProcess curl;
+  curl.setProgram("curl");
+  curl.setArguments({
+    "-sS",              // silent but show errors
+    "-L",               // follow redirects
+    "-o", path,         // output file
+    "--max-time", "600", // 10 min timeout
+    url
+  });
+  curl.start();
+
+  // Poll for completion, checking cancel flag periodically
+  while (!curl.waitForFinished(2000))
   {
-    qWarning() << "StreamCacheManager: cannot open" << path << "for writing";
-    QMutexLocker lock2(&m_mutex);
-    if (m_entries.contains(itemId))
-      m_entries[itemId].downloading = false;
-    return;
-  }
-
-  // Use QNetworkAccessManager for the download
-  QNetworkAccessManager nam;
-  QNetworkRequest req(QUrl(url));
-  req.setAttribute(QNetworkRequest::RedirectPolicyAttribute,
-                    QNetworkRequest::NoLessSafeRedirectPolicy);
-
-  QNetworkReply* reply = nam.get(req);
-
-  // Block until finished (we're in a background thread)
-  QEventLoop loop;
-  QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-
-  // Read data as it arrives
-  QObject::connect(reply, &QNetworkReply::readyRead, [&]() {
-    QByteArray chunk = reply->readAll();
-    file.write(chunk);
-
     QMutexLocker lock2(&m_mutex);
     auto it2 = m_entries.find(itemId);
-    if (it2 != m_entries.end())
+    if (it2 == m_entries.end() || !it2->downloading)
     {
-      it2->size += chunk.size();
-      // Check if download was canceled
-      if (!it2->downloading)
-      {
-        reply->abort();
-        return;
-      }
+      // Download was canceled
+      curl.kill();
+      curl.waitForFinished(1000);
+      qInfo() << "StreamCacheManager: download canceled" << itemId.left(8);
+      return;
     }
 
-    // Pause under memory pressure
+    // Check memory pressure — pause if needed
     qint64 avail = readMemAvailable();
     qint64 floor = static_cast<qint64>(PRESSURE_FLOOR_GB * 1024.0 * 1024 * 1024);
     if (avail > 0 && avail < floor)
     {
       qInfo() << "StreamCacheManager: download paused (" << itemId.left(8) << "): RAM pressure";
-      QThread::sleep(5);
+      curl.kill();
+      curl.waitForFinished(1000);
+      QMutexLocker lock3(&m_mutex);
+      if (m_entries.contains(itemId))
+        m_entries[itemId].downloading = false;
+      return;
     }
-  });
+  }
 
-  loop.exec();
-
-  file.close();
-  reply->deleteLater();
+  bool success = (curl.exitCode() == 0 && curl.exitStatus() == QProcess::NormalExit);
 
   QMutexLocker lock3(&m_mutex);
   auto it3 = m_entries.find(itemId);
   if (it3 != m_entries.end())
   {
-    if (reply->error() == QNetworkReply::NoError)
+    it3->downloading = false;
+    if (success)
     {
+      QFileInfo fi(path);
+      it3->size = fi.size();
       it3->complete = true;
-      it3->downloading = false;
       qInfo() << "StreamCacheManager: complete" << itemId.left(8)
               << "size=" << (it3->size / (1024 * 1024)) << "MB"
               << "[" << stats() << "]";
     }
     else
     {
-      it3->downloading = false;
       qWarning() << "StreamCacheManager: download failed" << itemId.left(8)
-                 << reply->errorString();
+                 << "exit=" << curl.exitCode()
+                 << QString::fromUtf8(curl.readAllStandardError()).trimmed();
     }
   }
 }
