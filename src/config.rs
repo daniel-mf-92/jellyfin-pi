@@ -123,7 +123,8 @@ impl Default for AppConfig {
     fn default() -> Self {
         Self {
             server: ServerConfig {
-                url: "https://localhost:8096".to_string(),
+                url: std::env::var("JELLYFIN_SERVER_URL")
+                    .unwrap_or_else(|_| "https://localhost:8096".to_string()),
                 device_id: uuid::Uuid::new_v4().to_string(),
                 device_name: "Jellyfin TV (Pi)".to_string(),
                 client_name: "Jellyfin TV".to_string(),

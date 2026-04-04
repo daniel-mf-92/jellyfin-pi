@@ -10,6 +10,29 @@ mod mpris;
 
 use api::{JellyfinClient, ImageCache};
 use api::models::*;
+
+/// Load .env file (gitignored) for credentials.
+fn load_dotenv() {
+    for path in &[".env", "/home/danielmatthews-ferrero/jellyfin-pi/.env"] {
+        let p = std::path::Path::new(path);
+        if p.exists() {
+            if let Ok(contents) = std::fs::read_to_string(p) {
+                for line in contents.lines() {
+                    let line = line.trim();
+                    if line.is_empty() || line.starts_with('#') { continue; }
+                    if let Some((key, val)) = line.split_once('=') {
+                        let val = val.trim().trim_matches('"').trim_matches('\'');
+                        if std::env::var(key.trim()).is_err() {
+                            std::env::set_var(key.trim(), val);
+                        }
+                    }
+                }
+                log::info!("Loaded env from {}", p.display());
+                return;
+            }
+        }
+    }
+}
 use player::VlcPlayer;
 use player::vlc::PlayerEvent;
 use input::ControllerManager;
@@ -199,6 +222,7 @@ async fn items_to_media_items(
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    load_dotenv();
     env_logger::init();
     info!("Jellyfin TV starting...");
 
@@ -321,10 +345,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // --- Fallback: authenticate with hardcoded credentials ---
             if !authenticated {
-                let username = std::env::var("JELLYFIN_USERNAME")
-                    .unwrap_or_else(|_| "daniel".to_string());
-                let password = std::env::var("JELLYFIN_PASSWORD")
-                    .unwrap_or_else(|_| "5991".to_string());
+                let username = match std::env::var("JELLYFIN_USERNAME") {
+                    Ok(u) if !u.is_empty() => u,
+                    _ => { warn!("JELLYFIN_USERNAME not set in .env"); return; }
+                };
+                let password = match std::env::var("JELLYFIN_PASSWORD") {
+                    Ok(p) if !p.is_empty() => p,
+                    _ => { warn!("JELLYFIN_PASSWORD not set in .env"); return; }
+                };
 
                 info!("Auto-login with credentials for user: {}", username);
 
