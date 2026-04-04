@@ -16,6 +16,10 @@ MODES (auto-switch based on foreground app via /tmp/foreground-app):
                 bumpers->seek (accelerating), ZL->fullscreen, ZR->play/pause
   MEDIA      -- overlay mode: d-pad up/down->volume (accel), d-pad left/right
                 ->subtitle, A->play/pause, bumpers->seek (accel), B->exit mode
+  GAMEPAD    -- Moonlight game stream active: controller ungrabbed for SDL2
+                passthrough, all keyboard/mouse translation stopped. Detected
+                via /tmp/moonlight-streaming file or /tmp/moonlight.log parsing.
+                Returns to NAVIGATION when stream ends.
 
 INPUT:  evdev (Nintendo Switch Pro Controller via Bluetooth)
 OUTPUT: Two UInput virtual devices (split to avoid libinput misclassification):
@@ -28,8 +32,9 @@ PLAYBACK CONTROL STACK (tried in order):
   3. Keyboard     -- KEY_PAGEUP/KEY_PAGEDOWN seek, KEY_SPACE play/pause
 
 HOME BUTTON (Y):
-  - Outside fullscreen: pkill media apps, return to flex-launcher
-  - In fullscreen: hold 3 seconds to confirm (prevents accidental exit)
+  - On Jellyfin/media UI: go home to flex-launcher
+  - If playback is active: pause + stop before home (no background audio)
+  - In GAMEPAD mode: passthrough to Moonlight/game
 
 IDLE: 15-minute auto-disconnect via bluetoothctl (saves battery, wakes on press)
 
@@ -38,6 +43,7 @@ SYSTEMD: Run as unified-controller.service (user or system unit)
 
 import asyncio
 import enum
+import fcntl
 import json as _json
 import os
 import signal
@@ -49,7 +55,8 @@ import time
 from collections import defaultdict
 
 os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/1000")
-os.environ.setdefault("DBUS_SESSION_BUS_ADDRESS", "unix:path=/run/user/1000/bus")
+os.environ["DBUS_SESSION_BUS_ADDRESS"] = "unix:path=/run/user/1000/bus"
+os.environ["XDG_RUNTIME_DIR"] = "/run/user/1000"
 os.environ.setdefault("WAYLAND_DISPLAY", "wayland-0")
 
 try:
@@ -65,7 +72,7 @@ except ImportError:
 CONTROLLER_MAC = "98:41:5C:37:CB:EB"
 CONTROLLER_NAMES = ["Pro Controller"]
 IDLE_TIMEOUT = 900           # 15 minutes → auto-disconnect
-FOREGROUND_POLL_S = 0.5      # how often to check foreground app
+FOREGROUND_POLL_S = 2.0      # how often to check foreground app (was 0.5, raised to reduce subprocess overhead)
 RECONNECT_POLL_S = 5.0       # how often to check for reconnected controller
 
 # D-pad repeat with acceleration
@@ -91,22 +98,50 @@ HAPTIC_SELECT_MS = 50        # both motors, select/confirm
 
 # Apps that trigger each mode
 LAUNCHER_APPS = {"flex-launcher", "flex_launcher"}
-NAVIGATION_APPS = {"kodi", "org.videolan.vlc", "vlc", "mpv", "chromium", "chromium-browser", "jellyfin-media-player",
-                   "com.github.iwalton3.jellyfin-media-player", "jmp", "firefox", "moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
+NAVIGATION_APPS = {
+    "kodi", "org.videolan.vlc", "vlc", "mpv", "chromium", "chromium-browser",
+    "jellyfin-media-player", "jellyfinmediaplayer", "org.jellyfin.jellyfindesktop",
+    "com.github.iwalton3.jellyfin-media-player", "jmp", "firefox",
+    "moonlight-qt", "moonlight", "com.moonlight_stream.moonlight",
+}
 
 # Apps where mouse events must be suppressed (TV mode keyboard navigation)
-JELLYFIN_APPS = {"com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player", "jellyfin", "jmp"}
+JELLYFIN_APPS = {
+    "com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player",
+    "jellyfinmediaplayer", "org.jellyfin.jellyfindesktop",
+    "jellyfin-tv", "jellyfin", "jmp",
+}
 MOONLIGHT_APPS = {"moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
 
 # Accelerating hold config
-ACCEL_INITIAL_DELAY = 0.300     # delay before first repeat when held
+ACCEL_INITIAL_DELAY = 0.500     # delay before first repeat when held
 ACCEL_REPEAT_INTERVAL = 0.250   # interval between accelerating actions (fast repeat)
-SEEK_STEPS = [5, 10, 20, 40, 80, 120]  # seconds — doubles each repeat
+SEEK_STEPS = [5, 10, 15, 20, 25, 30]  # VLC buffer-safe, max 30s  # seconds — doubles each repeat
 VOLUME_STEP_INITIAL = 2         # volume change per tick (out of 100)
 VOLUME_STEP_MAX = 10            # max volume change per tick
 VOLUME_ACCEL_EVERY = 3          # increase step every N ticks
 
 MPV_SOCKET = "/tmp/mpv-socket"
+
+# PID / lock files for signal-based controller handoff
+PID_FILE = "/tmp/unified-controller.pid"
+LOCK_FILE = "/tmp/unified-controller.lock"
+
+# Global reference to current UnifiedController instance (for signal handlers)
+_active_controller = None
+
+# Moonlight game streaming detection
+STREAMING_STATE_FILE = "/tmp/moonlight-streaming"
+MOONLIGHT_LOG = "/tmp/moonlight.log"
+GAMEPAD_POLL_S = 0.100  # 100ms poll interval in GAMEPAD mode (reduced CPU)
+SELF_HEAL_POLL_S = 5.0  # periodic health checks (launcher + mode files + grab state)
+GO_HOME_DEBOUNCE_S = 0.35
+
+# Controller heartbeat (pi-home-a -> azure relay)
+CONTROLLER_HEARTBEAT_ENABLED = True
+CONTROLLER_HEARTBEAT_INTERVAL_S = 20.0
+CONTROLLER_HEARTBEAT_TARGET = "azureuser@relay-host.local"
+CONTROLLER_HEARTBEAT_FILE = "/tmp/gaming-controller-heartbeat"
 
 
 # ─── Mode Enum ───────────────────────────────────────────────────────────────
@@ -115,6 +150,7 @@ class Mode(enum.Enum):
     LAUNCHER = "LAUNCHER"
     NAVIGATION = "NAVIGATION"
     MEDIA = "MEDIA"
+    GAMEPAD = "GAMEPAD"
 
 
 # ─── Logging ─────────────────────────────────────────────────────────────────
@@ -176,8 +212,17 @@ def mpv_is_fullscreen():
 
 # --- MPRIS D-Bus helpers (for JMP/Chromium-based players) ---
 
-def _find_mpris_player():
-    """Discover the first active MPRIS player on D-Bus (handles instance suffixes)."""
+def _read_foreground_app_hint():
+    """Best-effort foreground app hint from /tmp/foreground-app."""
+    try:
+        with open("/tmp/foreground-app", "r") as f:
+            return f.read().strip().lower()
+    except Exception:
+        return ""
+
+
+def _list_mpris_players():
+    """Return all active MPRIS player bus names."""
     try:
         env = {
             "XDG_RUNTIME_DIR": "/run/user/1000",
@@ -188,14 +233,52 @@ def _find_mpris_player():
              "/org/freedesktop/DBus", "org.freedesktop.DBus.ListNames"],
             capture_output=True, text=True, timeout=2, env=env
         )
+        players = []
         for line in r.stdout.splitlines():
-            if "org.mpris.MediaPlayer2." in line:
-                match = re.search(r'"(org\.mpris\.MediaPlayer2\.[^"]+)"', line)
-                if match:
-                    return match.group(1)
+            if "org.mpris.MediaPlayer2." not in line:
+                continue
+            match = re.search(r'"(org\.mpris\.MediaPlayer2\.[^"]+)"', line)
+            if match:
+                players.append(match.group(1))
+        return players
     except Exception:
-        pass
-    return None
+        return []
+
+
+def _find_mpris_player():
+    """Discover the best active MPRIS player, preferring foreground app."""
+    players = _list_mpris_players()
+    if not players:
+        return None
+
+    hint = _read_foreground_app_hint()
+
+    def score(player_name):
+        name = player_name.lower()
+        rank = 0
+
+        if "vlc" in hint:
+            if ".vlc" in name:
+                rank += 100
+            if "jellyfin" in name or "chromium" in name:
+                rank -= 20
+        elif "jellyfin" in hint or "jmp" in hint:
+            if "jellyfin" in name or "chromium" in name:
+                rank += 100
+            if ".vlc" in name:
+                rank -= 20
+
+        if "jellyfin" in name:
+            rank += 8
+        if "chromium" in name:
+            rank += 5
+        if ".vlc" in name:
+            rank += 3
+
+        return rank
+
+    players.sort(key=score, reverse=True)
+    return players[0]
 
 
 def _mpris_command(method, *args):
@@ -318,18 +401,78 @@ def bt_disconnect():
 
 FOREGROUND_STATE_FILE = "/tmp/foreground-app"
 
+_wlrctl_cache = []
+_wlrctl_cache_time = 0.0
+_WLRCTL_CACHE_TTL = 5.0  # seconds — avoid spawning wlrctl more than once per 5s
+
+
+def _visible_wayland_apps():
+    """Best-effort visible app IDs from wlrctl (cached to avoid subprocess spam)."""
+    global _wlrctl_cache, _wlrctl_cache_time
+    now = time.monotonic()
+    if now - _wlrctl_cache_time < _WLRCTL_CACHE_TTL:
+        return _wlrctl_cache
+
+    try:
+        env = {
+            "WAYLAND_DISPLAY": "wayland-0",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+        }
+        result = subprocess.run(
+            ["wlrctl", "toplevel", "list"],
+            env={**os.environ, **env},
+            capture_output=True,
+            text=True,
+            timeout=1,
+        )
+        apps = []
+        for line in (result.stdout or "").splitlines():
+            line = line.strip()
+            if not line or ":" not in line:
+                continue
+            app_id = line.split(":", 1)[0].strip().lower()
+            if app_id:
+                apps.append(app_id)
+        _wlrctl_cache = apps
+        _wlrctl_cache_time = now
+        return apps
+    except Exception:
+        _wlrctl_cache = []
+        _wlrctl_cache_time = now
+        return []
+
+
 def get_foreground_app():
-    """Get the foreground app from state file (written by show-*.sh scripts)."""
+    """Get foreground app; state file takes priority over wlrctl.
+
+    The /tmp/foreground-app state file is the authoritative source set by
+    show-jellyfin.sh / show-games.sh. If it names a known app, trust it
+    immediately — don't override just because flex-launcher is also visible.
+    """
+    state_app = ""
     try:
         with open(FOREGROUND_STATE_FILE, "r") as f:
-            app = f.read().strip().lower()
-        if app:
-            return [app]
+            state_app = f.read().strip().lower()
     except FileNotFoundError:
-        pass
+        state_app = ""
     except Exception:
-        pass
-    # Fallback: assume launcher if no state file
+        state_app = ""
+
+    # If state file names a known app, trust it directly (no wlrctl needed)
+    if state_app and (state_app in NAVIGATION_APPS or state_app in LAUNCHER_APPS):
+        return [state_app]
+
+    # State file has unknown value — still trust over wlrctl if non-empty
+    if state_app:
+        return [state_app]
+
+    # No state file — fall back to wlrctl
+    visible_apps = _visible_wayland_apps()
+    if visible_apps:
+        if "flex-launcher" in visible_apps:
+            return ["flex-launcher"]
+        return [visible_apps[0]]
+
     return ["flex-launcher"]
 
 
@@ -431,36 +574,46 @@ class VirtualInput:
             ],
         }
         self.mouse = UInput(mouse_caps, name="Switch-Pro-Mouse")
-        log("Virtual input: wtype (keyboard) + UInput (mouse)")
+        kbd_caps = {
+            ecodes.EV_KEY: [
+                ecodes.KEY_UP, ecodes.KEY_DOWN, ecodes.KEY_LEFT, ecodes.KEY_RIGHT,
+                ecodes.KEY_ENTER, ecodes.KEY_ESC, ecodes.KEY_BACKSPACE, ecodes.KEY_SPACE,
+                ecodes.KEY_F, ecodes.KEY_TAB, ecodes.KEY_HOME, ecodes.KEY_END,
+                ecodes.KEY_PAGEUP, ecodes.KEY_PAGEDOWN, ecodes.KEY_VOLUMEUP, ecodes.KEY_VOLUMEDOWN,
+                ecodes.KEY_PLAYPAUSE, ecodes.KEY_V, ecodes.KEY_LEFTSHIFT, ecodes.KEY_F5, ecodes.KEY_F11,
+            ],
+        }
+        self.kbd = UInput(kbd_caps, name="Switch-Pro-Keyboard")
+        log("Virtual input: UInput keyboard + UInput mouse")
 
     def _is_mouse_key(self, key):
         return key in self.MOUSE_KEYS
 
-    def _wtype_key(self, key):
-        """Send a key tap via wtype."""
-        name = self._WTYPE_KEYS.get(key)
-        if name:
-            try:
-                subprocess.Popen(
-                    ["wtype", "-k", name],
-                    env={**os.environ, **self._WTYPE_ENV},
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-            except Exception as e:
-                log(f"wtype error: {e}")
+    def _wtype_cmd(self, args):
+        try:
+            subprocess.run(
+                ["wtype"] + args,
+                env={**os.environ, **self._WTYPE_ENV},
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL, timeout=1,
+            )
+        except Exception as e:
+            log(f"wtype error: {e}")
 
     def key_press(self, key):
         if self._is_mouse_key(key):
             self.mouse.write(ecodes.EV_KEY, key, 1)
             self.mouse.syn()
         else:
-            self._wtype_key(key)
+            name = self._WTYPE_KEYS.get(key)
+            if name:
+                self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn(); time.sleep(0.03); self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
 
     def key_release(self, key):
         if self._is_mouse_key(key):
             self.mouse.write(ecodes.EV_KEY, key, 0)
             self.mouse.syn()
+        # keyboard: no-op for D-pad (tap already sent press+release)
 
     def key_tap(self, key):
         if self._is_mouse_key(key):
@@ -469,7 +622,9 @@ class VirtualInput:
             self.mouse.write(ecodes.EV_KEY, key, 0)
             self.mouse.syn()
         else:
-            self._wtype_key(key)
+            name = self._WTYPE_KEYS.get(key)
+            if name:
+                self.kbd.write(ecodes.EV_KEY, key, 1); self.kbd.syn(); time.sleep(0.03); self.kbd.write(ecodes.EV_KEY, key, 0); self.kbd.syn()
 
     def key_combo(self, *keys):
         mouse_keys = [k for k in keys if self._is_mouse_key(k)]
@@ -484,7 +639,7 @@ class VirtualInput:
                 for n in reversed(names[:-1]):
                     cmd.extend(["-m", n])
                 try:
-                    subprocess.Popen(cmd, env={**os.environ, **self._WTYPE_ENV},
+                    subprocess.run(cmd, env={**os.environ, **self._WTYPE_ENV},
                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 except Exception:
                     pass
@@ -529,16 +684,25 @@ class DpadRepeat:
         self.vinput = vinput
         self.haptic = haptic
         self.held = {}
+        self._last_tap = {}
+        self._pressed_keys = set()
 
     def press(self, key):
         if key not in self.held:
             now = time.monotonic()
+            last = self._last_tap.get(key, 0)
+            gap = now - last
+            if gap < 0.200:
+                return
+            self._last_tap[key] = now
             self.vinput.key_tap(key)
             self.held[key] = (now, now + DPAD_INITIAL_DELAY)
 
     def release(self, key):
         if key in self.held:
             del self.held[key]
+        self._pressed_keys.discard(key)
+        # Do NOT send keyup — Jellyfin web UI fires nav on both keydown and keyup
 
     def tick(self):
         now = time.monotonic()
@@ -670,7 +834,7 @@ class UnifiedController:
         self.last_mode_check = 0
         self.media_mode_active = False
         self.is_fullscreen = False      # toggled by L2
-        self.y_press_time = 0           # for hold-to-quit in fullscreen
+        self.y_press_time = 0           # reserved for future long-press behavior
 
         # Analog state
         self.lx = 0
@@ -695,6 +859,14 @@ class UnifiedController:
         # Button state tracking (for edge detection)
         self.btn_state = defaultdict(bool)
 
+        # GAMEPAD mode state
+        self._gamepad_streaming = False
+        self._last_streaming_check = 0
+        self._last_self_heal = 0.0
+        self._last_go_home_at = 0.0
+        self._last_x_press_at = 0.0
+        self._last_controller_heartbeat_at = 0.0
+
     def _accel_action(self, action, tick):
         """Callback for AccelHold — fires accelerating seek/volume."""
         if action == "seek_fwd":
@@ -713,6 +885,26 @@ class UnifiedController:
             step = min(VOLUME_STEP_INITIAL + (tick // VOLUME_ACCEL_EVERY), VOLUME_STEP_MAX)
             if not self._mpv_volume(-step):
                 self.vinput.key_tap(ecodes.KEY_VOLUMEDOWN)
+
+    def _is_media_playing(self):
+        """Check if any MPRIS player is playing or paused (cached, refreshes every 2s)."""
+        now = time.monotonic()
+        if now - getattr(self, "_media_check_time", 0) < 2.0:
+            return getattr(self, "_media_playing_cache", False)
+        self._media_check_time = now
+        dest = _find_mpris_player()
+        if not dest:
+            self._media_playing_cache = False
+            return False
+        try:
+            r = subprocess.run(["dbus-send", "--session", "--dest=" + dest, "--print-reply",
+                "/org/mpris/MediaPlayer2", "org.freedesktop.DBus.Properties.Get",
+                "string:org.mpris.MediaPlayer2.Player", "string:PlaybackStatus"],
+                capture_output=True, text=True, timeout=1)
+            self._media_playing_cache = "Playing" in r.stdout or "Paused" in r.stdout
+        except Exception:
+            self._media_playing_cache = False
+        return self._media_playing_cache
 
     def setup(self):
         """Find controller and create virtual devices."""
@@ -744,7 +936,8 @@ class UnifiedController:
         return True
 
     def _apply_grab(self):
-        should_grab = True  # Always grab — we send keyboard events in all modes
+        # GAMEPAD mode: ungrab so Moonlight SDL2 can read the controller directly
+        should_grab = (self.mode != Mode.GAMEPAD)
 
         if should_grab and not self.grabbed:
             try:
@@ -757,9 +950,133 @@ class UnifiedController:
             try:
                 self.controller.ungrab()
                 self.grabbed = False
-                log("Controller ungrabbed (LAUNCHER mode)")
+                log("Controller ungrabbed (GAMEPAD mode — Moonlight passthrough)")
             except Exception as e:
                 log(f"Ungrab failed: {e}")
+
+    def _spawn_detached(self, cmd, env=None):
+        """Fire-and-forget subprocess to keep input loop responsive."""
+        try:
+            subprocess.Popen(
+                cmd,
+                env=env,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+            return True
+        except Exception:
+            return False
+
+    def _send_controller_heartbeat(self, force=False):
+        """Send throttled controller-activity heartbeat to Azure relay."""
+        if not CONTROLLER_HEARTBEAT_ENABLED:
+            return
+
+        now = time.monotonic()
+        if not force and (now - self._last_controller_heartbeat_at) < CONTROLLER_HEARTBEAT_INTERVAL_S:
+            return
+
+        self._last_controller_heartbeat_at = now
+        self._spawn_detached([
+            "ssh",
+            "-o", "BatchMode=yes",
+            "-o", "ConnectTimeout=3",
+            "-o", "StrictHostKeyChecking=no",
+            CONTROLLER_HEARTBEAT_TARGET,
+            f"date +%s > {CONTROLLER_HEARTBEAT_FILE}",
+        ])
+
+    def _is_moonlight_running(self):
+        """Check whether Moonlight process is alive (non-blocking /proc scan)."""
+        try:
+            for entry in os.listdir("/proc"):
+                if not entry.isdigit():
+                    continue
+                try:
+                    with open(f"/proc/{entry}/comm", "r") as f:
+                        if "moonlight" in f.read().strip().lower():
+                            return True
+                except (FileNotFoundError, PermissionError):
+                    continue
+            return False
+        except Exception:
+            return False
+
+    def _check_streaming_state(self):
+        """Check if Moonlight is actively streaming a game.
+
+        Self-heal behavior: stale /tmp/moonlight-streaming is auto-cleared when
+        Moonlight process is not running.
+        """
+        moonlight_running = self._is_moonlight_running()
+
+        if os.path.exists(STREAMING_STATE_FILE):
+            if moonlight_running:
+                return True
+            try:
+                os.unlink(STREAMING_STATE_FILE)
+                log("Self-heal: removed stale /tmp/moonlight-streaming")
+            except OSError:
+                pass
+
+        if moonlight_running:
+            # Check cmdline for active stream without subprocess
+            try:
+                for entry in os.listdir("/proc"):
+                    if not entry.isdigit():
+                        continue
+                    try:
+                        with open(f"/proc/{entry}/cmdline", "r") as f:
+                            cmdline = f.read()
+                        if "moonlight" in cmdline and "stream" in cmdline:
+                            return True
+                    except (FileNotFoundError, PermissionError):
+                        continue
+            except Exception:
+                pass
+
+            try:
+                with open(MOONLIGHT_LOG, "r") as f:
+                    f.seek(0, 2)
+                    size = f.tell()
+                    f.seek(max(0, size - 4096))
+                    tail = f.read()
+                last_start = tail.rfind("Starting")
+                last_end = tail.rfind("Session terminated")
+                if last_start > last_end:
+                    return True
+            except (FileNotFoundError, OSError):
+                pass
+
+        return False
+
+    def _self_heal_tick(self):
+        now = time.monotonic()
+        if now - self._last_self_heal < SELF_HEAL_POLL_S:
+            return
+        self._last_self_heal = now
+
+        moonlight_running = self._is_moonlight_running()
+
+        if not moonlight_running and os.path.exists(STREAMING_STATE_FILE):
+            try:
+                os.unlink(STREAMING_STATE_FILE)
+                log("Self-heal: cleared stale streaming state")
+            except OSError:
+                pass
+
+        if self.mode == Mode.GAMEPAD and not moonlight_running:
+            apps = get_foreground_app()
+            app_set = set(a.lower() for a in apps)
+            self._moonlight_foreground = bool(app_set & MOONLIGHT_APPS)
+            self.mode = Mode.NAVIGATION if self._moonlight_foreground else detect_mode(apps)
+            self._gamepad_streaming = False
+            self._apply_grab()
+            log(f"Self-heal: exited stale GAMEPAD -> {self.mode.value}")
+
+        if self.mode != Mode.GAMEPAD and not self.grabbed:
+            self._apply_grab()
 
     def _check_mode(self):
         now = time.monotonic()
@@ -775,6 +1092,18 @@ class UnifiedController:
         self._jmp_foreground = bool(app_set & JELLYFIN_APPS)
         self._moonlight_foreground = bool(app_set & MOONLIGHT_APPS)
 
+        # GAMEPAD mode detection: Moonlight foreground + active game stream
+        streaming = self._check_streaming_state()
+        if self._moonlight_foreground and streaming:
+            new_mode = Mode.GAMEPAD
+        elif self.mode == Mode.GAMEPAD and not streaming:
+            # Stream ended — return to NAVIGATION (Moonlight UI) or LAUNCHER
+            if self._moonlight_foreground:
+                new_mode = Mode.NAVIGATION
+            else:
+                new_mode = detect_mode(apps)
+            self._gamepad_streaming = False
+
         if self.media_mode_active and new_mode == Mode.NAVIGATION:
             new_mode = Mode.MEDIA
 
@@ -783,63 +1112,88 @@ class UnifiedController:
             self.mode = new_mode
             self.dpad.release_all()
             self.accel.release_all()
+            if new_mode == Mode.GAMEPAD:
+                self._gamepad_streaming = True
+                self._send_controller_heartbeat(force=True)
+                log(f"Mode: {old.value} → GAMEPAD (Moonlight stream active, controller ungrabbed)")
+            elif old == Mode.GAMEPAD:
+                log(f"Mode: GAMEPAD → {new_mode.value} (stream ended, controller re-grabbed)")
             self._apply_grab()
-            log(f"Mode: {old.value} → {new_mode.value}")
+            if old != Mode.GAMEPAD and new_mode != Mode.GAMEPAD:
+                log(f"Mode: {old.value} → {new_mode.value}")
         else:
             self._launcher_switch_count = 0
 
     def _go_home(self):
-        """Minimize media apps and return to flex-launcher (elegant transition)."""
-        wl_env = {**os.environ, "WAYLAND_DISPLAY": "wayland-0",
-                  "XDG_RUNTIME_DIR": "/run/user/1000"}
-        # Minimize persistent apps — they stay running for instant re-entry
-        for app_id in ["com.github.iwalton3.jellyfin-media-player",
-                       "com.moonlight_stream.Moonlight"]:
-            try:
-                subprocess.run(["wlrctl", "toplevel", "minimize",
-                               f"app_id:{app_id}"],
-                               env=wl_env, capture_output=True, timeout=2)
-            except Exception:
-                pass
-        # Kill only ephemeral players (VLC, mpv)
-        for proc_name in ["vlc", "mpv"]:
-            subprocess.run(["pkill", "-x", proc_name],
-                           capture_output=True, timeout=2)
+        """Immediate non-blocking return to launcher with async cleanup."""
+        now = time.monotonic()
+        if now - self._last_go_home_at < GO_HOME_DEBOUNCE_S:
+            return
+        self._last_go_home_at = now
+
+        wl_env = {
+            **os.environ,
+            "WAYLAND_DISPLAY": "wayland-0",
+            "XDG_RUNTIME_DIR": "/run/user/1000",
+            "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
+        }
+
         self.is_fullscreen = False
         self.media_mode_active = False
         self.mode = Mode.LAUNCHER
-        # Reset right stick tracking
         self.rstick_digital_y = 0
         self._rstick_next_fire = 0.0
         self._jmp_foreground = False
         self._moonlight_foreground = False
-        # Focus flex-launcher (also restores from minimize on labwc)
+        self._gamepad_streaming = False
+        self._apply_grab()
+
         try:
-            subprocess.run(["wlrctl", "toplevel", "focus",
-                           "app_id:flex-launcher"],
-                           env=wl_env, capture_output=True, timeout=2)
-        except Exception:
-            pass
-        # Ensure flex-launcher is running
-        try:
-            r = subprocess.run(["pgrep", "-f", "flex-launcher"],
-                               capture_output=True, timeout=2)
-            if r.returncode != 0:
-                subprocess.Popen(
-                    ["flex-launcher", "-c",
-                     "/home/your-username/.config/flex-launcher/config.ini"],
-                    env=wl_env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                time.sleep(1)
-        except Exception:
-            pass
-        # Write state file
-        try:
-            with open("/tmp/foreground-app", "w") as f:
+            with open(FOREGROUND_STATE_FILE, "w") as f:
                 f.write("flex-launcher")
         except Exception:
             pass
-        log("GO HOME: minimized apps, focused launcher")
 
+        self._pause_and_stop_media_for_home()
+
+        for target in [
+            "app_id:org.jellyfin.JellyfinDesktop",
+            "app_id:com.github.iwalton3.jellyfin-media-player",
+            "app_id:jellyfin-media-player",
+            "title:Jellyfin",
+            "app_id:com.moonlight_stream.Moonlight",
+            "app_id:moonlight-qt",
+            "title:Moonlight",
+        ]:
+            self._spawn_detached(["wlrctl", "toplevel", "unfullscreen", target], wl_env)
+            self._spawn_detached(["wlrctl", "toplevel", "minimize", target], wl_env)
+
+        for target in ["app_id:flex-launcher", "title:Flex Launcher"]:
+            self._spawn_detached(["wlrctl", "toplevel", "focus", target], wl_env)
+
+        go_home_script = os.path.join(MediaController.HOME_BIN, "go-home.sh")
+        if os.path.exists(go_home_script):
+            self._spawn_detached([go_home_script], wl_env)
+
+        log("GO HOME: requested launcher transition")
+
+    def _pause_and_stop_media_for_home(self):
+        """Quick non-blocking pause - VLC/mpv stay alive, just minimized."""
+        # VLC and mpv will be minimized by _go_home(), just mark as not playing
+        self._media_playing_cache = False
+        self._media_check_time = 0
+        
+        # Fire-and-forget MPRIS pause (non-blocking)
+        try:
+            subprocess.Popen([
+                "sh", "-c",
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.vlc /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause 2>/dev/null; "
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.mpv /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause 2>/dev/null"
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+        
+        log("MEDIA PAUSE: quick pause sent (non-blocking)")
     def _mpv_seek(self, seconds):
         """Seek via MPRIS first (for JMP), then mpv IPC, then arrow keys."""
         if _mpris_seek(seconds):
@@ -860,6 +1214,7 @@ class UnifiedController:
 
     def _handle_button(self, code, value):
         """Process a button event. value: 1=press, 0=release."""
+        log(f"BTN EVENT: code={code} value={value}")
         pressed = (value == 1)
         was_pressed = self.btn_state[code]
         self.btn_state[code] = pressed
@@ -872,20 +1227,36 @@ class UnifiedController:
             self._handle_button_release(code)
             return
 
-        # ── Home button: always active in all modes ──
+        # ── Home button: always go launcher (hard escape) ──
         if code == ecodes.BTN_MODE:
-            self.vinput.key_tap(ecodes.KEY_HOME)
-            self.media_mode_active = False
+            log("HOME button pressed — force go home")
+            self._go_home()
+            self.y_press_time = 0
             return
 
-        # ── Y button: ALWAYS go home, regardless of mode ──
+        # ── Y button: always go home/launchpad ──
         if code == ecodes.BTN_WEST:
-            if mpv_is_fullscreen():
-                self.y_press_time = time.monotonic()
-                log("Y pressed — mpv fullscreen, hold 3s to go home")
-            else:
+            log("Y pressed — force go home")
+            self._go_home()
+            self.y_press_time = 0
+            return
+
+        # ── X button: Back; double-press exits app to launcher ──
+        if code == ecodes.BTN_NORTH:
+            if self.mode == Mode.GAMEPAD:
+                return
+            self._pause_and_stop_media_for_home()
+            now = time.monotonic()
+            if now - self._last_x_press_at <= 0.7:
+                log("X double-press — going home")
+                self._last_x_press_at = 0.0
                 self._go_home()
-                self.y_press_time = 0
+                return
+            self._last_x_press_at = now
+            if self._moonlight_foreground:
+                self.vinput.key_tap(ecodes.KEY_ESC)
+            else:
+                self.vinput.key_tap(ecodes.KEY_BACKSPACE)
             return
 
         # ── LAUNCHER mode: A button -> Enter for flex-launcher selection ──
@@ -896,7 +1267,7 @@ class UnifiedController:
                 self.vinput.key_tap(ecodes.KEY_ESC)
             return
 
-        # ── ZR press: play/pause (KEY_SPACE) ──
+        # ── ZR press: play/pause (prefer MPRIS, fallback KEY_SPACE) ──
         if code == ecodes.BTN_TR2:  # ZR
             if not _mpris_play_pause():
                 self.vinput.key_tap(ecodes.KEY_SPACE)
@@ -914,9 +1285,11 @@ class UnifiedController:
                     self.vinput.key_tap(ecodes.KEY_F11)
                 log(f"Fullscreen toggled: {self.is_fullscreen}")
             elif code == ecodes.BTN_EAST:   # A (Nintendo) -> play/pause
-                MediaController.play_pause()
+                if not _mpris_play_pause():
+                    MediaController.play_pause()
 
             elif code == ecodes.BTN_SOUTH:  # B (Nintendo) -> exit media mode
+                self._pause_and_stop_media_for_home()
                 self.media_mode_active = False
                 self.mode = Mode.NAVIGATION
                 self.dpad.release_all()
@@ -929,34 +1302,33 @@ class UnifiedController:
         # ── NAVIGATION mode buttons ──
         if self.mode == Mode.NAVIGATION:
             if code == ecodes.BTN_EAST:
-                # Moonlight UI expects Enter; desktop/web UIs prefer click
+                # Moonlight UI expects Enter; VLC playback prefers play/pause.
                 if self._moonlight_foreground:
                     self.vinput.key_tap(ecodes.KEY_ENTER)
+                elif _read_foreground_app_hint().startswith("vlc") or self._is_media_playing():
+                    if not _mpris_play_pause():
+                        self.vinput.key_tap(ecodes.KEY_SPACE)
                 else:
-                    self.vinput.key_tap(ecodes.BTN_LEFT)
+                    self.vinput.key_tap(ecodes.KEY_ENTER)
 
             elif code == ecodes.BTN_SOUTH:
                 # Moonlight back = Escape; JMP/web back = Backspace
+                self._pause_and_stop_media_for_home()
                 if self._moonlight_foreground:
                     self.vinput.key_tap(ecodes.KEY_ESC)
                 else:
                     self.vinput.key_tap(ecodes.KEY_BACKSPACE)
 
-            elif code == ecodes.BTN_NORTH:
-                if self._moonlight_foreground:
-                    self.vinput.key_tap(ecodes.KEY_ESC)
-                else:
-                    self.vinput.key_tap(ecodes.KEY_BACKSPACE)
-
-            # Y handled globally above (go home)
+            # Y/X handled globally above
             elif code == ecodes.BTN_TL:      # L bumper → seek back (accel)
                 self.accel.press("seek_bwd")
 
             elif code == ecodes.BTN_TR:      # R bumper → seek forward (accel)
                 self.accel.press("seek_fwd")
 
-            elif code == ecodes.BTN_START:   # + → Space (play/pause fallback)
-                self.vinput.key_tap(ecodes.KEY_SPACE)
+            elif code == ecodes.BTN_START:   # + → play/pause
+                if not _mpris_play_pause():
+                    self.vinput.key_tap(ecodes.KEY_SPACE)
 
             elif code == ecodes.BTN_SELECT:  # - → Tab
                 self.vinput.key_tap(ecodes.KEY_TAB)
@@ -981,17 +1353,11 @@ class UnifiedController:
         elif code == ecodes.BTN_TR:
             self.accel.release("seek_fwd")
         elif code == ecodes.BTN_WEST:
-            # Y release: check if held 3s in fullscreen
-            if self.y_press_time > 0:
-                held = time.monotonic() - self.y_press_time
-                if held >= 3.0:
-                    self._go_home()
-                else:
-                    log(f"Y held {held:.1f}s in fullscreen (need 3s) — ignored")
-                self.y_press_time = 0
+            self.y_press_time = 0
 
     def _handle_hat(self, axis, value):
         """Process D-pad (hat) events."""
+        log(f"HAT EVENT: axis={axis} value={value}")
         if self.mode == Mode.LAUNCHER:
             # Send keyboard arrows for flex-launcher navigation
             if axis == ecodes.ABS_HAT0X:
@@ -1039,8 +1405,9 @@ class UnifiedController:
                 else:
                     self.dpad.release(ecodes.KEY_UP)
                     self.dpad.release(ecodes.KEY_DOWN)
-            elif self.is_fullscreen or mpv_is_fullscreen():
-                # Fullscreen playback: volume control
+            elif self.is_fullscreen or mpv_is_fullscreen() or self._is_media_playing():
+                # Media playing: volume control via d-pad up/down
+                log(f"VOL MODE: fs={self.is_fullscreen} mpv={mpv_is_fullscreen()} media={self._media_playing_cache}")
                 if value == -1:
                     self.accel.press("vol_up")
     
@@ -1052,6 +1419,7 @@ class UnifiedController:
                     self.accel.release("vol_down")
             else:
                 # UI navigation: arrow keys
+                log(f"NAV MODE: fs={self.is_fullscreen} media={getattr(self, '_media_playing_cache', 'N/A')}")
                 if value == -1:
                     self.dpad.release(ecodes.KEY_DOWN)
                     self.dpad.press(ecodes.KEY_UP)
@@ -1211,6 +1579,44 @@ class UnifiedController:
                     return "idle_disconnect"
 
                 self._check_mode()
+                self._self_heal_tick()
+
+                # ── GAMEPAD mode: controller is ungrabbed, Moonlight reads it directly ──
+                # We do NOT process any button/hat/stick events (would interfere with game).
+                # Just poll signal files to detect when streaming ends.
+                if self.mode == Mode.GAMEPAD:
+                    # In GAMEPAD mode, Moonlight reads controller events directly.
+                    # We still passively read evdev (ungrabbed) to emit heartbeat pings
+                    # on real controller input, while avoiding keyboard/mouse mapping.
+                    try:
+                        event = await asyncio.wait_for(
+                            self.controller.async_read_one(),
+                            timeout=GAMEPAD_POLL_S
+                        )
+
+                        if event is not None:
+                            activity = False
+
+                            if event.type == ecodes.EV_KEY and event.value == 1:
+                                activity = True
+                            elif event.type == ecodes.EV_ABS:
+                                if event.code in (ecodes.ABS_HAT0X, ecodes.ABS_HAT0Y):
+                                    activity = (event.value != 0)
+                                elif event.code in (ecodes.ABS_X, ecodes.ABS_Y, ecodes.ABS_RX, ecodes.ABS_RY):
+                                    activity = (abs(event.value) >= STICK_DIGITAL_DEAD)
+                                elif event.code in (ecodes.ABS_Z, ecodes.ABS_RZ):
+                                    activity = (event.value >= 20)
+
+                            if activity:
+                                self._send_controller_heartbeat()
+
+                    except asyncio.TimeoutError:
+                        pass
+
+                    # Preserve existing behavior: don't auto-disconnect controller
+                    # while in GAMEPAD passthrough mode.
+                    self.last_activity = time.monotonic()
+                    continue
 
                 try:
                     event = await asyncio.wait_for(
@@ -1263,8 +1669,66 @@ class UnifiedController:
 
 # ─── Entry Point ─────────────────────────────────────────────────────────────
 
+def _write_pid_file():
+    """Write current PID to file for signal-based handoff."""
+    try:
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        log(f"PID file written: {PID_FILE} (pid={os.getpid()})")
+    except Exception as e:
+        log(f"Failed to write PID file: {e}")
+
+
+def _cleanup_pid_file():
+    """Remove PID file on exit."""
+    try:
+        os.unlink(PID_FILE)
+    except FileNotFoundError:
+        pass
+    except Exception as e:
+        log(f"Failed to remove PID file: {e}")
+
+
+def _sigusr1_handler(signum, frame):
+    """SIGUSR1: Release controller grab for Moonlight game streaming."""
+    global _active_controller
+    uc = _active_controller
+    if uc is None:
+        log("SIGUSR1: No active controller instance")
+        return
+    if uc.grabbed:
+        try:
+            uc.controller.ungrab()
+            uc.grabbed = False
+            log("SIGUSR1: Released grab for Moonlight")
+        except Exception as e:
+            log(f"SIGUSR1 ungrab failed: {e}")
+    else:
+        log("SIGUSR1: Already ungrabbed, no-op")
+
+
+def _sigusr2_handler(signum, frame):
+    """SIGUSR2: Re-grab controller after Moonlight exits."""
+    global _active_controller
+    uc = _active_controller
+    if uc is None:
+        log("SIGUSR2: No active controller instance")
+        return
+    if not uc.grabbed:
+        try:
+            uc.controller.grab()
+            uc.grabbed = True
+            log("SIGUSR2: Re-grabbed for TV remote")
+        except Exception as e:
+            log(f"SIGUSR2 grab failed: {e}")
+    else:
+        log("SIGUSR2: Already grabbed, no-op")
+
+
 async def main_loop():
     """Outer loop: handle connect/disconnect/reconnect."""
+    global _active_controller
+
     log("unified-controller.py starting")
     log(f"Idle timeout: {IDLE_TIMEOUT}s ({IDLE_TIMEOUT // 60} min)")
     log(f"D-pad repeat: {DPAD_INITIAL_DELAY*1000:.0f}ms delay, "
@@ -1284,7 +1748,9 @@ async def main_loop():
             await asyncio.sleep(RECONNECT_POLL_S)
             continue
 
+        _active_controller = uc
         result = await uc.run()
+        _active_controller = None
         log(f"Session ended: {result}")
 
         if result == "idle_disconnect":
@@ -1296,12 +1762,27 @@ async def main_loop():
 
 def handle_signal(signum, frame):
     log(f"Received signal {signum}, exiting")
+    _cleanup_pid_file()
     sys.exit(0)
 
 
 if __name__ == "__main__":
+    # Acquire exclusive lock to prevent duplicate instances
+    lock_fd = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        lock_fd.write(str(os.getpid()))
+        lock_fd.flush()
+    except BlockingIOError:
+        print("Another instance is already running", flush=True)
+        sys.exit(0)
+
+    _write_pid_file()
+
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
+    signal.signal(signal.SIGUSR1, _sigusr1_handler)
+    signal.signal(signal.SIGUSR2, _sigusr2_handler)
 
     try:
         asyncio.run(main_loop())
@@ -1309,3 +1790,5 @@ if __name__ == "__main__":
         log("Interrupted, exiting")
     except SystemExit:
         pass
+    finally:
+        _cleanup_pid_file()
