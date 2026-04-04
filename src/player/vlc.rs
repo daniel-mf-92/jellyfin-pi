@@ -219,6 +219,11 @@ impl VlcPlayer {
             "default".to_string(),
         ];
 
+        // Audio passthrough for surround sound (HDMI)
+        args.push("--audio-filter".to_string());
+        args.push("scaletempo".to_string());
+        args.push("--spdif".to_string());
+
         if let Some(ms) = start_position_ms {
             let secs = ms as f64 / 1000.0;
             args.push("--start-time".to_string());
@@ -258,6 +263,25 @@ impl VlcPlayer {
         Err(PlayerError::Socket(
             "VLC socket did not become available within 5 seconds".to_string(),
         ))
+    }
+
+    /// Queue a URL for gapless playback after current item finishes.
+    pub async fn queue_url(&self, url: &str) -> PlayerResult<()> {
+        info!("queue_url: {}", url);
+        self.send_command(&format!("enqueue {}", url)).await?;
+        Ok(())
+    }
+
+    /// Get chapter count.
+    pub async fn get_chapter_count(&self) -> PlayerResult<i32> {
+        let response = self.send_command("chapter_count").await?;
+        Ok(parse_number_from_response(&response).unwrap_or(0.0) as i32)
+    }
+
+    /// Jump to a specific chapter.
+    pub async fn set_chapter(&self, index: i32) -> PlayerResult<()> {
+        self.send_command(&format!("chapter {}", index)).await?;
+        Ok(())
     }
 
     /// Pause playback (VLC pause toggles).
