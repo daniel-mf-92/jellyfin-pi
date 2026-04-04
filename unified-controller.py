@@ -247,11 +247,14 @@ def _list_mpris_players():
 
 def _find_mpris_player():
     """Discover the best active MPRIS player, preferring foreground app."""
+    # Fast path: skip slow subprocess discovery when VLC is foreground
+    hint = _read_foreground_app_hint()
+    if "vlc" in hint:
+        return "org.mpris.MediaPlayer2.vlc"
+
     players = _list_mpris_players()
     if not players:
         return None
-
-    hint = _read_foreground_app_hint()
 
     def score(player_name):
         name = player_name.lower()
@@ -294,9 +297,15 @@ def _mpris_command(method, *args):
         cmd = ["dbus-send", "--session", "--dest=" + dest, "--print-reply",
                "/org/mpris/MediaPlayer2", "org.mpris.MediaPlayer2.Player." + method]
         cmd.extend(args)
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=2, env=env)
-        return "method return" in r.stdout
-    except Exception:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=0.5, env=env)
+        ok = "method return" in r.stdout
+        if ok:
+            log(f"MPRIS {method} OK")
+        else:
+            log(f"MPRIS {method} FAIL: {r.stderr[:60]}")
+        return ok
+    except Exception as exc:
+        log(f"MPRIS {method} exception: {exc}")
         return False
 
 

@@ -333,8 +333,8 @@ class JellyfinAuth:
     def build_stream_url(self, item_id, media_source_id, start_time_secs=0):
         """Build stream URL, transcoding to match available bandwidth.
 
-        NOTE: startTimeTicks is NOT included — VLC handles seeking via
-        --start-time so the same URL can be cached in /dev/shm between plays.
+        Uses startTimeTicks for resume positions so Jellyfin starts transcoding
+        at the right point. VLC cannot seek in transcoded HTTP streams.
         """
         bw = _get_bandwidth_config()
         # Conservative defaults — the WireGuard pipe is often < 1 Mbps
@@ -343,10 +343,8 @@ class JellyfinAuth:
         max_w = bw.get("max_width", 854)
         max_h = bw.get("max_height", 480)
 
-        # Extra safety: cut video bitrate by 20% below measured target
-        # to absorb jitter and TCP overhead
-        video_br = int(video_br * 0.80)
-        video_br = max(150000, (video_br // 50000) * 50000)  # floor + round
+        # Floor at 200kbps, round to nearest 50kbps
+        video_br = max(200000, (video_br // 50000) * 50000)
 
         transcode_params = {
             "Static": "false",
@@ -361,8 +359,10 @@ class JellyfinAuth:
             "mediaSourceId": media_source_id,
             "api_key": self.token,
         }
-        # NO startTimeTicks — VLC seeks via --start-time instead,
-        # so the transcoded stream URL is stable and cacheable.
+        # Server-side seek for resume: Jellyfin starts transcoding at the right position.
+        # Without this, VLC can't seek in a transcoded HTTP stream and crashes after ~8s.
+        if start_time_secs > 0:
+            transcode_params["startTimeTicks"] = str(int(start_time_secs * 10_000_000))
 
         params = urllib.parse.urlencode(transcode_params)
         effective_bps = video_br + audio_br
@@ -1519,9 +1519,12 @@ class APIPoller:
         except (ValueError, TypeError):
             stream_bitrate_bps = None
 
-        # Build stream URL (no startTimeTicks — VLC handles seeking)
+        # Build stream URL with server-side seek for transcodes
         stream_url = self.auth.build_stream_url(
             item_id, media_source_id, start_time_secs=start_secs)
+        # Server handled the seek — don't double-seek in VLC
+        if "startTimeTicks" in stream_url:
+            start_secs = 0
 
         log.info(
             f"Intercepting: {item_name} "
