@@ -121,7 +121,31 @@ SUBSYSTEM=="input", ATTRS{id/vendor}=="057e", MODE="0666"
 UDEV
 sudo udevadm control --reload-rules
 
-# 7. Enable and start service
+# 7. Set up automation scripts
+echo "--- Setting up automation scripts ---"
+chmod +x "$SCRIPT_DIR"/scripts/*.sh "$SCRIPT_DIR"/scripts/lib/common.sh 2>/dev/null || true
+
+# Symlink bandwidth-measure for standalone use
+ln -sf "$SCRIPT_DIR/scripts/bandwidth-measure.sh" "$HOME/bin/measure-streaming-bw.sh" 2>/dev/null || true
+
+# Ensure .env has JELLYFIN_API_KEY
+if [ -f "$SCRIPT_DIR/.env" ]; then
+    if ! grep -q "JELLYFIN_API_KEY" "$SCRIPT_DIR/.env"; then
+        echo ""
+        echo "WARNING: JELLYFIN_API_KEY not found in .env"
+        echo "Add it: echo 'JELLYFIN_API_KEY=your-key' >> $SCRIPT_DIR/.env"
+    fi
+else
+    echo ""
+    echo "WARNING: No .env file found. Copy .env.example and fill in values:"
+    echo "  cp $SCRIPT_DIR/.env.example $SCRIPT_DIR/.env"
+fi
+
+echo "Automation scripts ready. Add to master script:"
+echo "  JELLYFIN_TV_DIR=\"\$HOME/jellyfin-tv\""
+echo "  [ -d \"\$JELLYFIN_TV_DIR/scripts\" ] && source \"\$JELLYFIN_TV_DIR/scripts/jellyfin-cron.sh\""
+
+# 8. Enable and start service
 echo "--- Enabling service ---"
 systemctl --user daemon-reload
 systemctl --user enable jellyfin-tv.service
