@@ -3,6 +3,8 @@ mod player;
 mod input;
 mod state;
 mod config;
+mod tracking;
+use tracking::PlaybackTracker;
 mod daemon;
 mod device_profile;
 mod power;
@@ -239,6 +241,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 3. Create MpvPlayer (lazy: created when playback starts)
     let player: Arc<Mutex<Option<VlcPlayer>>> = Arc::new(Mutex::new(None));
 
+    // 3a. Create playback tracker (local SQLite)
+    let tracker = match PlaybackTracker::new() {
+        Ok(t) => {
+            info!("Playback tracker initialized");
+            Arc::new(t)
+        }
+        Err(e) => {
+            error!("Failed to init playback tracker: {}", e);
+            return Err(e.into());
+        }
+    };
+
     // 3b. Create daemon manager (baked-in background tasks)
     let mut daemon_mgr = daemon::DaemonManager::new(daemon_cb_max);
     let daemon_event_rx = daemon_mgr.take_event_receiver();
@@ -277,6 +291,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         state.clone(),
         player.clone(),
         daemon_player_tx.clone(),
+        tracker.clone(),
     );
     setup_content_callbacks(
         &ui,
@@ -830,18 +845,20 @@ fn setup_playback_callbacks(
     state: Arc<StateManager>,
     player: Arc<Mutex<Option<VlcPlayer>>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
+    tracker: Arc<PlaybackTracker>,
 ) {
     // play-item(item_id)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let state_clone = state.clone();
     let player_clone = player.clone();
+    let tracker_clone = tracker.clone();
     ui.global::<AppBridge>().on_play_item(move |item_id| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let state = state_clone.clone();
         let player = player_clone.clone();
-        let daemon_player_tx = daemon_player_tx.clone();
+        let daemon_player_tx = daemon_player_tx.clone();        let tracker = tracker_clone.clone();
         let item_id_str = item_id.to_string();
 
         tokio::spawn(async move {
@@ -1021,6 +1038,43 @@ fn setup_playback_callbacks(
                         }
                     }
 
+                    // Record in local playback tracker
+                    {
+                        let user_name = {
+                            let s = state.get_state().await;
+                            s.current_user.as_ref().map(|u| u.name.clone()).unwrap_or_default()
+                        };
+                        let user_id = {
+                            let s = state.get_state().await;
+                            s.current_user.as_ref().map(|u| u.id.clone()).unwrap_or_default()
+                        };
+                        let title_str = item_detail.as_ref().map(|i| i.name.as_str()).unwrap_or("Unknown");
+                        let series = item_detail.as_ref().and_then(|i| i.series_name.as_deref());
+                        let se = item_detail.as_ref().and_then(|i| {
+                            let s = i.parent_index_number?;
+                            let e = i.index_number?;
+                            Some(format!("S{:02}E{:02}", s, e))
+                        });
+                        let runtime = item_detail.as_ref().and_then(|i| i.run_time_ticks);
+                        match tracker.start_session(
+                            &user_name,
+                            &user_id,
+                            &item_id_str,
+                            title_str,
+                            series,
+                            se.as_deref(),
+                            "pi5-home-A",
+                            play_method,
+                            runtime,
+                        ) {
+                            Ok(sid) => {
+                                state.set_tracking_session(Some(sid)).await;
+                                info!("Tracking session started: #{}", sid);
+                            }
+                            Err(e) => warn!("Tracking: failed to start session: {}", e),
+                        }
+                    }
+
                     // Set up player state in UI
                     let title = item_detail
                         .as_ref()
@@ -1057,6 +1111,7 @@ fn setup_playback_callbacks(
                     let state_ev = state.clone();
                     let player_ev = player.clone();
                     let daemon_tx_ev = daemon_player_tx.clone();
+                    let tracker_ev = tracker.clone();
                     tokio::spawn(async move {
                         handle_player_events(
                             ui_weak_ev,
@@ -1064,6 +1119,7 @@ fn setup_playback_callbacks(
                             state_ev,
                             player_ev,
                             daemon_tx_ev,
+                            tracker_ev,
                         )
                         .await;
                     });
@@ -1113,11 +1169,13 @@ fn setup_playback_callbacks(
     let client_clone = client.clone();
     let state_clone = state.clone();
     let player_clone = player.clone();
+    let tracker_clone2 = tracker.clone();
     ui.global::<AppBridge>().on_stop_playback(move || {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let state = state_clone.clone();
         let player = player_clone.clone();
+        let tracker = tracker_clone2.clone();
 
         tokio::spawn(async move {
             info!("Stop playback requested");
@@ -1156,6 +1214,19 @@ fn setup_playback_callbacks(
                 if let Err(e) = c.report_playback_stopped(&stop_info).await {
                     warn!("Failed to report playback stopped: {}", e);
                 }
+            }
+
+            // End tracking session
+            if let Some(tid) = state.get_tracking_session().await {
+                let runtime = {
+                    let c = client.read().await;
+                    if let Some(ref item_id) = state.get_state().await.playing_item_id {
+                        c.get_item(item_id).await.ok().and_then(|i| i.run_time_ticks)
+                    } else {
+                        None
+                    }
+                };
+                tracker.end_session(tid, position_ticks, runtime);
             }
 
             // Update state and navigate back
@@ -1930,6 +2001,7 @@ async fn handle_player_events(
     state: Arc<StateManager>,
     player: Arc<Mutex<Option<VlcPlayer>>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
+    tracker: Arc<PlaybackTracker>,
 ) {
     // Take the event receiver from the player
     let mut event_rx = {
@@ -2105,6 +2177,23 @@ async fn handle_player_events(
                     };
                     let c = client.read().await;
                     let _ = c.report_playback_stopped(&stop_info).await;
+                }
+
+                // End tracking session
+                if let Some(tid) = state.get_tracking_session().await {
+                    let position_ticks_track = {
+                        let p = player.lock().await;
+                        if let Some(ref vlc) = *p {
+                            vlc.get_position_ms().await.unwrap_or(0) * 10_000
+                        } else { 0 }
+                    };
+                    let runtime = {
+                        let c = client.read().await;
+                        if let Some(ref iid) = app_state.playing_item_id {
+                            c.get_item(iid).await.ok().and_then(|i| i.run_time_ticks)
+                        } else { None }
+                    };
+                    tracker.end_session(tid, position_ticks_track, runtime);
                 }
 
                 // Navigate back from player
