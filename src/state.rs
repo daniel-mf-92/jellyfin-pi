@@ -40,6 +40,8 @@ pub struct AppState {
     pub play_session_id: Option<String>,
     pub playing_item_id: Option<String>,
     pub playing_media_source_id: Option<String>,
+    // Playback tracking session ID (local SQLite)
+    pub tracking_session_id: Option<i64>,
     // Screensaver
     pub idle_seconds: u32,
     pub screensaver_timeout: u32,
@@ -61,6 +63,7 @@ impl StateManager {
             play_session_id: None,
             playing_item_id: None,
             playing_media_source_id: None,
+            tracking_session_id: None,
             idle_seconds: 0,
             screensaver_timeout: 300,
         };
@@ -133,6 +136,7 @@ impl StateManager {
         state.play_session_id = None;
         state.playing_item_id = None;
         state.playing_media_source_id = None;
+        state.tracking_session_id = None;
         state.screen_stack.clear();
         state.current_screen = Screen::Login;
         info!("User '{}' logged out, state reset to Login", user_name);
@@ -157,6 +161,7 @@ impl StateManager {
         let item_id = state.playing_item_id.take();
         state.play_session_id = None;
         state.playing_media_source_id = None;
+        state.tracking_session_id = None;
         info!("Stopped playback: item={}", item_id.as_deref().unwrap_or("none"));
         // Go back from player screen
         if let Some(previous) = state.screen_stack.pop() {
@@ -204,4 +209,15 @@ impl StateManager {
             _ => None,
         }
     }
+
+    pub async fn set_tracking_session(&self, session_id: Option<i64>) {
+        let mut state = self.state.write().await;
+        state.tracking_session_id = session_id;
+    }
+
+    pub async fn get_tracking_session(&self) -> Option<i64> {
+        let state = self.state.read().await;
+        state.tracking_session_id
+    }
+
 }
