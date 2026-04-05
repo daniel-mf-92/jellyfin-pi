@@ -2,6 +2,7 @@
 // Matches Jellyfin Android TV login flow with gamepad-friendly virtual keyboard
 
 import { Theme, UserInfo } from "theme.slint";
+import { JellyfinBranding } from "branding.slint";
 
 // ============================================================================
 // Virtual Keyboard Key
@@ -188,6 +189,10 @@ export component LoginScreen inherits Rectangle {
         VerticalLayout {
             alignment: center;
             spacing: Theme.spacing-sm;
+
+            JellyfinBranding {
+                horizontal-stretch: 0;
+            }
 
             Text {
                 text: root.server-name;

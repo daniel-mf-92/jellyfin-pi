@@ -9,6 +9,14 @@ import { SettingsScreen } from "settings.slint";
 import { Screensaver } from "screensaver.slint";
 import { LoadingSpinner } from "loading.slint";
 import { ConfirmPopup } from "popup.slint";
+import { LibraryTile, LibraryTilesRow } from "library-tiles.slint";
+import { NowPlayingBar } from "now-playing-bar.slint";
+import { CastMember, CastCrewRow, GenreTag, GenreRow } from "cast-crew.slint";
+import { ChapterListPopup } from "chapters.slint";
+import { TrickplayPreview } from "trickplay.slint";
+import { PlaylistItem, PlaylistSidebar } from "playlist.slint";
+import { MusicTrack, MusicPlayer } from "music-player.slint";
+import { JellyfinBranding } from "branding.slint";
 
 export global AppBridge {
     // Navigation
@@ -44,6 +52,37 @@ export global AppBridge {
     callback mark-played(/* item_id */ string);
     callback mark-unplayed(/* item_id */ string);
 
+    // Library tiles
+    callback library-selected(string);
+
+    // Skip intro
+    callback skip-segment();
+
+    // Chapters
+    callback show-chapters();
+    callback seek-to-chapter(int);
+
+    // Speed control
+    callback speed-up();
+    callback speed-down();
+
+    // Subtitle delay
+    callback subtitle-delay-adjust(/* delta_ms */ int);
+
+    // Queue
+    callback queue-play-item(/* index */ int);
+    callback queue-remove-item(/* index */ int);
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback enqueue-next(/* item_id */ string);
+
+    // Now playing bar
+    callback now-playing-clicked();
+
+    // Genre/cast
+    callback genre-selected(string);
+    callback person-selected(string);
+
     // State properties (set by Rust)
     in-out property <string> current-screen: "login";
     in-out property <bool> is-loading: false;
@@ -65,6 +104,42 @@ export global AppBridge {
     in-out property <bool> show-popup: false;
     in-out property <string> popup-title: "";
     in-out property <string> popup-message: "";
+
+    // Library tiles
+    in property <[LibraryTile]> library-tiles;
+
+    // Now playing bar
+    in property <string> now-playing-title;
+    in property <string> now-playing-subtitle;
+    in property <image> now-playing-thumbnail;
+    in property <float> now-playing-progress;
+    in property <bool> now-playing-active;
+
+    // Cast & crew
+    in property <[CastMember]> cast-members;
+    in property <[GenreTag]> genres;
+
+    // Chapters
+    in property <[ChapterInfo]> chapters;
+
+    // Skip intro/credits
+    in property <bool> show-skip-button;
+    in property <string> skip-button-label;
+
+    // Playback speed
+    in property <string> speed-label: "1.0x";
+
+    // Playlist/queue
+    in property <[PlaylistItem]> queue-items;
+    in property <int> queue-current-index;
+    in property <bool> show-playlist;
+    in property <bool> shuffle-active;
+    in property <int> repeat-mode;
+
+    // Trickplay
+    in property <image> trickplay-thumbnail;
+    in property <string> trickplay-timestamp;
+    in property <bool> trickplay-scrubbing;
 }
 
 export component AppWindow inherits Window {
@@ -238,6 +313,20 @@ export component AppWindow inherits Window {
             }
             dismiss() => {
                 AppBridge.stop-playback();
+            }
+        }
+
+        // Now playing bar - visible when media is playing and not on the player screen
+        if AppBridge.now-playing-active && AppBridge.current-screen != "player" : NowPlayingBar {
+            width: 100%;
+            y: parent.height - self.height;
+            title: AppBridge.now-playing-title;
+            subtitle: AppBridge.now-playing-subtitle;
+            thumbnail: AppBridge.now-playing-thumbnail;
+            progress: AppBridge.now-playing-progress;
+            bar-visible: true;
+            bar-clicked() => {
+                AppBridge.now-playing-clicked();
             }
         }
 

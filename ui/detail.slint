@@ -5,6 +5,7 @@
 import { Theme, MediaItem } from "theme.slint";
 import { MediaCard } from "card.slint";
 import { ContentRow } from "content-row.slint";
+import { CastMember, CastCrewRow, GenreTag, GenreRow } from "cast-crew.slint";
 
 // ============================================================================
 // Action button used in the detail screen button row
@@ -86,6 +87,12 @@ export component DetailScreen inherits Rectangle {
     callback mark-unplayed(/* item_id */ string);
     callback request-seasons(/* series_id */ string);
     callback request-episodes(/* series_id */ string, /* season_id */ string);
+
+    // Genre & cast data (set by AppBridge)
+    in property <[GenreTag]> genres: [];
+    in property <[CastMember]> cast-members: [];
+    callback genre-selected(/* genre_name */ string);
+    callback person-selected(/* person_id */ string);
 
     // -- Helpers --------------------------------------------------------------
 
@@ -435,7 +442,40 @@ export component DetailScreen inherits Rectangle {
             }
 
             // ================================================================
-            // 4. Content rows
+            // 4. Genres
+            // ================================================================
+            if root.genres.length > 0 : Rectangle {
+                width: 100%;
+                height: 72px;
+                background: transparent;
+                padding-left: Theme.overscan-h;
+
+                GenreRow {
+                    x: Theme.overscan-h;
+                    width: parent.width - Theme.overscan-h * 2;
+                    model: root.genres;
+                    genre-selected(name) => { root.genre-selected(name); }
+                }
+            }
+
+            // ================================================================
+            // 5. Cast & Crew
+            // ================================================================
+            if root.cast-members.length > 0 : Rectangle {
+                width: 100%;
+                height: 170px;
+                background: transparent;
+
+                CastCrewRow {
+                    x: Theme.overscan-h;
+                    width: parent.width - Theme.overscan-h * 2;
+                    model: root.cast-members;
+                    person-selected(id) => { root.person-selected(id); }
+                }
+            }
+
+            // ================================================================
+            // 6. Content rows
             // ================================================================
 
             // Spacer

@@ -76,7 +76,7 @@ component PlaylistRow inherits Rectangle {
                 background: #00000066;
 
                 Text {
-                    text: u{25B6};
+                    text: "\u{25B6}";
                     font-size: 18px;
                     color: Theme.accent;
                     horizontal-alignment: center;
@@ -180,7 +180,7 @@ component ToggleButton inherits Rectangle {
 
 export component PlaylistSidebar inherits Rectangle {
     in property <[PlaylistItem]> items: [];
-    in-out property <bool> visible: false;
+    in property <bool> sidebar-visible: false;
     in-out property <int> current-index: 0;
     in-out property <bool> shuffle-active: false;
     in-out property <int> repeat-mode: 0;   // 0 = none, 1 = all, 2 = one
@@ -214,7 +214,7 @@ export component PlaylistSidebar inherits Rectangle {
         width: 100%;
         height: 100%;
         background: #00000044;
-        opacity: root.visible ? 1.0 : 0.0;
+        opacity: root.sidebar-visible ? 1.0 : 0.0;
 
         animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
 
@@ -225,7 +225,7 @@ export component PlaylistSidebar inherits Rectangle {
 
     // ---- Sidebar panel ----
     Rectangle {
-        x: root.visible ? (parent.width - root.sidebar-width) : parent.width;
+        x: root.sidebar-visible ? (parent.width - root.sidebar-width) : parent.width;
         y: 0;
         width: root.sidebar-width;
         height: parent.height;
@@ -341,7 +341,7 @@ export component PlaylistSidebar inherits Rectangle {
 
     // ---- Key handling ----
     fs := FocusScope {
-        enabled: root.visible;
+        enabled: root.sidebar-visible;
 
         key-pressed(event) => {
             // B or Escape: close sidebar
