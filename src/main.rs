@@ -14,6 +14,9 @@ mod segments;
 mod queue;
 mod audio;
 
+use segments::SegmentManager;
+use queue::{PlaybackQueue, QueueItem};
+use player::PlaybackControls;
 use api::{JellyfinClient, ImageCache};
 use api::models::*;
 
@@ -257,6 +260,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // 3c. Create new module instances
+    let segments: Arc<Mutex<SegmentManager>> = Arc::new(Mutex::new(SegmentManager::new()));
+    let playback_controls: Arc<Mutex<PlaybackControls>> = Arc::new(Mutex::new(PlaybackControls::new()));
+    let queue: Arc<Mutex<PlaybackQueue>> = Arc::new(Mutex::new(PlaybackQueue::new()));
+
     // 3b. Create daemon manager (baked-in background tasks)
     let mut daemon_mgr = daemon::DaemonManager::new(daemon_cb_max);
     let daemon_event_rx = daemon_mgr.take_event_receiver();
@@ -296,6 +304,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         player.clone(),
         daemon_player_tx.clone(),
         tracker.clone(),
+        segments.clone(),
+        playback_controls.clone(),
+        queue.clone(),
     );
     setup_content_callbacks(
         &ui,
@@ -850,6 +861,9 @@ fn setup_playback_callbacks(
     player: Arc<Mutex<Option<VlcPlayer>>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
     tracker: Arc<PlaybackTracker>,
+    segments: Arc<Mutex<SegmentManager>>,
+    playback_controls: Arc<Mutex<PlaybackControls>>,
+    queue: Arc<Mutex<PlaybackQueue>>,
 ) {
     // play-item(item_id)
     let ui_weak = ui.as_weak();
@@ -857,12 +871,18 @@ fn setup_playback_callbacks(
     let state_clone = state.clone();
     let player_clone = player.clone();
     let tracker_clone = tracker.clone();
+    let segments_clone = segments.clone();
+    let playback_controls_clone = playback_controls.clone();
+    let queue_clone = queue.clone();
     ui.global::<AppBridge>().on_play_item(move |item_id| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let state = state_clone.clone();
         let player = player_clone.clone();
         let daemon_player_tx = daemon_player_tx.clone();        let tracker = tracker_clone.clone();
+        let segments = segments_clone.clone();
+        let playback_controls = playback_controls_clone.clone();
+        let queue = queue_clone.clone();
         let item_id_str = item_id.to_string();
 
         tokio::spawn(async move {
@@ -1079,6 +1099,26 @@ fn setup_playback_callbacks(
                         }
                     }
 
+                    // Load media segments for intro/credits skip
+                    {
+                        let c = client.read().await;
+                        if let Ok(segs) = c.get_media_segments(&item_id_str).await {
+                            let mut sm = segments.lock().await;
+                            sm.set_segments(segs);
+                        }
+                    }
+                    // Reset playback controls for new item
+                    {
+                        let mut pc = playback_controls.lock().await;
+                        let cmds = pc.reset_all();
+                        let p = player.lock().await;
+                        if let Some(ref vlc) = *p {
+                            for cmd in cmds {
+                                let _ = vlc.send_command(&cmd).await;
+                            }
+                        }
+                    }
+
                     // Set up player state in UI
                     let title = item_detail
                         .as_ref()
@@ -1116,6 +1156,9 @@ fn setup_playback_callbacks(
                     let player_ev = player.clone();
                     let daemon_tx_ev = daemon_player_tx.clone();
                     let tracker_ev = tracker.clone();
+                    let segments_ev = segments.clone();
+                    let controls_ev = playback_controls.clone();
+                    let queue_ev = queue.clone();
                     tokio::spawn(async move {
                         handle_player_events(
                             ui_weak_ev,
@@ -1124,6 +1167,9 @@ fn setup_playback_callbacks(
                             player_ev,
                             daemon_tx_ev,
                             tracker_ev,
+                            segments_ev,
+                            controls_ev,
+                            queue_ev,
                         )
                         .await;
                     });
@@ -1347,6 +1393,260 @@ fn setup_playback_callbacks(
             }
         });
     });
+
+    // =========================================================================
+    // New module callbacks: segments, controls, queue
+    // =========================================================================
+
+    // skip-segment() -- skip intro/credits
+    {
+        let segments_clone = segments.clone();
+        let player_clone = player.clone();
+        ui.global::<AppBridge>().on_skip_segment(move || {
+            let segments = segments_clone.clone();
+            let player = player_clone.clone();
+            tokio::spawn(async move {
+                let position_ms = {
+                    let p = player.lock().await;
+                    if let Some(ref vlc) = *p {
+                        vlc.get_position_ms().await.unwrap_or(0)
+                    } else { 0 }
+                };
+                let position_ticks = position_ms * 10_000;
+                let skip_target = {
+                    let mut sm = segments.lock().await;
+                    if let Some(seg_id) = sm.active_segment_id(position_ticks).map(|s| s.to_owned()) {
+                        sm.mark_skipped(&seg_id);
+                    }
+                    sm.get_skip_target(position_ticks)
+                };
+                if let Some(target_ticks) = skip_target {
+                    let target_ms = target_ticks / 10_000;
+                    let p = player.lock().await;
+                    if let Some(ref vlc) = *p {
+                        if let Err(e) = vlc.seek_to(target_ms).await {
+                            error!("Skip segment seek failed: {}", e);
+                        } else {
+                            info!("Skipped segment, seeked to {}ms", target_ms);
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    // speed-up()
+    {
+        let controls_clone = playback_controls.clone();
+        let player_clone = player.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_speed_up(move || {
+            let controls = controls_clone.clone();
+            let player = player_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let (cmd, label) = {
+                    let mut pc = controls.lock().await;
+                    let cmd = pc.speed_up();
+                    let label = pc.speed_label();
+                    (cmd, label)
+                };
+                let p = player.lock().await;
+                if let Some(ref vlc) = *p {
+                    let _ = vlc.send_command(&cmd).await;
+                }
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_speed_label(label.into());
+                });
+            });
+        });
+    }
+
+    // speed-down()
+    {
+        let controls_clone = playback_controls.clone();
+        let player_clone = player.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_speed_down(move || {
+            let controls = controls_clone.clone();
+            let player = player_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let (cmd, label) = {
+                    let mut pc = controls.lock().await;
+                    let cmd = pc.speed_down();
+                    let label = pc.speed_label();
+                    (cmd, label)
+                };
+                let p = player.lock().await;
+                if let Some(ref vlc) = *p {
+                    let _ = vlc.send_command(&cmd).await;
+                }
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_speed_label(label.into());
+                });
+            });
+        });
+    }
+
+    // subtitle-delay-adjust(delta_ms)
+    {
+        let controls_clone = playback_controls.clone();
+        let player_clone = player.clone();
+        ui.global::<AppBridge>().on_subtitle_delay_adjust(move |delta_ms| {
+            let controls = controls_clone.clone();
+            let player = player_clone.clone();
+            tokio::spawn(async move {
+                let cmd = {
+                    let mut pc = controls.lock().await;
+                    pc.adjust_subtitle_delay(delta_ms as i64)
+                };
+                let p = player.lock().await;
+                if let Some(ref vlc) = *p {
+                    let _ = vlc.send_command(&cmd).await;
+                }
+            });
+        });
+    }
+
+    // show-chapters()
+    {
+        let player_clone = player.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_show_chapters(move || {
+            let player = player_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let p = player.lock().await;
+                if let Some(ref vlc) = *p {
+                    match vlc.get_chapter_count().await {
+                        Ok(count) => {
+                            info!("Chapter count: {}", count);
+                            // Chapter data is provided through the chapters property
+                            // which is populated elsewhere
+                        }
+                        Err(e) => {
+                            warn!("Failed to get chapters: {}", e);
+                        }
+                    }
+                }
+            });
+        });
+    }
+
+    // seek-to-chapter(index)
+    {
+        let player_clone = player.clone();
+        ui.global::<AppBridge>().on_seek_to_chapter(move |index| {
+            let player = player_clone.clone();
+            tokio::spawn(async move {
+                let p = player.lock().await;
+                if let Some(ref vlc) = *p {
+                    if let Err(e) = vlc.set_chapter(index).await {
+                        error!("Seek to chapter {} failed: {}", index, e);
+                    } else {
+                        info!("Seeked to chapter {}", index);
+                    }
+                }
+            });
+        });
+    }
+
+    // queue-play-item(index)
+    {
+        let queue_clone = queue.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_queue_play_item(move |index| {
+            let queue = queue_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let item_id = {
+                    let mut q = queue.lock().await;
+                    q.skip_to(index as usize).map(|item| item.item_id.clone())
+                };
+                if let Some(id) = item_id {
+                    info!("Queue: playing item at index {}: {}", index, id);
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>().invoke_play_item(id.into());
+                    });
+                }
+            });
+        });
+    }
+
+    // queue-remove-item(index)
+    {
+        let queue_clone = queue.clone();
+        ui.global::<AppBridge>().on_queue_remove_item(move |index| {
+            let queue = queue_clone.clone();
+            tokio::spawn(async move {
+                let mut q = queue.lock().await;
+                q.remove(index as usize);
+                info!("Queue: removed item at index {}", index);
+            });
+        });
+    }
+
+    // toggle-shuffle()
+    {
+        let queue_clone = queue.clone();
+        ui.global::<AppBridge>().on_toggle_shuffle(move || {
+            let queue = queue_clone.clone();
+            tokio::spawn(async move {
+                let mut q = queue.lock().await;
+                let shuffled = q.toggle_shuffle();
+                info!("Queue: shuffle = {}", shuffled);
+            });
+        });
+    }
+
+    // cycle-repeat()
+    {
+        let queue_clone = queue.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_cycle_repeat(move || {
+            let queue = queue_clone.clone();
+            let ui_weak = ui_weak.clone();
+            tokio::spawn(async move {
+                let mode = {
+                    let mut q = queue.lock().await;
+                    q.cycle_repeat()
+                };
+                let mode_int = match mode {
+                    queue::RepeatMode::None => 0,
+                    queue::RepeatMode::RepeatOne => 1,
+                    queue::RepeatMode::RepeatAll => 2,
+                };
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_repeat_mode(mode_int);
+                });
+                info!("Queue: repeat mode = {:?}", mode);
+            });
+        });
+    }
+
+    // enqueue-next(item_id) -- add item to play after current
+    {
+        let queue_clone = queue.clone();
+        let client_clone = client.clone();
+        ui.global::<AppBridge>().on_enqueue_next(move |item_id| {
+            let queue = queue_clone.clone();
+            let client = client_clone.clone();
+            let item_id_str = item_id.to_string();
+            tokio::spawn(async move {
+                // Fetch item details to build QueueItem
+                let c = client.read().await;
+                if let Ok(item) = c.get_item(&item_id_str).await {
+                    let server_url = c.server_url.clone();
+                    drop(c);
+                    let qi = QueueItem::from_dto(&item, &server_url);
+                    let mut q = queue.lock().await;
+                    q.play_next(qi);
+                    info!("Queue: enqueued '{}' to play next", item.name);
+                }
+            });
+        });
+    }
 }
 
 fn setup_content_callbacks(
@@ -2006,6 +2306,9 @@ async fn handle_player_events(
     player: Arc<Mutex<Option<VlcPlayer>>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
     tracker: Arc<PlaybackTracker>,
+    segments: Arc<Mutex<SegmentManager>>,
+    playback_controls: Arc<Mutex<PlaybackControls>>,
+    queue: Arc<Mutex<PlaybackQueue>>,
 ) {
     // Take the event receiver from the player
     let mut event_rx = {
@@ -2110,6 +2413,23 @@ async fn handle_player_events(
                         }
                     }
                 }
+
+                // Check for skippable segments (intro/credits)
+                {
+                    let sm = segments.lock().await;
+                    let position_ticks = position_ms * 10_000;
+                    if let Some((_seg_type, _end_ticks)) = sm.check_position(position_ticks) {
+                        let label = sm.skip_label(position_ticks).unwrap_or_else(|| "Skip".to_string());
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>().set_show_skip_button(true);
+                            ui.global::<AppBridge>().set_skip_button_label(label.into());
+                        });
+                    } else {
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_show_skip_button(false);
+                        });
+                    }
+                }
             }
             PlayerEvent::Playing => {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
@@ -2200,7 +2520,31 @@ async fn handle_player_events(
                     tracker.end_session(tid, position_ticks_track, runtime);
                 }
 
-                // Navigate back from player
+                // Clear segments
+                {
+                    let mut sm = segments.lock().await;
+                    sm.clear();
+                }
+                // Hide skip button
+                let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>().set_show_skip_button(false);
+                });
+
+                // Auto-advance to next queue item
+                let next_item = {
+                    let mut q = queue.lock().await;
+                    q.advance().map(|item| item.item_id.clone())
+                };
+                if let Some(next_id) = next_item {
+                    info!("Queue: auto-advancing to next item: {}", next_id);
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>().invoke_play_item(next_id.into());
+                    });
+                    // Don't stop playback or navigate back - new item will start
+                    break;
+                }
+
+                // Navigate back from player (no more queue items)
                 state.stop_playback().await;
                 let current = state.current_screen_name().await;
                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {

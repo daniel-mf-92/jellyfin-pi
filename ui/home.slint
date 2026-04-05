@@ -4,6 +4,7 @@
 import { Theme, MediaItem, ContentRowData, UserInfo } from "theme.slint";
 import { MediaCard } from "card.slint";
 import { ContentRow } from "content-row.slint";
+import { LibraryTile, LibraryTilesRow } from "library-tiles.slint";
 
 export component HomeScreen inherits Rectangle {
     width: 100%;
@@ -23,6 +24,9 @@ export component HomeScreen inherits Rectangle {
     callback open-search();
     callback open-settings();
     callback open-library(/* library_id */ string);
+
+    in property <[LibraryTile]> library-tiles: [];
+    callback library-selected(/* library_id */ string);
 
     // -- Internal state -------------------------------------------------------
 
@@ -138,6 +142,13 @@ export component HomeScreen inherits Rectangle {
                     vertical-alignment: center;
                 }
             }
+        }
+
+        // == Library tiles row =============================================
+        LibraryTilesRow {
+            height: 50px;
+            libraries: root.library-tiles;
+            library-selected(id) => { root.library-selected(id); }
         }
 
         // == Scrollable content rows ==========================================

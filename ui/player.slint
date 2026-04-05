@@ -2,6 +2,9 @@
 // Matches Jellyfin Android TV LeanbackOverlayFragment layout
 
 import { Theme, PlayerState, ChapterInfo, MediaSegmentInfo } from "theme.slint";
+import { TrickplayPreview } from "trickplay.slint";
+import { ChapterListPopup } from "chapters.slint";
+import { PlaylistItem, PlaylistSidebar } from "playlist.slint";
 
 // ============================================================================
 // Helper: Format a transport control button with focus state
@@ -247,6 +250,31 @@ export component PlayerOverlay inherits Rectangle {
     in property <string> skip-label: "Skip Intro";
     callback skip-segment();
 
+    // Trickplay preview
+    in property <image> trickplay-thumbnail;
+    in property <string> trickplay-timestamp: "";
+    in property <bool> trickplay-scrubbing: false;
+
+    // Playlist / Queue
+    in property <[PlaylistItem]> queue-items: [];
+    in-out property <int> queue-current-index: 0;
+    in-out property <bool> show-playlist: false;
+    in-out property <bool> shuffle-active: false;
+    in-out property <int> repeat-mode: 0;
+    callback queue-item-selected(int);
+    callback queue-item-removed(int);
+    callback toggle-shuffle();
+    callback cycle-repeat();
+
+    // Speed control
+    in property <string> speed-label: "1.0x";
+    callback speed-up();
+    callback speed-down();
+
+    // Chapter list overlay toggle
+    in-out property <bool> show-chapters: false;
+    callback seek-to-chapter(int);
+
     // Callbacks
     callback play-pause();
     callback seek(int);
@@ -334,6 +362,16 @@ export component PlayerOverlay inherits Rectangle {
             color: Theme.text-secondary;
         }
 
+        // Trickplay preview — floats above the seek bar during scrubbing
+        TrickplayPreview {
+            // Position above the seek bar, horizontally centered on the scrub position
+            x-position: Theme.overscan-h + (parent.width - Theme.overscan-h * 2) * clamp(root.progress, 0.0, 1.0);
+            y: -100px;
+            thumbnail-image: root.trickplay-thumbnail;
+            timestamp-text: root.trickplay-timestamp;
+            is-scrubbing: root.trickplay-scrubbing;
+        }
+
         // Seek bar
         SeekBar {
             x: Theme.overscan-h;
@@ -416,8 +454,9 @@ export component PlayerOverlay inherits Rectangle {
 
             SecondaryControl {
                 label: "Speed";
-                value: "1.0x";
+                value: root.speed-label;
                 is-focused: root.focus-zone == 2 && root.secondary-focus == 2;
+                activated => { root.speed-up(); }
             }
         }
     }
@@ -429,21 +468,22 @@ export component PlayerOverlay inherits Rectangle {
         show: root.volume-visible;
     }
 
-    // ---- Skip intro/credits button (bottom-right) ----
+    // ---- Skip intro/credits button (bottom-right, above transport bar) ----
     if root.show-skip-button : Rectangle {
-        x: parent.width - 280px;
-        y: parent.height - 120px;
-        width: 240px;
-        height: 48px;
-        border-radius: 24px;
+        x: parent.width - 228px;
+        y: root.visible-overlay ? (parent.height - 280px) : (parent.height - 80px);
+        width: 180px;
+        height: 44px;
+        border-radius: 8px;
         background: Theme.accent;
         opacity: 0.95;
 
         animate opacity { duration: Theme.transition-duration; }
+        animate y { duration: Theme.transition-duration; easing: ease-out; }
 
         Text {
             text: root.skip-label;
-            font-size: Theme.font-body-large;
+            font-size: Theme.font-body-medium;
             font-weight: 600;
             color: #ffffff;
             horizontal-alignment: center;
@@ -455,12 +495,80 @@ export component PlayerOverlay inherits Rectangle {
         }
     }
 
+    // ---- Chapter list popup overlay ----
+    if root.show-chapters : ChapterListPopup {
+        width: 100%;
+        height: 100%;
+        chapters: root.chapters;
+        current-position-ms: root.state.position-ms;
+        visible: root.show-chapters;
+        chapter-selected(ms) => {
+            root.seek-to-chapter(ms);
+            root.show-chapters = false;
+        }
+    }
+
+    // ---- Playlist sidebar (slide-in from right) ----
+    PlaylistSidebar {
+        width: 100%;
+        height: 100%;
+        items: root.queue-items;
+        current-index: root.queue-current-index;
+        visible: root.show-playlist;
+        shuffle-active: root.shuffle-active;
+        repeat-mode: root.repeat-mode;
+        item-selected(index) => {
+            root.queue-item-selected(index);
+        }
+        item-removed(index) => {
+            root.queue-item-removed(index);
+        }
+        close-requested => {
+            root.show-playlist = false;
+        }
+        toggle-shuffle => {
+            root.toggle-shuffle();
+        }
+        cycle-repeat => {
+            root.cycle-repeat();
+        }
+    }
+
     // ---- Key handling ----
     fs := FocusScope {
         enabled: root.visible-overlay;
 
         key-pressed(event) => {
+            // C key: toggle chapter list
+            if event.text == "c" || event.text == "C" {
+                if root.chapters.length > 0 {
+                    root.show-chapters = !root.show-chapters;
+                    if root.show-chapters {
+                        root.show-playlist = false;
+                    }
+                }
+                return accept;
+            }
+
+            // Q key: toggle playlist sidebar
+            if event.text == "q" || event.text == "Q" {
+                root.show-playlist = !root.show-playlist;
+                if root.show-playlist {
+                    root.show-chapters = false;
+                }
+                return accept;
+            }
+
             if event.text == Key.Escape {
+                // Close overlays first, then dismiss player
+                if root.show-chapters {
+                    root.show-chapters = false;
+                    return accept;
+                }
+                if root.show-playlist {
+                    root.show-playlist = false;
+                    return accept;
+                }
                 root.dismiss();
                 return accept;
             }
@@ -481,7 +589,12 @@ export component PlayerOverlay inherits Rectangle {
                 } else if root.focus-zone == 0 {
                     // Enter on seek bar: no-op (seek via left/right)
                 } else if root.focus-zone == 2 {
-                    root.show-track-menu = true;
+                    if root.secondary-focus == 2 {
+                        // Speed control: Enter cycles speed up
+                        root.speed-up();
+                    } else {
+                        root.show-track-menu = true;
+                    }
                 }
                 return accept;
             }

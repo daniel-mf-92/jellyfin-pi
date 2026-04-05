@@ -110,7 +110,7 @@ impl VlcPlayer {
     // -----------------------------------------------------------------------
 
     /// Send a command to VLC via the RC Unix socket and read the response.
-    async fn send_command(&self, cmd: &str) -> PlayerResult<String> {
+    pub async fn send_command(&self, cmd: &str) -> PlayerResult<String> {
         let stream = match timeout(COMMAND_TIMEOUT, UnixStream::connect(&self.socket_path)).await {
             Ok(Ok(s)) => s,
             Ok(Err(e)) => {

@@ -70,7 +70,7 @@ component ChapterRow inherits Rectangle {
 export component ChapterListPopup inherits Rectangle {
     in property <[ChapterInfo]> chapters;
     in property <int> current-position-ms: 0;
-    in-out property <bool> visible: false;
+    in property <bool> is-visible: false;
 
     callback chapter-selected(int);  // emits start-ms of selected chapter
 
@@ -80,7 +80,7 @@ export component ChapterListPopup inherits Rectangle {
 
     width: 100%;
     height: 100%;
-    opacity: visible ? 1.0 : 0.0;
+    opacity: is-visible ? 1.0 : 0.0;
 
     animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
 
@@ -96,7 +96,7 @@ export component ChapterListPopup inherits Rectangle {
         x: (parent.width - 400px) / 2;
         y: (parent.height - self.height) / 2;
         width: 400px;
-        height: min(600px, root.chapter-count * 48 + 72);
+        height: min(600px, root.chapter-count * 48px + 72px);
         background: Theme.surface;
         border-radius: Theme.card-radius;
 
@@ -130,7 +130,7 @@ export component ChapterListPopup inherits Rectangle {
             y: 60px;
             width: parent.width - 16px;
             height: parent.height - 72px;
-            viewport-height: root.chapter-count * 48;
+            viewport-height: root.chapter-count * 48px;
 
             for chapter[idx] in root.chapters : ChapterRow {
                 y: idx * 48px;
