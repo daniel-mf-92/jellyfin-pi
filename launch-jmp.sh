@@ -23,9 +23,9 @@ export SLINT_BACKEND=winit
 export WINIT_UNIX_BACKEND=wayland
 ulimit -n 65536
 
-echo jellyfinmediaplayer > /tmp/foreground-app
+echo jellyfin-pi > /tmp/foreground-app
 
-BINARY="$HOME/jellyfin-pi/target/release/jellyfin-pi"
+BINARY="/usr/local/bin/jellyfin-pi"
 
 # --- Start jellyfin-pi if not already running ---
 if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
@@ -62,5 +62,5 @@ fi
 wlrctl toplevel minimize app_id:flex-launcher >/dev/null 2>&1 || true
 wlrctl toplevel focus "title:Jellyfin" >/dev/null 2>&1 || true
 
-echo jellyfinmediaplayer > /tmp/foreground-app
+echo jellyfin-pi > /tmp/foreground-app
 exit 0

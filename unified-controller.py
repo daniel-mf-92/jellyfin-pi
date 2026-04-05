@@ -109,7 +109,7 @@ NAVIGATION_APPS = {
 JELLYFIN_APPS = {
     "com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player",
     "jellyfinmediaplayer", "org.jellyfin.jellyfindesktop",
-    "jellyfin-pi", "jellyfin", "jmp",
+    "jellyfin-tv", "jellyfin", "jmp", "jellyfin-pi",
 }
 MOONLIGHT_APPS = {"moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
 
@@ -946,7 +946,7 @@ class UnifiedController:
 
     def _apply_grab(self):
         # GAMEPAD mode: ungrab so Moonlight SDL2 can read the controller directly
-        should_grab = (self.mode != Mode.GAMEPAD)
+        should_grab = (self.mode != Mode.GAMEPAD and not self._jmp_foreground)
 
         if should_grab and not self.grabbed:
             try:
@@ -959,7 +959,7 @@ class UnifiedController:
             try:
                 self.controller.ungrab()
                 self.grabbed = False
-                log("Controller ungrabbed (GAMEPAD mode — Moonlight passthrough)")
+                log(f"Controller ungrabbed ({self.mode.value} mode — native app passthrough)")
             except Exception as e:
                 log(f"Ungrab failed: {e}")
 
@@ -1169,6 +1169,7 @@ class UnifiedController:
             "app_id:org.jellyfin.JellyfinDesktop",
             "app_id:com.github.iwalton3.jellyfin-media-player",
             "app_id:jellyfin-media-player",
+            "app_id:jellyfin-pi",
             "title:Jellyfin",
             "app_id:com.moonlight_stream.Moonlight",
             "app_id:moonlight-qt",
@@ -1187,22 +1188,29 @@ class UnifiedController:
         log("GO HOME: requested launcher transition")
 
     def _pause_and_stop_media_for_home(self):
-        """Quick non-blocking pause - VLC/mpv stay alive, just minimized."""
-        # VLC and mpv will be minimized by _go_home(), just mark as not playing
+        """Kill all media players — nothing should play in the background."""
         self._media_playing_cache = False
         self._media_check_time = 0
-        
-        # Fire-and-forget MPRIS pause (non-blocking)
+
+        # Fire-and-forget: MPRIS Stop + Quit, then pkill as enforcement
         try:
             subprocess.Popen([
                 "sh", "-c",
-                "dbus-send --session --dest=org.mpris.MediaPlayer2.vlc /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause 2>/dev/null; "
-                "dbus-send --session --dest=org.mpris.MediaPlayer2.mpv /org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Pause 2>/dev/null"
+                "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; "
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.vlc "
+                "/org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop 2>/dev/null; "
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.vlc "
+                "/org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Quit 2>/dev/null; "
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.mpv "
+                "/org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Player.Stop 2>/dev/null; "
+                "dbus-send --session --dest=org.mpris.MediaPlayer2.mpv "
+                "/org/mpris/MediaPlayer2 org.mpris.MediaPlayer2.Quit 2>/dev/null; "
+                "sleep 0.3; pkill -x vlc 2>/dev/null; pkill -x mpv 2>/dev/null"
             ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
-        
-        log("MEDIA PAUSE: quick pause sent (non-blocking)")
+
+        log("MEDIA KILL: stop + quit + pkill sent (non-blocking)")
     def _mpv_seek(self, seconds):
         """Seek via MPRIS first (for JMP), then mpv IPC, then arrow keys."""
         if _mpris_seek(seconds):

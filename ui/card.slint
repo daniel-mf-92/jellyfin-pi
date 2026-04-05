@@ -16,7 +16,7 @@ export component MediaCard inherits Rectangle {
     // Outer container: sized to accommodate the scaled-up card
     private property <length> card-w: is-landscape ? Theme.landscape-width : Theme.poster-width;
     private property <length> card-h: is-landscape ? Theme.landscape-height : Theme.poster-height;
-    private property <length> title-block-h: show-title ? 40px : 0px;
+    private property <length> title-block-h: show-title ? 80px : 0px;
     private property <length> scale-pad-w: card-w * (Theme.focus-scale - 1.0) / 2.0;
     private property <length> scale-pad-h: card-h * (Theme.focus-scale - 1.0) / 2.0;
 

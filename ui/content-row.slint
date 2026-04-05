@@ -22,7 +22,7 @@ export component ContentRow inherits VerticalLayout {
     // Row title
     Text {
         text: root.title;
-        font-size: 15px;
+        font-size: Theme.font-title-medium;
         font-weight: 700;
         color: root.row-focused ? Theme.text-primary : Theme.text-secondary;
         horizontal-alignment: left;
@@ -39,7 +39,7 @@ export component ContentRow inherits VerticalLayout {
 
     // Horizontal scrolling card strip
     Flickable {
-        height: root.is-landscape ? Theme.landscape-height + 40px : Theme.poster-height + 40px;
+        height: root.is-landscape ? Theme.landscape-height + 120px : Theme.poster-height + 120px;
         viewport-width: self.width;
 
         viewport-x: -root.scroll-target + Theme.overscan-h;

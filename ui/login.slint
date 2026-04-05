@@ -16,9 +16,9 @@ component KeyButton inherits Rectangle {
     width: 60px * width-factor;
     height: 50px;
     border-radius: Theme.button-radius;
-    background: is-focused ? Theme.accent : Theme.surface-variant;
+    background: is-focused ? Theme.surface-variant.brighter(40%) : Theme.surface-variant;
     border-width: is-focused ? 2px : 1px;
-    border-color: is-focused ? Theme.accent : Theme.surface.darker(20%);
+    border-color: is-focused ? Theme.text-secondary : Theme.surface.darker(20%);
 
     animate background { duration: Theme.focus-duration; }
     animate border-color { duration: Theme.focus-duration; }
@@ -194,17 +194,11 @@ export component LoginScreen inherits Rectangle {
                 horizontal-stretch: 0;
             }
 
-            Text {
-                text: root.server-name;
-                font-size: Theme.font-title-large;
-                font-weight: 700;
-                color: Theme.accent;
-                horizontal-alignment: center;
-            }
+// server-name text removed (duplicate of JellyfinBranding banner)
 
             Text {
                 text: "Select User";
-                font-size: Theme.font-title-small;
+                font-size: Theme.font-body-large;
                 color: Theme.text-secondary;
                 horizontal-alignment: center;
             }
@@ -533,6 +527,9 @@ export component LoginScreen inherits Rectangle {
     forward-focus: key-handler;
 
     key-handler := FocusScope {
+        // Request focus when visible
+        init => { self.focus(); }
+
         key-pressed(event) => {
             if (!root.show-password && !root.show-quick-connect) {
                 // --- User selection mode ---

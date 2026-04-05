@@ -107,14 +107,14 @@ impl Default for DaemonConfig {
             buffer_interval_sec: 120,
             audio_heal_interval_sec: 120,
             flex_heal_interval_sec: 120,
-            buffer_min_free_ram_mb: 2048,
+            buffer_min_free_ram_mb: 4096,
             qos_grace_period_sec: 600,
             circuit_breaker_max_per_hour: 3,
             bandwidth_test_item_id: "e6067924303046d641ce61f9f80e260d".to_string(),
             qos_enabled: true,
             audio_heal_enabled: true,
             flex_heal_enabled: true,
-            buffer_enabled: true,
+            buffer_enabled: false,
         }
     }
 }

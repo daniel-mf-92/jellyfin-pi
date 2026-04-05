@@ -9,9 +9,9 @@ for proc in vlc mpv mpvpaper; do
   pkill -x "$proc" >/dev/null 2>&1 || true
 done
 
-echo jellyfinmediaplayer > /tmp/foreground-app
+echo jellyfin-pi > /tmp/foreground-app
 
-BINARY="$HOME/jellyfin-pi/target/release/jellyfin-pi"
+BINARY="/usr/local/bin/jellyfin-pi"
 
 jtv_has_toplevel() {
   wlrctl toplevel find "title:Jellyfin" >/dev/null 2>&1
