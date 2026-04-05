@@ -1,0 +1,190 @@
+// Jellyfin Pi TV App - Chapter List Popup
+// Modal overlay for browsing and seeking to chapters during playback
+
+import { Theme, ChapterInfo } from "theme.slint";
+
+// ============================================================================
+// Helper: Single chapter row
+// ============================================================================
+
+component ChapterRow inherits Rectangle {
+    in property <string> name;
+    in property <string> timestamp;
+    in property <bool> is-current: false;
+    in property <bool> is-focused: false;
+
+    height: 48px;
+    background: is-current ? Theme.accent-dim : (is-focused ? Theme.surface-variant : transparent);
+    border-radius: Theme.button-radius;
+
+    animate background { duration: Theme.focus-duration; }
+
+    // Accent left border for focused item
+    Rectangle {
+        x: 0;
+        y: 4px;
+        width: 3px;
+        height: parent.height - 8px;
+        border-radius: 1.5px;
+        background: Theme.accent;
+        opacity: root.is-focused ? 1.0 : 0.0;
+
+        animate opacity { duration: Theme.focus-duration; }
+    }
+
+    // Chapter name (left-aligned)
+    Text {
+        x: 16px;
+        y: 0;
+        width: parent.width - 120px;
+        height: parent.height;
+        text: root.name;
+        font-size: Theme.font-body-medium;
+        color: root.is-current ? white : (root.is-focused ? Theme.text-primary : Theme.text-secondary);
+        vertical-alignment: center;
+        overflow: elide;
+
+        animate color { duration: Theme.focus-duration; }
+    }
+
+    // Timestamp (right-aligned)
+    Text {
+        x: parent.width - 100px;
+        y: 0;
+        width: 84px;
+        height: parent.height;
+        text: root.timestamp;
+        font-size: Theme.font-body-small;
+        color: root.is-current ? #ffffffcc : Theme.text-tertiary;
+        horizontal-alignment: right;
+        vertical-alignment: center;
+
+        animate color { duration: Theme.focus-duration; }
+    }
+}
+
+// ============================================================================
+// Main: ChapterListPopup
+// ============================================================================
+
+export component ChapterListPopup inherits Rectangle {
+    in property <[ChapterInfo]> chapters;
+    in property <int> current-position-ms: 0;
+    in-out property <bool> visible: false;
+
+    callback chapter-selected(int);  // emits start-ms of selected chapter
+
+    // Internal state
+    property <int> focused-index: 0;
+    property <int> chapter-count: chapters.length;
+
+    width: 100%;
+    height: 100%;
+    opacity: visible ? 1.0 : 0.0;
+
+    animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
+
+    // ---- Semi-transparent backdrop ----
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #000000aa;
+    }
+
+    // ---- Centered panel ----
+    Rectangle {
+        x: (parent.width - 400px) / 2;
+        y: (parent.height - self.height) / 2;
+        width: 400px;
+        height: min(600px, root.chapter-count * 48 + 72);
+        background: Theme.surface;
+        border-radius: Theme.card-radius;
+
+        // Drop shadow
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #00000066;
+        drop-shadow-offset-y: 8px;
+
+        // Title bar
+        Text {
+            x: 20px;
+            y: 16px;
+            text: "Chapters";
+            font-size: Theme.font-title-medium;
+            color: Theme.text-primary;
+            font-weight: 600;
+        }
+
+        // Divider line under title
+        Rectangle {
+            x: 12px;
+            y: 52px;
+            width: parent.width - 24px;
+            height: 1px;
+            background: Theme.surface-variant;
+        }
+
+        // Scrollable chapter list
+        Flickable {
+            x: 8px;
+            y: 60px;
+            width: parent.width - 16px;
+            height: parent.height - 72px;
+            viewport-height: root.chapter-count * 48;
+
+            for chapter[idx] in root.chapters : ChapterRow {
+                y: idx * 48px;
+                width: parent.width;
+                name: chapter.name;
+                timestamp: {
+                    chapter.start-ms >= 3600000
+                        ? "\{Math.floor(chapter.start-ms / 3600000)}:\{Math.mod(Math.floor(chapter.start-ms / 60000), 60) < 10 ? "0" : ""}\{Math.mod(Math.floor(chapter.start-ms / 60000), 60)}:\{Math.mod(Math.floor(chapter.start-ms / 1000), 60) < 10 ? "0" : ""}\{Math.mod(Math.floor(chapter.start-ms / 1000), 60)}"
+                        : "\{Math.floor(chapter.start-ms / 60000)}:\{Math.mod(Math.floor(chapter.start-ms / 1000), 60) < 10 ? "0" : ""}\{Math.mod(Math.floor(chapter.start-ms / 1000), 60)}"
+                    ;
+                }
+                is-current: chapter.start-ms <= root.current-position-ms;
+                is-focused: idx == root.focused-index;
+            }
+        }
+    }
+
+    // ---- Key handling ----
+    fs := FocusScope {
+        enabled: root.visible;
+
+        key-pressed(event) => {
+            // Escape or B button: close popup
+            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+                root.visible = false;
+                return accept;
+            }
+
+            // Up: move focus up
+            if event.text == Key.UpArrow {
+                if root.focused-index > 0 {
+                    root.focused-index -= 1;
+                }
+                return accept;
+            }
+
+            // Down: move focus down
+            if event.text == Key.DownArrow {
+                if root.focused-index < root.chapter-count - 1 {
+                    root.focused-index += 1;
+                }
+                return accept;
+            }
+
+            // Enter: select chapter and seek
+            if event.text == Key.Return {
+                if root.focused-index >= 0 && root.focused-index < root.chapter-count {
+                    root.chapter-selected(root.chapters[root.focused-index].start-ms);
+                    root.visible = false;
+                }
+                return accept;
+            }
+
+            return reject;
+        }
+    }
+}

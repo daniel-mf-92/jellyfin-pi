@@ -9,6 +9,10 @@ mod daemon;
 mod device_profile;
 mod power;
 mod mpris;
+mod trickplay;
+mod segments;
+mod queue;
+mod audio;
 
 use api::{JellyfinClient, ImageCache};
 use api::models::*;

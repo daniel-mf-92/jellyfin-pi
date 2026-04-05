@@ -1,0 +1,281 @@
+// Jellyfin Pi TV App - Cast/Crew Row & Genre Row Components
+// Horizontal scrolling rows for person cards and genre tag pills on the detail page.
+
+import { Theme } from "theme.slint";
+
+// ============================================================================
+// Data Structures
+// ============================================================================
+
+export struct CastMember {
+    id: string,
+    name: string,
+    role: string,
+    image: image,
+}
+
+export struct GenreTag {
+    name: string,
+}
+
+// ============================================================================
+// CastCrewRow - Horizontal scrollable row of person cards
+// ============================================================================
+
+export component CastCrewRow inherits VerticalLayout {
+    in property <[CastMember]> model: [];
+    in-out property <bool> row-focused: false;
+    in-out property <int> focused-index: 0;
+
+    callback person-selected(string);
+
+    private property <length> card-width: 100px;
+    private property <length> scroll-target: root.focused-index * (root.card-width + Theme.card-gap);
+
+    spacing: 0px;
+
+    // Row title
+    Text {
+        text: "Cast & Crew";
+        font-size: 15px;
+        font-weight: 700;
+        color: root.row-focused ? Theme.text-primary : Theme.text-secondary;
+        horizontal-alignment: left;
+
+        animate color {
+            duration: Theme.focus-duration;
+        }
+    }
+
+    // Spacer between title and cards
+    Rectangle {
+        height: 8px;
+    }
+
+    // Horizontal scrolling person card strip
+    Flickable {
+        height: 130px;
+        viewport-width: self.width;
+
+        viewport-x: -root.scroll-target + Theme.overscan-h;
+
+        animate viewport-x {
+            duration: Theme.transition-duration;
+            easing: ease-in-out;
+        }
+
+        HorizontalLayout {
+            spacing: Theme.card-gap;
+            padding-left: Theme.overscan-h;
+            padding-right: Theme.overscan-h;
+
+            for member[index] in root.model : Rectangle {
+                width: root.card-width;
+                height: 130px;
+                background: transparent;
+
+                VerticalLayout {
+                    alignment: start;
+                    spacing: 4px;
+
+                    // Avatar circle
+                    Rectangle {
+                        width: 80px;
+                        height: 80px;
+                        border-radius: 40px;
+                        background: Theme.surface-variant;
+                        clip: true;
+                        border-width: root.row-focused && index == root.focused-index ? 2px : 0px;
+                        border-color: root.row-focused && index == root.focused-index ? Theme.accent : transparent;
+                        horizontal-stretch: 0;
+
+                        animate border-color { duration: Theme.focus-duration; easing: ease-out; }
+                        animate border-width { duration: Theme.focus-duration; easing: ease-out; }
+
+                        // Person image (shown when image is available)
+                        Image {
+                            width: parent.width;
+                            height: parent.height;
+                            source: member.image;
+                            image-fit: cover;
+                        }
+
+                        // Placeholder letter (shown on top; image covers it when present)
+                        Text {
+                            text: member.name;
+                            font-size: 28px;
+                            font-weight: 300;
+                            color: Theme.text-secondary;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                            overflow: elide;
+                            // Show first character only via large size + clip on parent
+                        }
+                    }
+
+                    // Person name
+                    Text {
+                        text: member.name;
+                        font-size: Theme.font-body-small;
+                        color: white;
+                        overflow: elide;
+                        horizontal-alignment: center;
+                        max-width: root.card-width;
+                    }
+
+                    // Role
+                    if member.role != "" : Text {
+                        text: member.role;
+                        font-size: Theme.font-caption;
+                        color: Theme.text-secondary;
+                        overflow: elide;
+                        horizontal-alignment: center;
+                        max-width: root.card-width;
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.person-selected(member.id);
+                    }
+                }
+            }
+        }
+    }
+
+    // Focus scope for D-pad navigation
+    FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.row-focused;
+
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow) {
+                if (root.focused-index < root.model.length - 1) {
+                    root.focused-index += 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                if (root.focused-index > 0) {
+                    root.focused-index -= 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.Return || event.text == " ") {
+                if (root.focused-index >= 0 && root.focused-index < root.model.length) {
+                    root.person-selected(root.model[root.focused-index].id);
+                }
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
+
+// ============================================================================
+// GenreRow - Horizontal row of genre tag pills
+// ============================================================================
+
+export component GenreRow inherits VerticalLayout {
+    in property <[GenreTag]> model: [];
+    in-out property <bool> row-focused: false;
+    in-out property <int> focused-index: 0;
+
+    callback genre-selected(string);
+
+    private property <length> pill-height: 32px;
+    private property <length> pill-spacing: Theme.spacing-sm;
+
+    spacing: 0px;
+
+    // Row title
+    Text {
+        text: "Genres";
+        font-size: 15px;
+        font-weight: 700;
+        color: root.row-focused ? Theme.text-primary : Theme.text-secondary;
+        horizontal-alignment: left;
+
+        animate color {
+            duration: Theme.focus-duration;
+        }
+    }
+
+    // Spacer between title and pills
+    Rectangle {
+        height: 8px;
+    }
+
+    // Horizontal scrolling pill strip
+    Flickable {
+        height: root.pill-height + 16px;
+        viewport-width: self.width;
+
+        HorizontalLayout {
+            spacing: root.pill-spacing;
+            padding-left: Theme.overscan-h;
+            padding-right: Theme.overscan-h;
+
+            for genre[index] in root.model : Rectangle {
+                height: root.pill-height;
+                border-radius: 16px;
+                background: root.row-focused && index == root.focused-index ? Theme.accent : Theme.surface;
+                horizontal-stretch: 0;
+
+                animate background { duration: Theme.focus-duration; easing: ease-out; }
+
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    alignment: center;
+
+                    Text {
+                        text: genre.name;
+                        font-size: Theme.font-body-small;
+                        color: root.row-focused && index == root.focused-index ? white : Theme.text-primary;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+
+                        animate color { duration: Theme.focus-duration; easing: ease-out; }
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.genre-selected(genre.name);
+                    }
+                }
+            }
+        }
+    }
+
+    // Focus scope for D-pad navigation
+    FocusScope {
+        width: 0px;
+        height: 0px;
+        enabled: root.row-focused;
+
+        key-pressed(event) => {
+            if (event.text == Key.RightArrow) {
+                if (root.focused-index < root.model.length - 1) {
+                    root.focused-index += 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                if (root.focused-index > 0) {
+                    root.focused-index -= 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.Return || event.text == " ") {
+                if (root.focused-index >= 0 && root.focused-index < root.model.length) {
+                    root.genre-selected(root.model[root.focused-index].name);
+                }
+                return accept;
+            }
+            return reject;
+        }
+    }
+}
