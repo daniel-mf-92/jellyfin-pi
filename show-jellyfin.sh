@@ -4,14 +4,14 @@ set -euo pipefail
 export WAYLAND_DISPLAY=wayland-0
 export XDG_RUNTIME_DIR=/run/user/1000
 
-# Kill other media players but NOT jellyfin-tv
+# Kill other media players but NOT jellyfin-pi
 for proc in vlc mpv mpvpaper; do
   pkill -x "$proc" >/dev/null 2>&1 || true
 done
 
 echo jellyfinmediaplayer > /tmp/foreground-app
 
-BINARY="$HOME/jellyfin-tv/target/release/jellyfin-tv"
+BINARY="$HOME/jellyfin-pi/target/release/jellyfin-pi"
 
 jtv_has_toplevel() {
   wlrctl toplevel find "title:Jellyfin" >/dev/null 2>&1
@@ -43,16 +43,16 @@ if pgrep -f "$BINARY" >/dev/null 2>&1; then
     # Zombie: process alive but no window
     pkill -f "$BINARY" >/dev/null 2>&1 || true
     sleep 1
-    pkill -9 -f "jellyfin-tv" >/dev/null 2>&1 || true
+    pkill -9 -f "jellyfin-pi" >/dev/null 2>&1 || true
     sleep 0.5
   fi
 fi
 
 # Full launch
 if command -v timeout >/dev/null 2>&1; then
-  timeout 15s "$HOME/jellyfin-tv/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
+  timeout 15s "$HOME/jellyfin-pi/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
 else
-  "$HOME/jellyfin-tv/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
+  "$HOME/jellyfin-pi/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
 fi
 
 sleep 1

@@ -29,15 +29,15 @@ impl ImageCache {
     /// Create a new `ImageCache`.
     ///
     /// The on-disk cache lives under the platform-appropriate cache directory
-    /// provided by `directories::ProjectDirs` (e.g. `~/.cache/jellyfin-tv/images`
-    /// on Linux, `~/Library/Caches/org.jellyfin.jellyfin-tv/images` on macOS).
+    /// provided by `directories::ProjectDirs` (e.g. `~/.cache/jellyfin-pi/images`
+    /// on Linux, `~/Library/Caches/org.jellyfin.jellyfin-pi/images` on macOS).
     /// The directory is created if it does not already exist.
     pub fn new(http: reqwest::Client) -> Self {
-        let cache_dir = directories::ProjectDirs::from("org", "jellyfin", "jellyfin-tv")
+        let cache_dir = directories::ProjectDirs::from("org", "jellyfin", "jellyfin-pi")
             .map(|dirs| dirs.cache_dir().join("images"))
             .unwrap_or_else(|| {
                 warn!("Could not determine platform cache directory, falling back to /tmp");
-                PathBuf::from("/tmp/jellyfin-tv-images")
+                PathBuf::from("/tmp/jellyfin-pi-images")
             });
 
         if let Err(e) = std::fs::create_dir_all(&cache_dir) {

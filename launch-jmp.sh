@@ -25,11 +25,11 @@ ulimit -n 65536
 
 echo jellyfinmediaplayer > /tmp/foreground-app
 
-BINARY="$HOME/jellyfin-tv/target/release/jellyfin-tv"
+BINARY="$HOME/jellyfin-pi/target/release/jellyfin-pi"
 
-# --- Start jellyfin-tv if not already running ---
+# --- Start jellyfin-pi if not already running ---
 if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
-  pkill -f "jellyfin-tv" >/dev/null 2>&1 || true
+  pkill -f "jellyfin-pi" >/dev/null 2>&1 || true
   sleep 0.3
   nohup "$BINARY" > /tmp/jmp.log 2>&1 &
   sleep 0.5
@@ -40,7 +40,7 @@ if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
 fi
 
 if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
-  echo "jellyfin-tv process failed to start" >&2
+  echo "jellyfin-pi process failed to start" >&2
   exit 1
 fi
 
@@ -55,10 +55,10 @@ for i in $(seq 1 20); do
 done
 
 if [ "$WINDOW_FOUND" -eq 0 ]; then
-  echo "jellyfin-tv window did not appear within 10s" >&2
+  echo "jellyfin-pi window did not appear within 10s" >&2
 fi
 
-# --- Minimize flex-launcher, focus jellyfin-tv ---
+# --- Minimize flex-launcher, focus jellyfin-pi ---
 wlrctl toplevel minimize app_id:flex-launcher >/dev/null 2>&1 || true
 wlrctl toplevel focus "title:Jellyfin" >/dev/null 2>&1 || true
 

@@ -67,10 +67,10 @@ build() {
     
     if [ "$BUILD_TYPE" = "release" ]; then
         cargo build --release
-        BINARY="target/release/jellyfin-tv"
+        BINARY="target/release/jellyfin-pi"
     else
         cargo build
-        BINARY="target/debug/jellyfin-tv"
+        BINARY="target/debug/jellyfin-pi"
     fi
     
     if [ -f "$BINARY" ]; then

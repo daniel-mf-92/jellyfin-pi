@@ -5,9 +5,9 @@ set -euo pipefail
 # Installs the Slint + Rust client as a systemd service
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY_NAME="jellyfin-tv"
+BINARY_NAME="jellyfin-pi"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="$HOME/.config/jellyfin-tv"
+CONFIG_DIR="$HOME/.config/jellyfin-pi"
 SERVICE_DIR="$HOME/.config/systemd/user"
 
 echo "=== Jellyfin TV Installer ==="
@@ -71,7 +71,7 @@ fi
 echo "--- Creating systemd service ---"
 mkdir -p "$SERVICE_DIR"
 
-cat > "$SERVICE_DIR/jellyfin-tv.service" << EOF
+cat > "$SERVICE_DIR/jellyfin-pi.service" << EOF
 [Unit]
 Description=Jellyfin TV Client (Slint + Rust)
 After=graphical-session.target
@@ -104,7 +104,7 @@ if [ ! -w /dev/dri/card1 ]; then
     echo "Run: sudo usermod -a -G video,render $USER"
 fi
 
-exec /usr/local/bin/jellyfin-tv "$@"
+exec /usr/local/bin/jellyfin-pi "$@"
 LAUNCHER
 chmod +x "$CONFIG_DIR/launch.sh"
 
@@ -142,22 +142,22 @@ else
 fi
 
 echo "Automation scripts ready. Add to master script:"
-echo "  JELLYFIN_TV_DIR=\"\$HOME/jellyfin-tv\""
+echo "  JELLYFIN_TV_DIR=\"\$HOME/jellyfin-pi\""
 echo "  [ -d \"\$JELLYFIN_TV_DIR/scripts\" ] && source \"\$JELLYFIN_TV_DIR/scripts/jellyfin-cron.sh\""
 
 # 8. Enable and start service
 echo "--- Enabling service ---"
 systemctl --user daemon-reload
-systemctl --user enable jellyfin-tv.service
+systemctl --user enable jellyfin-pi.service
 
 echo ""
 echo "=== Installation complete ==="
 echo ""
 echo "Commands:"
-echo "  Start:   systemctl --user start jellyfin-tv"
-echo "  Stop:    systemctl --user stop jellyfin-tv"
-echo "  Status:  systemctl --user status jellyfin-tv"
-echo "  Logs:    journalctl --user -u jellyfin-tv -f"
+echo "  Start:   systemctl --user start jellyfin-pi"
+echo "  Stop:    systemctl --user stop jellyfin-pi"
+echo "  Status:  systemctl --user status jellyfin-pi"
+echo "  Logs:    journalctl --user -u jellyfin-pi -f"
 echo "  Direct:  $CONFIG_DIR/launch.sh"
 echo ""
 echo "Config: $CONFIG_DIR/config.toml"
