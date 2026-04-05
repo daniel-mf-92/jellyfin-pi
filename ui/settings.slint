@@ -29,6 +29,7 @@ export component SettingsScreen inherits Rectangle {
     forward-focus: key-handler;
 
     key-handler := FocusScope {
+        init => { self.focus(); }
         width: 100%;
         height: 100%;
 

@@ -138,6 +138,7 @@ export component DetailScreen inherits Rectangle {
     // -- Focus handling -------------------------------------------------------
 
     focus-scope := FocusScope {
+        init => { self.focus(); }
         width: 100%;
         height: 100%;
 

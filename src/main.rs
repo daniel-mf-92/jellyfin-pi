@@ -198,7 +198,7 @@ async fn load_user_avatar(
 ) -> SlintImage {
     if let Some(tag) = &user.primary_image_tag {
         let url = format!(
-            "{}/Users/{}/Images/Primary?maxHeight=150&quality=90&tag={}",
+            "{}/Users/{}/Images/Primary?maxHeight=96&quality=90&tag={}",
             server_url, user.id, tag
         );
         image_cache
@@ -224,7 +224,7 @@ async fn items_to_media_items(
             .map(|item| {
                 let server_url = server_url.to_string();
                 async move {
-                    let poster = load_poster_image(item, &server_url, image_cache, 300).await;
+                    let poster = load_poster_image(item, &server_url, image_cache, 225).await;
                     let backdrop = SlintImage::default(); // defer backdrop until detail page
                     base_item_to_media_item(item, &server_url, poster, backdrop)
                 }
@@ -245,6 +245,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     load_dotenv();
     env_logger::init();
     info!("Jellyfin TV starting...");
+
+    // Clean up stale /dev/shm/jmp-cache from previous runs (was RAM disk cache, now removed)
+    if let Ok(dir) = std::fs::read_dir("/dev/shm/jmp-cache") {
+        let mut cleaned = 0u64;
+        for entry in dir.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                cleaned += meta.len();
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+        if cleaned > 0 {
+            info!("Cleaned {}MB from stale /dev/shm/jmp-cache", cleaned / (1024 * 1024));
+        }
+        let _ = std::fs::remove_dir("/dev/shm/jmp-cache");
+    }
 
     // 1. Load config
     let config = AppConfig::load();
@@ -282,7 +297,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _daemon_shared = daemon_mgr.shared();
     let daemon_player_tx = daemon_mgr.player_event_sender();
     let daemon_screen_tx = daemon_mgr.screen_watch_sender();
-    daemon_mgr.start(client.clone(), config.clone(), state.clone());
+    // DEFERRED: daemon tasks start AFTER login, not at startup (saves ~100s of MB)
+    let daemon_mgr = Arc::new(Mutex::new(daemon_mgr));
 
 
     // 4. Create Slint UI
@@ -307,6 +323,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         image_cache.clone(),
         state.clone(),
         config.clone(),
+        daemon_mgr.clone(),
     );
     setup_playback_callbacks(
         &ui,
@@ -344,6 +361,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let image_clone = image_cache.clone();
         let state_clone = state.clone();
         let config_clone = config.clone();
+        let daemon_mgr_clone = daemon_mgr.clone();
         let _ = slint::spawn_local(async move {
             let mut authenticated = false;
 
@@ -369,6 +387,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 {
                     Ok(()) => {
                         info!("Auto-login with saved token succeeded");
+                        // Start daemon tasks now that we're authenticated
+                        daemon_mgr_clone.lock().await.start(client_clone.clone(), config_clone.clone(), state_clone.clone());
                         state_clone.navigate_replace(Screen::Home).await;
                         let _ = ui_handle.upgrade_in_event_loop(|ui| {
                             ui.global::<AppBridge>().set_current_screen("home".into());
@@ -428,6 +448,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             ui.global::<AppBridge>().set_current_user(user_info);
                         }
 
+                        // Start daemon tasks now that we're authenticated
+                        daemon_mgr_clone.lock().await.start(client_clone.clone(), config_clone.clone(), state_clone.clone());
+
                         state_clone.navigate_replace(Screen::Home).await;
                         let _ = ui_handle.upgrade_in_event_loop(|ui| {
                             ui.global::<AppBridge>().set_current_screen("home".into());
@@ -452,19 +475,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // 9. Spawn controller input task
-    tokio::spawn(async move {
-        if let Err(e) = controller.run().await {
-            error!("Controller error: {}", e);
-        }
-    });
-
-    // 10. Spawn input action handler
-    {
-        let ui_weak = ui.as_weak();
-        let state_clone = state.clone();
-        tokio::spawn(handle_controller_input(ui_weak, input_rx, state_clone));
-    }
+    // 9-10. Controller input handled by external unified-controller.py
+    // which sends keyboard events via uinput. The Slint FocusScope
+    // handles arrow keys, enter, escape natively. No internal evdev needed.
+    drop(controller);
+    drop(input_rx);
 
     // 11. Spawn idle timer for screensaver
     {
@@ -477,6 +492,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
                         ui.global::<AppBridge>().set_show_screensaver(true);
                     });
+                }
+            }
+        });
+    }
+
+    // 11a. RSS self-monitoring: prevent OOM
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            if let Ok(status) = tokio::fs::read_to_string("/proc/self/status").await {
+                for line in status.lines() {
+                    if line.starts_with("VmRSS:") {
+                        let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                        let mb = kb / 1024;
+                        if mb > 4000 {
+                            log::error!("RSS {}MB exceeds 4GB safety limit — exiting to prevent OOM", mb);
+                            std::process::exit(1);
+                        } else if mb > 3000 {
+                            log::warn!("RSS {}MB approaching 2.5GB limit", mb);
+                        } else if mb > 500 {
+                            log::info!("RSS: {}MB", mb);
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // 11a-bis. Periodic cache clearing when RSS is high (runs on Slint event loop since ImageCache is !Send)
+    {
+        let image_cache_rss = image_cache.clone();
+        let _ = slint::spawn_local(async move {
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                if let Ok(status) = tokio::fs::read_to_string("/proc/self/status").await {
+                    for line in status.lines() {
+                        if line.starts_with("VmRSS:") {
+                            let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
+                            let mb = kb / 1024;
+                            if mb > 3000 {
+                                log::warn!("RSS {}MB > 2GB — clearing image memory cache", mb);
+                                image_cache_rss.clear_memory_cache().await;
+                            }
+                        }
+                    }
                 }
             }
         });
@@ -717,6 +777,7 @@ fn setup_auth_callbacks(
     image_cache: Arc<ImageCache>,
     state: Arc<StateManager>,
     config: Arc<RwLock<AppConfig>>,
+    daemon_mgr: Arc<Mutex<daemon::DaemonManager>>,
 ) {
     // login(user_id, password)
     let ui_weak = ui.as_weak();
@@ -724,12 +785,14 @@ fn setup_auth_callbacks(
     let image_clone = image_cache.clone();
     let state_clone = state.clone();
     let config_clone = config.clone();
+    let daemon_mgr_clone = daemon_mgr.clone();
     ui.global::<AppBridge>().on_login(move |user_id, password| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
         let state = state_clone.clone();
         let config = config_clone.clone();
+        let daemon_mgr = daemon_mgr_clone.clone();
         let user_id_str = user_id.to_string();
         let password_str = password.to_string();
 
@@ -786,6 +849,9 @@ fn setup_auth_callbacks(
                     if let Some(ui) = ui_weak.upgrade() {
                         ui.global::<AppBridge>().set_current_user(user_info);
                     }
+
+                    // Start daemon tasks now that we're authenticated
+                    daemon_mgr.lock().await.start(client.clone(), config.clone(), state.clone());
 
                     // Navigate to home and load data
                     state.navigate_replace(Screen::Home).await;
@@ -1251,12 +1317,13 @@ fn setup_playback_callbacks(
                 }
             };
 
-            // Stop VLC
+            // Stop VLC and drop player (terminates event loop task)
             {
-                let p = player.lock().await;
+                let mut p = player.lock().await;
                 if let Some(ref vlc) = *p {
                     let _ = vlc.stop().await;
                 }
+                *p = None;
             }
 
             // Report playback stopped to Jellyfin
@@ -1994,7 +2061,12 @@ async fn load_public_users(
         Ok(users) => {
             info!("Loaded {} public users", users.len());
             let mut user_infos = Vec::with_capacity(users.len());
-            for user in &users {
+            let filtered_users: Vec<_> = users.iter().filter(|u| {
+                let name_lower = u.name.to_lowercase();
+                name_lower.contains("daniel") || name_lower.contains("marta")
+            }).collect();
+            info!("Filtered to {} users (daniel/marta only)", filtered_users.len());
+            for user in &filtered_users {
                 let avatar = load_user_avatar(user, &server_url, &image_cache).await;
                 user_infos.push(user_dto_to_user_info(user, &server_url, avatar));
             }
@@ -2028,8 +2100,8 @@ async fn load_home_data(
     // Fetch all data concurrently
     let (views_result, resume_result, next_up_result) = tokio::join!(
         c.get_user_views(),
-        c.get_resume_items(20),
-        c.get_next_up(20),
+        c.get_resume_items(8),
+        c.get_next_up(8),
     );
 
     let views = views_result.map_err(|e| format!("Failed to get views: {}", e))?;
@@ -2063,7 +2135,8 @@ async fn load_home_data(
     // "Latest in {Library}" rows for each library view
     for view in &views {
         let c = client.read().await;
-        match c.get_latest_media(&view.id, 16).await {
+        if rows.len() >= 5 { break; } // Cap total rows to limit memory
+        match c.get_latest_media(&view.id, 8).await {
             Ok(latest) if !latest.is_empty() => {
                 drop(c);
                 let media_items =
@@ -2124,8 +2197,8 @@ async fn load_item_detail(
     drop(c);
 
     // Load images for the main item
-    let poster = load_poster_image(&item, &server_url, &image_cache, 400).await;
-    let backdrop = load_backdrop_image(&item, &server_url, &image_cache, 1920).await;
+    let poster = load_poster_image(&item, &server_url, &image_cache, 300).await;
+    let backdrop = load_backdrop_image(&item, &server_url, &image_cache, 800).await;
     let detail_item = base_item_to_media_item(&item, &server_url, poster, backdrop);
 
     // Load similar items
@@ -2239,7 +2312,7 @@ async fn load_library(
             sort_by.or(Some("SortName")),
             Some("Ascending"),
             0,
-            500,
+            100,
             filters,
         )
         .await
@@ -2368,7 +2441,7 @@ async fn handle_player_events(
                         break;
                     }
                     // Small yield to let other tasks acquire the lock
-                    tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(16)).await;
                 }
             });
         }

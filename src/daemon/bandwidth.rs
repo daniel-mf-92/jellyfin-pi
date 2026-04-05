@@ -16,6 +16,7 @@ pub struct BandwidthMonitor {
     client: Arc<RwLock<JellyfinClient>>,
     test_item_id: String,
     interval_sec: u64,
+    http_client: reqwest::Client,
 }
 
 impl BandwidthMonitor {
@@ -32,6 +33,7 @@ impl BandwidthMonitor {
             client,
             test_item_id,
             interval_sec,
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -90,7 +92,7 @@ impl BandwidthMonitor {
             server_url, self.test_item_id, token
         );
 
-        let http_client = reqwest::Client::new();
+        let http_client = &self.http_client;
         let start = tokio::time::Instant::now();
 
         let response = http_client

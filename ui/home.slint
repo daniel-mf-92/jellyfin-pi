@@ -18,6 +18,7 @@ export component HomeScreen inherits Rectangle {
     in property <string> current-time: "00:00";
 
     in-out property <int> focused-row: 0;
+    in-out property <int> focused-col: 0;
 
     callback item-selected(/* item_id */ string);
     callback item-play(/* item_id */ string);
@@ -38,12 +39,13 @@ export component HomeScreen inherits Rectangle {
     // Target scroll offset to keep focused row visible
     pure function target-scroll-y() -> length {
         // Scroll so focused row is near the top with some margin
-        return -max(0px, root.focused-row * root.row-block-height() - Theme.spacing-lg);
+        return root.focused-row <= 0 ? 0px : -max(0px, root.focused-row * root.row-block-height() - root.row-block-height() / 2);
     }
 
     // -- Focus handling -------------------------------------------------------
 
     focus-scope := FocusScope {
+        init => { self.focus(); }
         width: 100%;
         height: 100%;
 
@@ -57,6 +59,30 @@ export component HomeScreen inherits Rectangle {
             if (event.text == Key.DownArrow) {
                 if (root.focused-row < root.rows.length - 1) {
                     root.focused-row += 1;
+                }
+                return accept;
+            }
+            // Left/Right arrows navigate within the focused row
+            if (event.text == Key.RightArrow) {
+                if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
+                    if (root.focused-col < root.rows[root.focused-row].items.length - 1) {
+                        root.focused-col += 1;
+                    }
+                }
+                return accept;
+            }
+            if (event.text == Key.LeftArrow) {
+                if (root.focused-col > 0) {
+                    root.focused-col -= 1;
+                }
+                return accept;
+            }
+            // Enter/Space selects the focused item
+            if (event.text == Key.Return || event.text == " ") {
+                if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
+                    if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
+                        root.item-selected(root.rows[root.focused-row].items[root.focused-col].id);
+                    }
                 }
                 return accept;
             }
@@ -152,18 +178,16 @@ export component HomeScreen inherits Rectangle {
         }
 
         // == Scrollable content rows ==========================================
-        Flickable {
+        Rectangle {
             vertical-stretch: 1;
-            viewport-height: root.rows.length * root.row-block-height() + Theme.spacing-xxl;
-            viewport-y: root.target-scroll-y();
-
-            // Animate the scroll position for smooth transitions
-            animate viewport-y {
-                duration: Theme.transition-duration;
-                easing: ease-in-out;
-            }
+            clip: true;
 
             VerticalLayout {
+                y: root.target-scroll-y();
+                animate y {
+                    duration: Theme.transition-duration;
+                    easing: ease-in-out;
+                }
                 spacing: Theme.spacing-lg;
 
                 for row[index] in root.rows : ContentRow {
@@ -171,6 +195,7 @@ export component HomeScreen inherits Rectangle {
                     items: row.items;
                     is-landscape: row.row-type == "landscape";
                     row-focused: index == root.focused-row;
+                    focused-index: root.focused-col;
 
                     item-selected(id) => {
                         root.item-selected(id);

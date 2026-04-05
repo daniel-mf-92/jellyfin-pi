@@ -65,7 +65,7 @@ impl StateManager {
             playing_media_source_id: None,
             tracking_session_id: None,
             idle_seconds: 0,
-            screensaver_timeout: 300,
+            screensaver_timeout: 0, // disabled — TV appliance mode
         };
         info!("StateManager initialized on Login screen");
         StateManager {

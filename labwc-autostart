@@ -33,10 +33,10 @@ sleep 2
 
 # --- Pre-launch Jellyfin TV (minimized) ---
 # Native Slint app — dark from first frame, no white screen ever.
-export WAYLAND_APP_ID=jellyfin-tv
-~/jellyfin-tv/target/release/jellyfin-tv > /tmp/jmp.log 2>&1 &
+export WAYLAND_APP_ID=jellyfin-pi
+/usr/local/bin/jellyfin-pi > /tmp/jmp.log 2>&1 &
 sleep 3
-for target in "app_id:jellyfin-tv" "title:Jellyfin"; do
+for target in "app_id:jellyfin-pi" "title:Jellyfin"; do
   wlrctl toplevel minimize "$target" 2>/dev/null || true
 done
 

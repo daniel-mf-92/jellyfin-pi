@@ -21,6 +21,7 @@ export component ConfirmPopup inherits Rectangle {
     forward-focus: key-handler;
 
     key-handler := FocusScope {
+        init => { self.focus(); }
         width: 0;
         height: 0;
 

@@ -11,7 +11,7 @@ use slint::SharedPixelBuffer;
 use tokio::sync::RwLock;
 
 /// Maximum number of images kept in memory before eviction kicks in.
-const DEFAULT_MAX_MEMORY_ITEMS: usize = 1000;
+const DEFAULT_MAX_MEMORY_ITEMS: usize = 50;
 
 /// Maximum number of concurrent image downloads during preload.
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;

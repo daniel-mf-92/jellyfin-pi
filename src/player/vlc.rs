@@ -205,7 +205,7 @@ impl VlcPlayer {
             "--network-caching".to_string(),
             "1500".to_string(),          // 1.5s — fast first frame
             "--file-caching".to_string(),
-            "300".to_string(),           // 300ms for local /dev/shm files
+            "300".to_string(),           // 300ms for local files
             "--live-caching".to_string(),
             "1500".to_string(),
             "--http-reconnect".to_string(),
@@ -239,6 +239,7 @@ impl VlcPlayer {
             .args(&args)
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| PlayerError::Vlc(format!("failed to launch cvlc: {}", e)))?;
 
@@ -646,7 +647,7 @@ fn read_mem_available() -> u64 {
 }
 
 /// Calculate adaptive --prefetch-buffer-size based on available RAM.
-/// Returns bytes. Reserves 2GB for system, uses 25% of remainder, caps at 512MB.
+/// Returns bytes. Reserves 2GB for system, uses 10% of remainder, caps at 64MB.
 fn adaptive_prefetch_bytes() -> u64 {
     let available = read_mem_available();
     if available == 0 {
@@ -657,7 +658,7 @@ fn adaptive_prefetch_bytes() -> u64 {
     let usable = available.saturating_sub(reserve).max(256 * 1024 * 1024);
     let usable = usable.min((available as f64 * 0.75) as u64);
 
-    let prefetch = (usable / 4).min(512 * 1024 * 1024).max(1024 * 1024);
+    let prefetch = (usable / 10).min(64 * 1024 * 1024).max(1024 * 1024);
 
     info!(
         "Adaptive cache: available={}MB usable={}MB prefetch={}MB",
@@ -670,203 +671,6 @@ fn adaptive_prefetch_bytes() -> u64 {
 }
 
 // ---------------------------------------------------------------------------
-// /dev/shm persistent stream cache (LRU eviction)
-// ---------------------------------------------------------------------------
-
-const CACHE_DIR: &str = "/dev/shm/jmp-cache";
-const CACHE_PRESSURE_FLOOR_GB: f64 = 2.0;
-
-/// Entry in the stream cache.
-struct CacheEntry {
-    path: String,
-    size: u64,
-    complete: bool,
-    last_access: f64,
-}
-
-/// Persistent RAM cache — downloads streams to /dev/shm, serves from file on replay.
-pub struct StreamCache {
-    entries: std::sync::Mutex<std::collections::HashMap<String, CacheEntry>>,
-    pinned: std::sync::Mutex<Option<String>>,
-}
-
-impl StreamCache {
-    pub fn new() -> Self {
-        let _ = std::fs::create_dir_all(CACHE_DIR);
-
-        // Recover existing files from previous session
-        let mut entries = std::collections::HashMap::new();
-        if let Ok(dir) = std::fs::read_dir(CACHE_DIR) {
-            for entry in dir.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    if meta.is_file() {
-                        let name = entry.file_name().to_string_lossy().to_string();
-                        let mtime = meta
-                            .modified()
-                            .ok()
-                            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                            .map(|d| d.as_secs_f64())
-                            .unwrap_or(0.0);
-                        entries.insert(
-                            name,
-                            CacheEntry {
-                                path: entry.path().to_string_lossy().to_string(),
-                                size: meta.len(),
-                                complete: true,
-                                last_access: mtime,
-                            },
-                        );
-                    }
-                }
-            }
-        }
-
-        if !entries.is_empty() {
-            info!("StreamCache: recovered {} items from previous session", entries.len());
-        }
-        info!("StreamCache: dir={} floor={}GB", CACHE_DIR, CACHE_PRESSURE_FLOOR_GB);
-
-        Self {
-            entries: std::sync::Mutex::new(entries),
-            pinned: std::sync::Mutex::new(None),
-        }
-    }
-
-    /// Return local file path if item is fully cached.
-    pub fn get(&self, item_id: &str) -> Option<String> {
-        let mut entries = self.entries.lock().unwrap();
-        if let Some(e) = entries.get_mut(item_id) {
-            if e.complete && std::path::Path::new(&e.path).exists() {
-                e.last_access = now_secs();
-                return Some(e.path.clone());
-            }
-        }
-        None
-    }
-
-    /// Pin item as currently playing (immune to eviction).
-    pub fn pin(&self, item_id: &str) {
-        *self.pinned.lock().unwrap() = Some(item_id.to_string());
-        if let Some(e) = self.entries.lock().unwrap().get_mut(item_id) {
-            e.last_access = now_secs();
-        }
-    }
-
-    /// Unpin (item stays cached, just evictable).
-    pub fn unpin(&self) {
-        let pinned = self.pinned.lock().unwrap().take();
-        if let Some(id) = pinned {
-            if let Some(e) = self.entries.lock().unwrap().get_mut(&id) {
-                e.last_access = now_secs();
-            }
-        }
-    }
-
-    /// Start a background download of the stream to /dev/shm.
-    pub fn start_download(&self, item_id: &str, url: &str) {
-        {
-            let entries = self.entries.lock().unwrap();
-            if let Some(e) = entries.get(item_id) {
-                if e.complete {
-                    return; // already cached
-                }
-            }
-        }
-
-        let path = format!("{}/{}", CACHE_DIR, item_id);
-        let item_id = item_id.to_string();
-        let url = url.to_string();
-
-        // Insert placeholder
-        {
-            let mut entries = self.entries.lock().unwrap();
-            entries.insert(
-                item_id.clone(),
-                CacheEntry {
-                    path: path.clone(),
-                    size: 0,
-                    complete: false,
-                    last_access: now_secs(),
-                },
-            );
-        }
-
-        // Background download via curl (thread-safe, no async runtime needed)
-        let entries_ref: &std::sync::Mutex<std::collections::HashMap<String, CacheEntry>> = unsafe {
-            // SAFETY: StreamCache lives for the entire program lifetime (static-like).
-            // The background thread only accesses entries via Mutex.
-            &*((&self.entries) as *const _)
-        };
-
-        std::thread::spawn(move || {
-            info!("StreamCache: downloading {}...", &item_id[..8.min(item_id.len())]);
-            let status = std::process::Command::new("curl")
-                .args(["-sS", "-L", "-o", &path, "--max-time", "600", &url])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .status();
-
-            let mut entries = entries_ref.lock().unwrap();
-            if let Some(e) = entries.get_mut(&item_id) {
-                match status {
-                    Ok(s) if s.success() => {
-                        e.size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                        e.complete = true;
-                        info!(
-                            "StreamCache: complete {} size={}MB",
-                            &item_id[..8.min(item_id.len())],
-                            e.size / (1024 * 1024)
-                        );
-                    }
-                    _ => {
-                        warn!("StreamCache: download failed {}", &item_id[..8.min(item_id.len())]);
-                    }
-                }
-            }
-        });
-    }
-
-    /// Evict oldest non-pinned entry if MemAvailable < floor.
-    pub fn pressure_check(&self) {
-        let available = read_mem_available();
-        let floor = (CACHE_PRESSURE_FLOOR_GB * 1024.0 * 1024.0 * 1024.0) as u64;
-        if available == 0 || available >= floor {
-            return;
-        }
-
-        let pinned = self.pinned.lock().unwrap().clone();
-        let mut entries = self.entries.lock().unwrap();
-
-        // Find oldest non-pinned, complete entry
-        let victim = entries
-            .iter()
-            .filter(|(k, e)| {
-                e.complete && pinned.as_deref() != Some(k.as_str())
-            })
-            .min_by(|a, b| a.1.last_access.partial_cmp(&b.1.last_access).unwrap())
-            .map(|(k, _)| k.clone());
-
-        if let Some(id) = victim {
-            if let Some(e) = entries.remove(&id) {
-                let _ = std::fs::remove_file(&e.path);
-                info!(
-                    "StreamCache: evicted {} freed={}MB ({}GB free)",
-                    &id[..8.min(id.len())],
-                    e.size / (1024 * 1024),
-                    available / (1024 * 1024 * 1024)
-                );
-            }
-        }
-    }
-}
-
-fn now_secs() -> f64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs_f64()
-}
-
 /// Extract a Jellyfin item ID from a stream URL (/Videos/<id>/stream).
 pub fn extract_item_id(url: &str) -> Option<String> {
     let lower = url.to_lowercase();

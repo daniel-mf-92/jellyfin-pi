@@ -8,8 +8,8 @@ use log::{info, warn, debug, error};
 use crate::api::JellyfinClient;
 use super::{DaemonEvent, DaemonShared};
 
-const BUFFER_DIR: &str = "/tmp/jellyfin-buffer";
-const CURRENT_ID_FILE: &str = "/tmp/jellyfin-buffer/.current_id";
+const BUFFER_DIR: &str = "/var/tmp/jellyfin-buffer";
+const CURRENT_ID_FILE: &str = "/var/tmp/jellyfin-buffer/.current_id";
 const AUTOPLAY_THRESHOLD: u64 = 100 * 1024 * 1024; // 100MB
 
 pub struct BufferManager {
@@ -18,6 +18,7 @@ pub struct BufferManager {
     client: Arc<RwLock<JellyfinClient>>,
     interval_sec: u64,
     min_free_ram_mb: u64,
+    http_client: reqwest::Client,
 }
 
 impl BufferManager {
@@ -34,6 +35,7 @@ impl BufferManager {
             client,
             interval_sec,
             min_free_ram_mb,
+            http_client: reqwest::Client::new(),
         }
     }
 
@@ -196,7 +198,7 @@ impl BufferManager {
             "{}/Items/{}?Fields=MediaSources&api_key={}",
             server_url, item_id, token
         );
-        let http_client = reqwest::Client::new();
+        let http_client = &self.http_client;
         let item_info = match http_client
             .get(&item_url)
             .timeout(Duration::from_secs(5))

@@ -205,7 +205,7 @@ impl ControllerManager {
         for (_path, device) in devices {
             if let Some(name) = device.name() {
                 let lower = name.to_lowercase();
-                if lower.contains("pro controller") || lower.contains("nintendo") {
+                if (lower.contains("pro controller") || lower.contains("nintendo")) && !lower.contains("imu") {
                     return Some(device);
                 }
             }
