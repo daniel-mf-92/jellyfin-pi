@@ -156,6 +156,29 @@ fn user_dto_to_user_info(
     }
 }
 
+
+/// Map UI sort label to Jellyfin API sort field name.
+fn map_sort_label(label: &str) -> &str {
+    match label {
+        "Name" => "SortName",
+        "Date Added" => "DateCreated",
+        "Rating" => "CommunityRating",
+        "Year" => "ProductionYear",
+        "Runtime" => "Runtime",
+        _ => "SortName",
+    }
+}
+
+/// Map UI filter label to Jellyfin API filter value.
+fn map_filter_label(label: &str) -> &str {
+    match label {
+        "Unplayed" => "IsUnplayed",
+        "Played" => "IsPlayed",
+        "Favorites" => "IsFavorite",
+        "Resumable" => "IsResumable",
+        _ => "",
+    }
+}
 /// Load a poster image for an item through the image cache.
 async fn load_poster_image(
     item: &BaseItemDto,
@@ -1222,6 +1245,8 @@ fn setup_playback_callbacks(
                             current_subtitle: 0,
                             volume: 100.0,
                             is_muted: false,
+                            buffering_percent: 0,
+                            is_buffering: false,
                         };
                         ui.global::<AppBridge>().set_player_state(ps);
                     });
@@ -1765,28 +1790,47 @@ fn setup_content_callbacks(
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
+    let state_clone = state.clone();
     ui.global::<AppBridge>().on_request_library(
         move |library_id, sort, filter| {
             let ui_weak = ui_weak.clone();
             let client = client_clone.clone();
             let image_cache = image_clone.clone();
+            let state = state_clone.clone();
             let library_id_str = library_id.to_string();
             let sort_str = sort.to_string();
             let filter_str = filter.to_string();
 
             let _ = slint::spawn_local(async move {
+                // If library_id is empty (from sort/filter change), get it from state
+                let library_id_str = if library_id_str.is_empty() {
+                    state.get_screen_param().await.unwrap_or_default()
+                } else {
+                    library_id_str
+                };
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
-                let sort_opt = if sort_str.is_empty() {
-                    None
+                // Map UI labels to API values
+                let mapped_sort = if sort_str.is_empty() {
+                    String::new()
                 } else {
-                    Some(sort_str.as_str())
+                    map_sort_label(&sort_str).to_string()
                 };
-                let filter_opt = if filter_str.is_empty() {
+                let sort_opt = if mapped_sort.is_empty() {
                     None
                 } else {
-                    Some(filter_str.as_str())
+                    Some(mapped_sort.as_str())
+                };
+                let mapped_filter = if filter_str.is_empty() {
+                    String::new()
+                } else {
+                    map_filter_label(&filter_str).to_string()
+                };
+                let filter_opt = if mapped_filter.is_empty() {
+                    None
+                } else {
+                    Some(mapped_filter.as_str())
                 };
                 if let Err(e) = load_library(
                     ui_weak.clone(),
@@ -2208,6 +2252,50 @@ async fn load_item_detail(
     let is_series = item.item_type == "Series";
     let series_id = item.id.clone();
 
+    // Build genre tags from item data
+    let genre_tags: Vec<GenreTag> = item.genres
+        .as_ref()
+        .map(|genres| {
+            genres.iter().map(|g| GenreTag {
+                name: SharedString::from(g.as_str()),
+            }).collect()
+        })
+        .unwrap_or_default();
+
+    // Build cast & crew with images (async)
+    let filtered_people: Vec<_> = item.people
+        .as_ref()
+        .map(|people| {
+            people.iter()
+                .filter(|p| {
+                    let pt = p.person_type.as_deref().unwrap_or("");
+                    pt == "Actor" || pt == "Director" || pt == "Writer" || pt == "GuestStar"
+                })
+                .take(20)
+                .cloned()
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut cast_members: Vec<CastMember> = Vec::with_capacity(filtered_people.len());
+    for p in &filtered_people {
+        let person_image = if let (Some(ref pid), Some(ref tag)) = (&p.id, &p.primary_image_tag) {
+            let url = format!(
+                "{}/Items/{}/Images/Primary?maxHeight=200&quality=80&tag={}",
+                server_url, pid, tag
+            );
+            image_cache.load_image(&url).await.unwrap_or_default()
+        } else {
+            SlintImage::default()
+        };
+        cast_members.push(CastMember {
+            id: SharedString::from(p.id.as_deref().unwrap_or("")),
+            name: SharedString::from(p.name.as_str()),
+            role: SharedString::from(p.role.as_deref().unwrap_or("")),
+            image: person_image,
+        });
+    }
+
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>().set_detail_item(detail_item);
         ui.global::<AppBridge>()
@@ -2217,6 +2305,13 @@ async fn load_item_detail(
             .set_detail_seasons(ModelRc::default());
         ui.global::<AppBridge>()
             .set_detail_episodes(ModelRc::default());
+        // Set genres
+        ui.global::<AppBridge>()
+            .set_genres(ModelRc::new(VecModel::from(genre_tags)));
+        // Set cast & crew
+        ui.global::<AppBridge>()
+            .set_cast_members(ModelRc::new(VecModel::from(cast_members)));
+
         ui.global::<AppBridge>().set_is_loading(false);
     }
 
@@ -2699,6 +2794,13 @@ async fn handle_player_events(
             }
             PlayerEvent::Buffering(percent) => {
                 debug!("Buffering: {}%", percent);
+                let pct = percent;
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    let mut ps = ui.global::<AppBridge>().get_player_state();
+                    ps.buffering_percent = pct;
+                    ps.is_buffering = pct < 100;
+                    ui.global::<AppBridge>().set_player_state(ps);
+                });
             }
             PlayerEvent::Error(msg) => {
                 error!("Player error: {}", msg);

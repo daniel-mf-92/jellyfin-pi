@@ -304,6 +304,44 @@ export component PlayerOverlay inherits Rectangle {
         animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
     }
 
+    // ---- Buffering overlay ----
+    if state.is-buffering : Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000080;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 12px;
+
+            Text {
+                text: "Buffering...";
+                font-size: 28px;
+                font-weight: 300;
+                color: white;
+                horizontal-alignment: center;
+            }
+
+            Rectangle {
+                width: 200px;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.progress-background;
+                horizontal-stretch: 0;
+
+                Rectangle {
+                    x: 0;
+                    width: parent.width * clamp(state.buffering-percent / 100.0, 0.0, 1.0);
+                    height: parent.height;
+                    border-radius: parent.border-radius;
+                    background: Theme.accent;
+
+                    animate width { duration: 200ms; easing: ease-out; }
+                }
+            }
+        }
+    }
+
     // ---- Top panel (title bar) ----
     Rectangle {
         x: 0;
