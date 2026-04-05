@@ -9,7 +9,7 @@ pub mod system;
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch, RwLock};
 use tokio::task::JoinHandle;
-use log::info;
+use log::{info, warn};
 
 use crate::api::JellyfinClient;
 use crate::config::AppConfig;
@@ -142,10 +142,20 @@ impl DaemonManager {
         info!("Starting daemon manager background tasks");
 
         // Take receivers (consumed once)
-        let player_event_rx = self.player_event_rx.take()
-            .expect("player_event_rx already taken");
-        let screen_watch_rx = self.screen_watch_rx.take()
-            .expect("screen_watch_rx already taken");
+        let player_event_rx = match self.player_event_rx.take() {
+            Some(rx) => rx,
+            None => {
+                warn!("player_event_rx already taken, daemon already started");
+                return;
+            }
+        };
+        let screen_watch_rx = match self.screen_watch_rx.take() {
+            Some(rx) => rx,
+            None => {
+                warn!("screen_watch_rx already taken, daemon already started");
+                return;
+            }
+        };
 
         // Fan-out: distribute PlayerEvents to QoS, streaming health
         let (qos_tx, qos_rx) = mpsc::unbounded_channel::<PlayerEvent>();

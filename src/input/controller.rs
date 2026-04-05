@@ -153,10 +153,8 @@ impl ControllerManager {
     /// Take the receiver end of the action channel.  
     /// This should be called exactly once by the main application loop before
     /// spawning the `run()` task.
-    pub fn take_receiver(&mut self) -> mpsc::UnboundedReceiver<InputAction> {
-        self.action_rx
-            .take()
-            .expect("take_receiver() called more than once")
+    pub fn take_receiver(&mut self) -> Option<mpsc::UnboundedReceiver<InputAction>> {
+        self.action_rx.take()
     }
 
     /// Main loop: find the controller, read events, translate, and send

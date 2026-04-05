@@ -448,7 +448,6 @@ export component DetailScreen inherits Rectangle {
                 width: 100%;
                 height: 72px;
                 background: transparent;
-                padding-left: Theme.overscan-h;
 
                 GenreRow {
                     x: Theme.overscan-h;
@@ -486,7 +485,6 @@ export component DetailScreen inherits Rectangle {
 
             // -- Seasons row (series only) ------------------------------------
             if root.is-series && root.has-seasons : VerticalLayout {
-                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 spacing: Theme.spacing-sm;
 
@@ -503,7 +501,6 @@ export component DetailScreen inherits Rectangle {
 
             // -- Episodes row (series with selected season) -------------------
             if root.is-series && root.has-episodes : VerticalLayout {
-                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 padding-top: Theme.spacing-md;
                 spacing: Theme.spacing-sm;
@@ -524,7 +521,6 @@ export component DetailScreen inherits Rectangle {
 
             // -- Similar / Related row ----------------------------------------
             if root.has-related : VerticalLayout {
-                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 padding-top: Theme.spacing-md;
                 spacing: Theme.spacing-sm;

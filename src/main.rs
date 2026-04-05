@@ -291,7 +291,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 5. Set up controller input
     let mut controller = ControllerManager::new();
-    let input_rx = controller.take_receiver();
+    let input_rx = controller.take_receiver().expect("Controller receiver must be available at startup");
 
     // 6. Connect AppBridge callbacks
     setup_navigation_callbacks(
