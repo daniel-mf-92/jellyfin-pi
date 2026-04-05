@@ -1,10 +1,10 @@
 [package]
-name = "jellyfin-tv"
+name = "jellyfin-pi"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "jellyfin-tv"
+name = "jellyfin-pi"
 path = "src/main.rs"
 
 [dependencies]

@@ -109,7 +109,7 @@ NAVIGATION_APPS = {
 JELLYFIN_APPS = {
     "com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player",
     "jellyfinmediaplayer", "org.jellyfin.jellyfindesktop",
-    "jellyfin-tv", "jellyfin", "jmp",
+    "jellyfin-pi", "jellyfin", "jmp",
 }
 MOONLIGHT_APPS = {"moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
 

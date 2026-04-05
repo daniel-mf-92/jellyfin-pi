@@ -16,7 +16,7 @@ pub struct MprisPublisher {
 
 impl MprisPublisher {
     pub fn new() -> Self {
-        Self { path: "/tmp/jellyfin-tv-now-playing.json".into() }
+        Self { path: "/tmp/jellyfin-pi-now-playing.json".into() }
     }
 
     pub fn update(&self, state: &NowPlaying) {

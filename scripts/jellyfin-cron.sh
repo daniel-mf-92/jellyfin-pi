@@ -5,7 +5,7 @@
 # Sources all JMP automation scripts and calls them in order.
 #
 # Usage from master script:
-#   JELLYFIN_TV_DIR="$HOME/jellyfin-tv"
+#   JELLYFIN_TV_DIR="$HOME/jellyfin-pi"
 #   if [ -d "$JELLYFIN_TV_DIR/scripts" ]; then
 #       source "$JELLYFIN_TV_DIR/scripts/jellyfin-cron.sh"
 #   fi
@@ -24,7 +24,7 @@
 #   streaming-health         — JMP stall->mpv, bitrate adapt, dual-stream
 #   audio-healing            — PipeWire/WirePlumber, HDMI sink, lip-sync
 #   wireguard-bandwidth-measure — WG speed test, /tmp/pi-home-wg-bandwidth.json
-#   jellyfin-tv-launch       — Ensure JMP running (L1)
+#   jellyfin-pi-launch       — Ensure JMP running (L1)
 #   flex-launcher-health     — Restart flex-launcher if dead
 #
 # LOCAL (stays in master script — sensitive or non-JMP):
