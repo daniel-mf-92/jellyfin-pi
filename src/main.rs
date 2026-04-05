@@ -216,11 +216,22 @@ async fn items_to_media_items(
     server_url: &str,
     image_cache: &ImageCache,
 ) -> Vec<MediaItem> {
+    // Load poster images concurrently in batches of 20 (no backdrops for grid view)
     let mut result = Vec::with_capacity(items.len());
-    for item in items {
-        let poster = load_poster_image(item, server_url, image_cache, 300).await;
-        let backdrop = load_backdrop_image(item, server_url, image_cache, 800).await;
-        result.push(base_item_to_media_item(item, server_url, poster, backdrop));
+    for chunk in items.chunks(20) {
+        let futures: Vec<_> = chunk
+            .iter()
+            .map(|item| {
+                let server_url = server_url.to_string();
+                async move {
+                    let poster = load_poster_image(item, &server_url, image_cache, 300).await;
+                    let backdrop = SlintImage::default(); // defer backdrop until detail page
+                    base_item_to_media_item(item, &server_url, poster, backdrop)
+                }
+            })
+            .collect();
+        let batch_results = futures::future::join_all(futures).await;
+        result.extend(batch_results);
     }
     result
 }
