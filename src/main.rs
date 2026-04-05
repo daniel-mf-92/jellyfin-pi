@@ -2228,7 +2228,7 @@ async fn load_library(
             sort_by.or(Some("SortName")),
             Some("Ascending"),
             0,
-            100,
+            500,
             filters,
         )
         .await
