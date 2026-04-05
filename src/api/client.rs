@@ -5,7 +5,7 @@ use crate::api::models::*;
 use crate::config::AppConfig;
 
 // Fields to request when fetching items
-const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,PrimaryImageAspectRatio,Taglines,Trickplay";
+const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines,Trickplay";
 
 // ---------------------------------------------------------------------------
 // Error type

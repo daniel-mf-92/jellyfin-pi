@@ -210,6 +210,8 @@ export component AppWindow inherits Window {
             related-items: AppBridge.detail-related;
             seasons: AppBridge.detail-seasons;
             episodes: AppBridge.detail-episodes;
+            genres: AppBridge.genres;
+            cast-members: AppBridge.cast-members;
             play-item(item-id) => {
                 AppBridge.play-item(item-id);
             }
@@ -230,6 +232,12 @@ export component AppWindow inherits Window {
             }
             request-episodes(series-id, season-id) => {
                 AppBridge.request-episodes(series-id, season-id);
+            }
+            genre-selected(name) => {
+                AppBridge.genre-selected(name);
+            }
+            person-selected(id) => {
+                AppBridge.person-selected(id);
             }
         }
 
