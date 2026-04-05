@@ -1,0 +1,17 @@
+// Jellyfin Pi TV App - Branding Component
+// Displays the Jellyfin banner logo for login and splash screens
+
+import { Theme } from "./theme.slint";
+
+export component JellyfinBranding inherits VerticalLayout {
+    alignment: center;
+    spacing: Theme.spacing-md;
+
+    // Logo image (banner-light.png)
+    Image {
+        source: @image-url("../assets/jellyfin-banner.png");
+        width: 300px;
+        image-fit: contain;
+        horizontal-alignment: center;
+    }
+}

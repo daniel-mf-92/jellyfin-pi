@@ -1,0 +1,559 @@
+// Jellyfin Pi TV App - Music Player Component
+// Full-screen music playback UI with album art, transport controls,
+// seek bar, and scrollable track list. D-pad navigable.
+
+import { Theme } from "theme.slint";
+
+// ============================================================================
+// Data Structures
+// ============================================================================
+
+export struct MusicTrack {
+    id: string,
+    title: string,
+    artist: string,
+    album: string,
+    duration-ms: int,
+    track-number: int,
+    is-current: bool,
+}
+
+// ============================================================================
+// Helper: Format milliseconds to "m:ss" string
+// ============================================================================
+
+// Note: Time formatting is done in Rust and passed as pre-formatted strings.
+// The component accepts position-ms and duration-ms for seek calculations.
+
+// ============================================================================
+// Helper: Music transport button with focus state
+// ============================================================================
+
+component MusicTransportButton inherits Rectangle {
+    in property <string> label;
+    in property <bool> is-focused: false;
+    in property <bool> is-active: false;
+    callback activated();
+
+    width: 56px;
+    height: 56px;
+    border-radius: 28px;
+    background: is-focused ? #ffffff20 : transparent;
+    opacity: is-focused ? 1.0 : 0.7;
+
+    animate background { duration: Theme.focus-duration; }
+    animate opacity { duration: Theme.focus-duration; }
+
+    Text {
+        text: root.label;
+        font-size: is-focused ? 30px : 26px;
+        color: root.is-active ? Theme.accent : (is-focused ? white : Theme.text-secondary);
+        horizontal-alignment: center;
+        vertical-alignment: center;
+
+        animate font-size { duration: Theme.focus-duration; }
+        animate color { duration: Theme.focus-duration; }
+    }
+}
+
+// ============================================================================
+// Helper: Music seek bar
+// ============================================================================
+
+component MusicSeekBar inherits Rectangle {
+    in property <float> progress: 0.0;
+    in property <bool> is-focused: false;
+    in property <string> position-text: "0:00";
+    in property <string> duration-text: "0:00";
+
+    height: 32px;
+
+    HorizontalLayout {
+        spacing: Theme.spacing-md;
+        alignment: center;
+
+        // Current position
+        Text {
+            width: 48px;
+            text: root.position-text;
+            font-size: Theme.font-body-medium;
+            color: white;
+            horizontal-alignment: right;
+            vertical-alignment: center;
+        }
+
+        // Track bar
+        Rectangle {
+            width: root.width - 130px;
+            height: root.is-focused ? 8px : 6px;
+            border-radius: self.height / 2;
+            background: Theme.progress-background;
+            vertical-alignment: center;
+
+            animate height { duration: Theme.focus-duration; }
+
+            // Filled portion
+            Rectangle {
+                x: 0;
+                y: 0;
+                width: parent.width * clamp(root.progress, 0.0, 1.0);
+                height: parent.height;
+                border-radius: parent.border-radius;
+                background: Theme.progress-bar;
+
+                animate width { duration: 200ms; easing: ease-out; }
+            }
+
+            // Scrubber handle
+            Rectangle {
+                x: parent.width * clamp(root.progress, 0.0, 1.0) - self.width / 2;
+                y: (parent.height - self.height) / 2;
+                width: root.is-focused ? 18px : 14px;
+                height: self.width;
+                border-radius: self.width / 2;
+                background: Theme.accent;
+                opacity: root.is-focused ? 1.0 : 0.6;
+
+                animate opacity { duration: Theme.focus-duration; }
+                animate width { duration: Theme.focus-duration; }
+            }
+        }
+
+        // Duration
+        Text {
+            width: 48px;
+            text: root.duration-text;
+            font-size: Theme.font-body-medium;
+            color: Theme.text-secondary;
+            horizontal-alignment: left;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// ============================================================================
+// Helper: Track list row
+// ============================================================================
+
+component TrackRow inherits Rectangle {
+    in property <MusicTrack> track;
+    in property <bool> is-focused: false;
+    in property <int> index: 0;
+    in property <string> duration-text: "0:00";
+    callback selected(string);
+
+    height: 48px;
+    border-radius: 4px;
+    background: root.is-focused
+        ? Theme.surface-variant
+        : (root.track.is-current
+            ? #1e1e1e
+            : (mod(root.index, 2) == 0 ? #1a1a1a : #151515));
+
+    animate background { duration: Theme.focus-duration; }
+
+    // Accent left border for current track
+    if root.track.is-current : Rectangle {
+        x: 0;
+        y: 4px;
+        width: 3px;
+        height: parent.height - 8px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: Theme.spacing-md;
+        padding-right: Theme.spacing-md;
+        alignment: space-between;
+
+        HorizontalLayout {
+            spacing: Theme.spacing-md;
+            alignment: start;
+
+            // Track number
+            Text {
+                width: 32px;
+                text: root.track.track-number;
+                font-size: Theme.font-body-medium;
+                color: root.track.is-current ? Theme.accent : Theme.text-tertiary;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+
+            // Track title
+            Text {
+                text: root.track.title;
+                font-size: Theme.font-body-large;
+                color: root.track.is-current ? Theme.accent : (root.is-focused ? Theme.text-primary : Theme.on-surface);
+                overflow: elide;
+                vertical-alignment: center;
+
+                animate color { duration: Theme.focus-duration; }
+            }
+        }
+
+        // Now-playing indicator or duration
+        HorizontalLayout {
+            spacing: Theme.spacing-sm;
+            alignment: end;
+
+            if root.track.is-current : Text {
+                text: "\u{266B}";
+                font-size: Theme.font-body-medium;
+                color: Theme.accent;
+                vertical-alignment: center;
+            }
+
+            Text {
+                width: 48px;
+                text: root.duration-text;
+                font-size: Theme.font-body-medium;
+                color: Theme.text-tertiary;
+                horizontal-alignment: right;
+                vertical-alignment: center;
+            }
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            root.selected(root.track.id);
+        }
+    }
+}
+
+// ============================================================================
+// Main: MusicPlayer
+// ============================================================================
+
+export component MusicPlayer inherits Rectangle {
+    // -- Properties --
+    in property <image> album-art;
+    in property <string> track-title;
+    in property <string> artist-name;
+    in property <string> album-name;
+    in property <int> position-ms: 0;
+    in property <int> duration-ms: 0;
+    in property <bool> is-playing: false;
+    in property <bool> is-paused: false;
+    in property <[MusicTrack]> tracks: [];
+    in-out property <bool> shuffle-active: false;
+    in-out property <int> repeat-mode: 0;
+
+    // Pre-formatted time strings from Rust
+    in property <string> position-text: "0:00";
+    in property <string> duration-text: "0:00";
+
+    // -- Callbacks --
+    callback play-pause();
+    callback next-track();
+    callback prev-track();
+    callback seek(int);
+    callback track-selected(string);
+    callback toggle-shuffle();
+    callback cycle-repeat();
+    callback back();
+
+    // -- Internal state --
+    // Focus zone: 0 = seek bar, 1 = transport controls, 2 = track list
+    in-out property <int> focus-zone: 1;
+    // Transport button focus: 0=prev, 1=rw, 2=play/pause, 3=ff, 4=next
+    in-out property <int> transport-focus: 2;
+    // Track list focused index
+    in-out property <int> track-focus: 0;
+
+    // Progress ratio
+    property <float> progress: duration-ms > 0
+        ? clamp(position-ms * 1.0 / duration-ms, 0.0, 1.0)
+        : 0.0;
+
+    width: 100%;
+    height: 100%;
+    background: Theme.background;
+
+    // ---- Main layout ----
+    VerticalLayout {
+        padding-top: Theme.overscan-v + Theme.spacing-lg;
+        padding-bottom: Theme.overscan-v;
+        padding-left: Theme.overscan-h;
+        padding-right: Theme.overscan-h;
+        spacing: Theme.spacing-lg;
+        alignment: start;
+
+        // ---- Top section: Album art + track info ----
+        HorizontalLayout {
+            spacing: Theme.spacing-xl;
+            alignment: center;
+            height: 300px;
+
+            // Album art
+            Rectangle {
+                width: 300px;
+                height: 300px;
+                border-radius: Theme.card-radius;
+                clip: true;
+                background: Theme.surface;
+
+                Image {
+                    width: 100%;
+                    height: 100%;
+                    source: root.album-art;
+                    image-fit: cover;
+                }
+
+                // Fallback music icon when no art
+                if root.album-art.width <= 0 : Rectangle {
+                    width: 100%;
+                    height: 100%;
+                    background: Theme.surface-variant;
+
+                    Text {
+                        text: "\u{266B}";
+                        font-size: 80px;
+                        color: Theme.text-tertiary;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            // Track info
+            VerticalLayout {
+                alignment: center;
+                spacing: Theme.spacing-sm;
+                min-width: 300px;
+
+                Text {
+                    text: root.track-title;
+                    font-size: Theme.font-title-medium;
+                    font-weight: 700;
+                    color: Theme.text-primary;
+                    overflow: elide;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: root.artist-name;
+                    font-size: Theme.font-title-small;
+                    color: Theme.text-secondary;
+                    overflow: elide;
+                }
+
+                Text {
+                    text: root.album-name;
+                    font-size: Theme.font-body-medium;
+                    color: Theme.text-tertiary;
+                    overflow: elide;
+                }
+            }
+        }
+
+        // ---- Seek bar ----
+        MusicSeekBar {
+            width: 100%;
+            progress: root.progress;
+            is-focused: root.focus-zone == 0;
+            position-text: root.position-text;
+            duration-text: root.duration-text;
+        }
+
+        // ---- Transport controls ----
+        VerticalLayout {
+            alignment: center;
+            spacing: Theme.spacing-sm;
+
+            // Main transport row
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.spacing-xl;
+
+                // Skip Previous
+                MusicTransportButton {
+                    label: "\u{23EE}";
+                    is-focused: root.focus-zone == 1 && root.transport-focus == 0;
+                    activated => { root.prev-track(); }
+                }
+
+                // Rewind 10s
+                MusicTransportButton {
+                    label: "\u{23EA}";
+                    is-focused: root.focus-zone == 1 && root.transport-focus == 1;
+                    activated => { root.seek(max(root.position-ms - 10000, 0)); }
+                }
+
+                // Play / Pause
+                MusicTransportButton {
+                    label: root.is-paused || !root.is-playing ? "\u{25B6}" : "\u{23F8}";
+                    is-focused: root.focus-zone == 1 && root.transport-focus == 2;
+                    activated => { root.play-pause(); }
+                }
+
+                // Fast Forward 10s
+                MusicTransportButton {
+                    label: "\u{23E9}";
+                    is-focused: root.focus-zone == 1 && root.transport-focus == 3;
+                    activated => { root.seek(min(root.position-ms + 10000, root.duration-ms)); }
+                }
+
+                // Skip Next
+                MusicTransportButton {
+                    label: "\u{23ED}";
+                    is-focused: root.focus-zone == 1 && root.transport-focus == 4;
+                    activated => { root.next-track(); }
+                }
+            }
+
+            // Shuffle and Repeat row
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.spacing-xxxl;
+
+                // Shuffle
+                MusicTransportButton {
+                    label: "\u{1F500}";
+                    is-focused: false;
+                    is-active: root.shuffle-active;
+                    activated => { root.toggle-shuffle(); }
+                }
+
+                // Repeat
+                MusicTransportButton {
+                    label: root.repeat-mode == 2 ? "\u{1F502}" : "\u{1F501}";
+                    is-focused: false;
+                    is-active: root.repeat-mode > 0;
+                    activated => { root.cycle-repeat(); }
+                }
+            }
+        }
+
+        // ---- Track list ----
+        Rectangle {
+            vertical-stretch: 1;
+            border-radius: Theme.button-radius;
+            background: transparent;
+            clip: true;
+
+            Flickable {
+                width: 100%;
+                height: 100%;
+
+                VerticalLayout {
+                    spacing: 0;
+                    alignment: start;
+
+                    for track[idx] in root.tracks : TrackRow {
+                        track: track;
+                        index: idx;
+                        is-focused: root.focus-zone == 2 && root.track-focus == idx;
+                        duration-text: {
+                            // Format duration inline: minutes and seconds
+                            // Slint does not support string interpolation with zero-pad,
+                            // so Rust should supply pre-formatted durations.
+                            // Fallback: show raw seconds when Rust has not set text.
+                            ""
+                        };
+                        selected(id) => { root.track-selected(id); }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- Key handling ----
+    fs := FocusScope {
+        width: 100%;
+        height: 100%;
+
+        key-pressed(event) => {
+            // B / Escape: exit music player
+            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+                root.back();
+                return accept;
+            }
+
+            // A / Enter: activate focused element
+            if event.text == Key.Return || event.text == "a" || event.text == "A" {
+                if root.focus-zone == 1 {
+                    if root.transport-focus == 0 {
+                        root.prev-track();
+                    } else if root.transport-focus == 1 {
+                        root.seek(max(root.position-ms - 10000, 0));
+                    } else if root.transport-focus == 2 {
+                        root.play-pause();
+                    } else if root.transport-focus == 3 {
+                        root.seek(min(root.position-ms + 10000, root.duration-ms));
+                    } else if root.transport-focus == 4 {
+                        root.next-track();
+                    }
+                } else if root.focus-zone == 0 {
+                    // No-op on seek bar (use left/right to seek)
+                } else if root.focus-zone == 2 {
+                    // Play selected track
+                    if root.track-focus >= 0 && root.track-focus < root.tracks.length {
+                        root.track-selected(root.tracks[root.track-focus].id);
+                    }
+                }
+                return accept;
+            }
+
+            // Left arrow
+            if event.text == Key.LeftArrow {
+                if root.focus-zone == 1 {
+                    if root.transport-focus > 0 {
+                        root.transport-focus -= 1;
+                    }
+                } else if root.focus-zone == 0 {
+                    // Seek back 10 seconds
+                    root.seek(max(root.position-ms - 10000, 0));
+                }
+                return accept;
+            }
+
+            // Right arrow
+            if event.text == Key.RightArrow {
+                if root.focus-zone == 1 {
+                    if root.transport-focus < 4 {
+                        root.transport-focus += 1;
+                    }
+                } else if root.focus-zone == 0 {
+                    // Seek forward 10 seconds
+                    root.seek(min(root.position-ms + 10000, root.duration-ms));
+                }
+                return accept;
+            }
+
+            // Up arrow
+            if event.text == Key.UpArrow {
+                if root.focus-zone == 2 {
+                    if root.track-focus > 0 {
+                        root.track-focus -= 1;
+                    } else {
+                        // Move up from track list to transport controls
+                        root.focus-zone = 1;
+                    }
+                } else if root.focus-zone == 1 {
+                    root.focus-zone = 0;
+                }
+                return accept;
+            }
+
+            // Down arrow
+            if event.text == Key.DownArrow {
+                if root.focus-zone == 0 {
+                    root.focus-zone = 1;
+                } else if root.focus-zone == 1 {
+                    root.focus-zone = 2;
+                    root.track-focus = 0;
+                } else if root.focus-zone == 2 {
+                    if root.track-focus < root.tracks.length - 1 {
+                        root.track-focus += 1;
+                    }
+                }
+                return accept;
+            }
+
+            return reject;
+        }
+    }
+}

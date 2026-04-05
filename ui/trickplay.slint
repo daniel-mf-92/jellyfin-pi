@@ -1,0 +1,64 @@
+// Jellyfin Pi TV App - Trickplay Thumbnail Preview
+// Shows a single thumbnail from the trickplay sprite sheet above the seek bar
+// during scrubbing, with a timestamp label below.
+
+import { Theme } from "./theme.slint";
+
+export component TrickplayPreview inherits Rectangle {
+    // The cropped thumbnail image to display
+    in property <image> thumbnail-image;
+    // Formatted timestamp string (e.g. "12:34")
+    in property <string> timestamp-text: "";
+    // Horizontal position along the seek bar (clamped by parent)
+    in property <length> x-position: 0;
+    // Whether the user is actively scrubbing the seek bar
+    in property <bool> is-scrubbing: false;
+
+    // Size: 160x90 thumbnail + timestamp + border + padding
+    property <length> thumb-width: 160px;
+    property <length> thumb-height: 90px;
+    property <length> border-size: 2px;
+    property <length> total-width: thumb-width + border-size * 2 + 8px;
+    property <length> total-height: thumb-height + border-size * 2 + 28px;
+
+    x: root.x-position - total-width / 2;
+    width: total-width;
+    height: total-height;
+    opacity: is-scrubbing ? 1.0 : 0.0;
+    visible: is-scrubbing;
+
+    animate opacity { duration: 150ms; easing: ease-in-out; }
+
+    // Outer container — surface background with accent border, rounded corners
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        border-radius: 8px;
+        background: Theme.surface;
+        border-color: Theme.accent;
+        border-width: root.border-size;
+
+        // Thumbnail image
+        Image {
+            x: (parent.width - root.thumb-width) / 2;
+            y: root.border-size + 2px;
+            width: root.thumb-width;
+            height: root.thumb-height;
+            source: root.thumbnail-image;
+            image-fit: cover;
+        }
+
+        // Timestamp label below the thumbnail
+        Text {
+            x: 0;
+            y: root.thumb-height + root.border-size + 4px;
+            width: parent.width;
+            height: 20px;
+            text: root.timestamp-text;
+            font-size: Theme.font-body-small;
+            color: Theme.text-secondary;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}

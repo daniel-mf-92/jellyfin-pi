@@ -1,0 +1,435 @@
+// Jellyfin Pi TV App - Playlist / Queue Sidebar
+// Slide-in panel from right showing the playback queue
+
+import { Theme } from "theme.slint";
+
+// ============================================================================
+// Data Structures
+// ============================================================================
+
+export struct PlaylistItem {
+    id: string,
+    title: string,
+    subtitle: string,
+    duration-text: string,
+    thumbnail: image,
+    is-current: bool,
+    index: int,
+}
+
+// ============================================================================
+// Helper: Playlist item row
+// ============================================================================
+
+component PlaylistRow inherits Rectangle {
+    in property <PlaylistItem> item;
+    in property <bool> is-focused: false;
+
+    callback selected();
+    callback removed();
+
+    height: 64px;
+    background: item.is-current
+        ? #1e2a30
+        : (is-focused ? Theme.surface-variant : transparent);
+    border-radius: Theme.button-radius;
+
+    animate background { duration: Theme.focus-duration; }
+
+    // Accent left border for current item
+    if item.is-current : Rectangle {
+        x: 0;
+        y: 4px;
+        width: 3px;
+        height: parent.height - 8px;
+        border-radius: 2px;
+        background: Theme.accent;
+    }
+
+    HorizontalLayout {
+        padding-left: item.is-current ? 12px : Theme.spacing-sm;
+        padding-right: Theme.spacing-sm;
+        padding-top: Theme.spacing-sm;
+        padding-bottom: Theme.spacing-sm;
+        spacing: Theme.spacing-md;
+        alignment: start;
+
+        // Thumbnail
+        Rectangle {
+            width: 48px;
+            height: 48px;
+            border-radius: 4px;
+            clip: true;
+            background: Theme.surface-variant;
+
+            Image {
+                width: 100%;
+                height: 100%;
+                source: item.thumbnail;
+                image-fit: cover;
+            }
+
+            // Now-playing indicator overlay on current item
+            if item.is-current : Rectangle {
+                width: 100%;
+                height: 100%;
+                background: #00000066;
+
+                Text {
+                    text: u{25B6};
+                    font-size: 18px;
+                    color: Theme.accent;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+        }
+
+        // Title + subtitle column
+        VerticalLayout {
+            alignment: center;
+            horizontal-stretch: 1;
+            spacing: 2px;
+
+            Text {
+                text: item.title;
+                font-size: Theme.font-body-medium;
+                color: item.is-current ? Theme.accent : Theme.text-primary;
+                overflow: elide;
+
+                animate color { duration: Theme.focus-duration; }
+            }
+
+            Text {
+                text: item.subtitle;
+                font-size: Theme.font-caption;
+                color: Theme.text-secondary;
+                overflow: elide;
+            }
+        }
+
+        // Duration on right
+        VerticalLayout {
+            alignment: center;
+            width: 42px;
+
+            Text {
+                text: item.duration-text;
+                font-size: Theme.font-body-small;
+                color: Theme.text-tertiary;
+                horizontal-alignment: right;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Helper: Toggle button for shuffle / repeat
+// ============================================================================
+
+component ToggleButton inherits Rectangle {
+    in property <string> label;
+    in property <string> icon;
+    in property <bool> is-active: false;
+    in property <bool> is-focused: false;
+
+    callback activated();
+
+    width: 120px;
+    height: 40px;
+    border-radius: Theme.button-radius;
+    background: is-focused ? #ffffff18 : transparent;
+
+    animate background { duration: Theme.focus-duration; }
+
+    HorizontalLayout {
+        alignment: center;
+        spacing: Theme.spacing-sm;
+        padding-left: Theme.spacing-md;
+        padding-right: Theme.spacing-md;
+
+        // Icon
+        Text {
+            text: root.icon;
+            font-size: 18px;
+            color: root.is-active
+                ? Theme.accent
+                : (root.is-focused ? Theme.text-primary : Theme.text-tertiary);
+            vertical-alignment: center;
+
+            animate color { duration: Theme.focus-duration; }
+        }
+
+        // Label
+        Text {
+            text: root.label;
+            font-size: Theme.font-body-medium;
+            color: root.is-active
+                ? Theme.accent
+                : (root.is-focused ? Theme.text-primary : Theme.text-secondary);
+            vertical-alignment: center;
+
+            animate color { duration: Theme.focus-duration; }
+        }
+    }
+}
+
+// ============================================================================
+// Main: PlaylistSidebar
+// ============================================================================
+
+export component PlaylistSidebar inherits Rectangle {
+    in property <[PlaylistItem]> items: [];
+    in-out property <bool> visible: false;
+    in-out property <int> current-index: 0;
+    in-out property <bool> shuffle-active: false;
+    in-out property <int> repeat-mode: 0;   // 0 = none, 1 = all, 2 = one
+
+    // Internal focus tracking
+    // focus-zone: 0 = item list, 1 = bottom bar (shuffle/repeat)
+    in-out property <int> focus-zone: 0;
+    in-out property <int> focused-item: 0;
+    // bottom-focus: 0 = shuffle, 1 = repeat
+    in-out property <int> bottom-focus: 0;
+
+    // Callbacks
+    callback item-selected(int);
+    callback item-removed(int);
+    callback close-requested();
+    callback toggle-shuffle();
+    callback cycle-repeat();
+
+    // Derived
+    property <length> sidebar-width: 350px;
+    property <string> repeat-label: repeat-mode == 0 ? "Off"
+        : (repeat-mode == 1 ? "All" : "One");
+    property <string> repeat-icon: repeat-mode == 2 ? "\u{1F502}" : "\u{1F501}";
+
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    // ---- Scrim behind sidebar ----
+    Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000044;
+        opacity: root.visible ? 1.0 : 0.0;
+
+        animate opacity { duration: Theme.transition-duration; easing: ease-in-out; }
+
+        TouchArea {
+            clicked => { root.close-requested(); }
+        }
+    }
+
+    // ---- Sidebar panel ----
+    Rectangle {
+        x: root.visible ? (parent.width - root.sidebar-width) : parent.width;
+        y: 0;
+        width: root.sidebar-width;
+        height: parent.height;
+        background: #1a1a1aee;
+
+        animate x { duration: Theme.transition-duration; easing: ease-out; }
+
+        // Header
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 56px;
+            background: #111111;
+
+            // Title
+            Text {
+                x: Theme.spacing-lg;
+                y: 0;
+                height: parent.height;
+                text: "Up Next";
+                font-size: Theme.font-title-small;
+                color: Theme.text-primary;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            // Close button
+            Rectangle {
+                x: parent.width - 48px - Theme.spacing-sm;
+                y: (parent.height - 36px) / 2;
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: transparent;
+
+                Text {
+                    text: "\u{2715}";
+                    font-size: 18px;
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.close-requested(); }
+                }
+            }
+        }
+
+        // Scrollable item list
+        Rectangle {
+            x: 0;
+            y: 56px;
+            width: parent.width;
+            height: parent.height - 56px - 56px;  // minus header and bottom bar
+            clip: true;
+
+            Flickable {
+                width: parent.width;
+                height: parent.height;
+                viewport-height: items.length * 64px + Theme.spacing-sm * 2;
+
+                VerticalLayout {
+                    padding-top: Theme.spacing-sm;
+                    padding-bottom: Theme.spacing-sm;
+                    padding-left: Theme.spacing-sm;
+                    padding-right: Theme.spacing-sm;
+                    spacing: 0;
+
+                    for item[idx] in root.items : PlaylistRow {
+                        item: item;
+                        is-focused: root.focus-zone == 0 && root.focused-item == idx;
+                        selected => { root.item-selected(item.index); }
+                        removed => { root.item-removed(item.index); }
+                    }
+                }
+            }
+        }
+
+        // Bottom bar: Shuffle + Repeat
+        Rectangle {
+            x: 0;
+            y: parent.height - 56px;
+            width: parent.width;
+            height: 56px;
+            background: #111111;
+
+            HorizontalLayout {
+                alignment: center;
+                spacing: Theme.spacing-lg;
+                padding-left: Theme.spacing-md;
+                padding-right: Theme.spacing-md;
+
+                ToggleButton {
+                    icon: "\u{1F500}";
+                    label: "Shuffle";
+                    is-active: root.shuffle-active;
+                    is-focused: root.focus-zone == 1 && root.bottom-focus == 0;
+                    activated => { root.toggle-shuffle(); }
+                }
+
+                ToggleButton {
+                    icon: root.repeat-icon;
+                    label: "Repeat " + root.repeat-label;
+                    is-active: root.repeat-mode > 0;
+                    is-focused: root.focus-zone == 1 && root.bottom-focus == 1;
+                    activated => { root.cycle-repeat(); }
+                }
+            }
+        }
+    }
+
+    // ---- Key handling ----
+    fs := FocusScope {
+        enabled: root.visible;
+
+        key-pressed(event) => {
+            // B or Escape: close sidebar
+            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+                root.close-requested();
+                return accept;
+            }
+
+            // Up arrow: navigate up
+            if event.text == Key.UpArrow {
+                if root.focus-zone == 0 {
+                    if root.focused-item > 0 {
+                        root.focused-item -= 1;
+                    }
+                } else if root.focus-zone == 1 {
+                    // Move back to item list from bottom bar
+                    root.focus-zone = 0;
+                    if root.items.length > 0 {
+                        root.focused-item = root.items.length - 1;
+                    }
+                }
+                return accept;
+            }
+
+            // Down arrow: navigate down
+            if event.text == Key.DownArrow {
+                if root.focus-zone == 0 {
+                    if root.focused-item < root.items.length - 1 {
+                        root.focused-item += 1;
+                    } else {
+                        // At end of list, move to bottom bar
+                        root.focus-zone = 1;
+                        root.bottom-focus = 0;
+                    }
+                }
+                return accept;
+            }
+
+            // Left/Right: navigate bottom bar
+            if event.text == Key.LeftArrow {
+                if root.focus-zone == 1 {
+                    if root.bottom-focus > 0 {
+                        root.bottom-focus -= 1;
+                    }
+                }
+                return accept;
+            }
+
+            if event.text == Key.RightArrow {
+                if root.focus-zone == 1 {
+                    if root.bottom-focus < 1 {
+                        root.bottom-focus += 1;
+                    }
+                }
+                return accept;
+            }
+
+            // A or Enter: activate focused item / button
+            if event.text == Key.Return || event.text == "a" || event.text == "A" {
+                if root.focus-zone == 0 {
+                    if root.focused-item >= 0 && root.focused-item < root.items.length {
+                        root.item-selected(root.items[root.focused-item].index);
+                    }
+                } else if root.focus-zone == 1 {
+                    if root.bottom-focus == 0 {
+                        root.toggle-shuffle();
+                    } else if root.bottom-focus == 1 {
+                        root.cycle-repeat();
+                    }
+                }
+                return accept;
+            }
+
+            // X: remove focused item
+            if event.text == "x" || event.text == "X" {
+                if root.focus-zone == 0 {
+                    if root.focused-item >= 0 && root.focused-item < root.items.length {
+                        root.item-removed(root.items[root.focused-item].index);
+                        // Adjust focus if we removed the last item
+                        if root.focused-item >= root.items.length - 1 && root.focused-item > 0 {
+                            root.focused-item -= 1;
+                        }
+                    }
+                }
+                return accept;
+            }
+
+            return reject;
+        }
+    }
+}
