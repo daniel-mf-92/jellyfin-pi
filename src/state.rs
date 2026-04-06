@@ -183,7 +183,7 @@ impl StateManager {
     pub async fn tick_idle(&self) -> bool {
         let mut state = self.state.write().await;
         state.idle_seconds += 1;
-        let triggered = state.idle_seconds >= state.screensaver_timeout;
+        let triggered = state.screensaver_timeout > 0 && state.idle_seconds >= state.screensaver_timeout;
         if triggered && state.idle_seconds == state.screensaver_timeout {
             info!("Screensaver timeout reached ({}s)", state.screensaver_timeout);
         }

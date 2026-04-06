@@ -12,7 +12,9 @@ export component SettingsScreen inherits Rectangle {
 
     in property <bool> audio-passthrough: true;
     in property <int> subtitle-font-size: 48;
+    in property <string> media-player: "vlc";
     callback toggle-passthrough();
+    callback toggle-media-player();
     callback change-subtitle-font-size(int);
     callback power-action(string);
 
@@ -22,7 +24,7 @@ export component SettingsScreen inherits Rectangle {
     callback change-subtitle-size(int);
     callback go-back();
 
-    property <int> item-count: 10;
+    property <int> item-count: 11;
 
     background: Theme.background;
 
@@ -52,6 +54,8 @@ export component SettingsScreen inherits Rectangle {
                 } else if (root.focused-item == 7) {
                     root.toggle-passthrough();
                 } else if (root.focused-item == 9) {
+                    root.toggle-media-player();
+                } else if (root.focused-item == 10) {
                     root.power-action("reboot");
                 }
                 return accept;
@@ -395,15 +399,27 @@ export component SettingsScreen inherits Rectangle {
                     }
                 }
 
-                // 9: Power
+                // 9: Default Media Player
                 Rectangle {
                     height: 60px;
                     background: root.focused-item == 9 ? Theme.surface : transparent;
                     Rectangle { x: 0; y: 0; width: root.focused-item == 9 ? 3px : 0px; height: parent.height; background: Theme.accent; }
                     HorizontalLayout {
                         padding-left: Theme.spacing-xxxl; padding-right: Theme.spacing-xxxl; alignment: space-between;
+                        Text { text: "Default Media Player"; font-size: Theme.font-body-large; color: Theme.text-secondary; vertical-alignment: center; }
+                        Text { text: root.media-player == "vlc" ? "VLC" : "MPV"; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
+                    }
+                }
+
+                // 10: Power
+                Rectangle {
+                    height: 60px;
+                    background: root.focused-item == 10 ? Theme.surface : transparent;
+                    Rectangle { x: 0; y: 0; width: root.focused-item == 10 ? 3px : 0px; height: parent.height; background: Theme.accent; }
+                    HorizontalLayout {
+                        padding-left: Theme.spacing-xxxl; padding-right: Theme.spacing-xxxl; alignment: space-between;
                         Text { text: "Power"; font-size: Theme.font-body-large; color: Theme.text-secondary; vertical-alignment: center; }
-                        Text { text: root.focused-item == 9 ? "[Reboot]" : ""; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
+                        Text { text: root.focused-item == 10 ? "[Reboot]" : ""; font-size: Theme.font-body-large; color: Theme.accent; vertical-alignment: center; }
                     }
                 }
             }

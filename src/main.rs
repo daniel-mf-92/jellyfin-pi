@@ -43,6 +43,7 @@ fn load_dotenv() {
     }
 }
 use player::VlcPlayer;
+use player::PlayerWrapper;
 use player::vlc::PlayerEvent;
 use input::ControllerManager;
 use input::controller::InputAction;
@@ -295,7 +296,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Arc::new(RwLock::new(config));
 
     // 3. Create MpvPlayer (lazy: created when playback starts)
-    let player: Arc<Mutex<Option<VlcPlayer>>> = Arc::new(Mutex::new(None));
+    let player: Arc<Mutex<Option<PlayerWrapper>>> = Arc::new(Mutex::new(None));
 
     // 3a. Create playback tracker (local SQLite)
     let tracker = match PlaybackTracker::new() {
@@ -353,6 +354,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         client.clone(),
         state.clone(),
         player.clone(),
+        config.clone(),
         daemon_player_tx.clone(),
         tracker.clone(),
         segments.clone(),
@@ -958,7 +960,8 @@ fn setup_playback_callbacks(
     ui: &AppWindow,
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
-    player: Arc<Mutex<Option<VlcPlayer>>>,
+    player: Arc<Mutex<Option<PlayerWrapper>>>,
+    config: Arc<RwLock<AppConfig>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
     tracker: Arc<PlaybackTracker>,
     segments: Arc<Mutex<SegmentManager>>,
@@ -970,6 +973,7 @@ fn setup_playback_callbacks(
     let client_clone = client.clone();
     let state_clone = state.clone();
     let player_clone = player.clone();
+    let config_for_play = config.clone();
     let tracker_clone = tracker.clone();
     let segments_clone = segments.clone();
     let playback_controls_clone = playback_controls.clone();
@@ -979,6 +983,7 @@ fn setup_playback_callbacks(
         let client = client_clone.clone();
         let state = state_clone.clone();
         let player = player_clone.clone();
+        let config_for_play2 = config_for_play.clone();
         let daemon_player_tx = daemon_player_tx.clone();        let tracker = tracker_clone.clone();
         let segments = segments_clone.clone();
         let playback_controls = playback_controls_clone.clone();
@@ -1098,7 +1103,14 @@ fn setup_playback_callbacks(
                     let vlc_result = {
                         let mut p = player.lock().await;
                         if p.is_none() {
-                            match VlcPlayer::new() {
+                            match ({
+                        let cfg = config_for_play2.read().await;
+                        if cfg.playback.default_player == "mpv" {
+                            PlayerWrapper::new_mpv()
+                        } else {
+                            PlayerWrapper::new_vlc()
+                        }
+                    }) {
                                 Ok(new_player) => {
                                     *p = Some(new_player);
                                 }
@@ -1587,6 +1599,33 @@ fn setup_playback_callbacks(
                 }
                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                     ui.global::<AppBridge>().set_speed_label(label.into());
+                });
+            });
+        });
+    }
+
+
+    // Toggle media player (VLC <-> MPV)
+    {
+        let config_toggle = config.clone();
+        let ui_weak = ui.as_weak();
+        ui.global::<AppBridge>().on_toggle_media_player(move || {
+            let config_inner = config_toggle.clone();
+            let ui_weak_inner = ui_weak.clone();
+            let _ = slint::spawn_local(async move {
+                let mut cfg = config_inner.write().await;
+                cfg.playback.default_player = if cfg.playback.default_player == "vlc" {
+                    "mpv".to_string()
+                } else {
+                    "vlc".to_string()
+                };
+                let player_name = cfg.playback.default_player.clone();
+                let _ = cfg.save();
+                info!("Default media player changed to: {}", player_name);
+                let _ = ui_weak_inner.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_media_player(
+                        slint::SharedString::from(&player_name)
+                    );
                 });
             });
         });
@@ -2482,7 +2521,7 @@ async fn handle_player_events(
     ui_weak: slint::Weak<AppWindow>,
     client: Arc<RwLock<JellyfinClient>>,
     state: Arc<StateManager>,
-    player: Arc<Mutex<Option<VlcPlayer>>>,
+    player: Arc<Mutex<Option<PlayerWrapper>>>,
     daemon_player_tx: mpsc::UnboundedSender<PlayerEvent>,
     tracker: Arc<PlaybackTracker>,
     segments: Arc<Mutex<SegmentManager>>,

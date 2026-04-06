@@ -30,6 +30,9 @@ pub struct ServerConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlaybackConfig {
+    /// Default media player: "vlc" or "mpv".
+    #[serde(default = "default_player")]
+    pub default_player: String,
     /// Extra VLC command-line arguments.
     pub vlc_args: Vec<String>,
     /// ALSA audio device path.
@@ -119,6 +122,8 @@ impl Default for DaemonConfig {
     }
 }
 
+fn default_player() -> String { "vlc".to_string() }
+
 impl Default for AppConfig {
     fn default() -> Self {
         Self {
@@ -133,6 +138,7 @@ impl Default for AppConfig {
                 saved_token: None,
             },
             playback: PlaybackConfig {
+                default_player: "vlc".to_string(),
                 vlc_args: vec![
                     "--avcodec-hw".to_string(),
                     "any".to_string(),
