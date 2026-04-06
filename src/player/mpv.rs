@@ -109,11 +109,12 @@ impl MpvPlayer {
         self.kill_existing().await;
         let mut args = vec![
             "--fullscreen".into(), "--input-ipc-server".into(), self.socket_path.clone(),
-            "--hwdec=auto".into(), "--vo=gpu".into(), "--gpu-context=wayland".into(),
+            "--hwdec=auto".into(), "--vo=dmabuf-wayland".into(), "--gpu-context=wayland".into(),
             "--ao=alsa".into(), "--audio-device=alsa/default".into(),
-            "--cache=yes".into(), "--demuxer-max-bytes=150MiB".into(),
-            "--demuxer-max-back-bytes=75MiB".into(), "--network-timeout=30".into(),
-            "--no-terminal".into(), "--keep-open=no".into(), "--force-window=yes".into(),
+            "--cache=yes".into(), "--demuxer-max-bytes=100MiB".into(),
+            "--demuxer-max-back-bytes=50MiB".into(), "--demuxer-readahead-secs=5".into(),
+            "--network-timeout=30".into(),
+            "--no-terminal".into(), "--keep-open=no".into(),
             "--sub-font-size=48".into(), "--osd-level=0".into(),
         ];
         if let Some(ms) = start_position_ms {
@@ -127,7 +128,7 @@ impl MpvPlayer {
             .kill_on_drop(true).spawn()
             .map_err(|e| PlayerError::Vlc(format!("failed to launch mpv: {}", e)))?;
         { let mut g = self.child.lock().await; *g = Some(child); }
-        for i in 0..40 {
+        for i in 0..25 {
             tokio::time::sleep(Duration::from_millis(250)).await;
             if tokio::fs::metadata(&self.socket_path).await.is_ok() {
                 if UnixStream::connect(&self.socket_path).await.is_ok() {

@@ -1099,31 +1099,38 @@ fn setup_playback_callbacks(
                         )
                         .await;
 
-                    // Create or reuse VLC player
+                    // Create player (always fresh — respects current default_player setting)
                     let vlc_result = {
                         let mut p = player.lock().await;
-                        if p.is_none() {
-                            match ({
+                        // Stop existing player if any
+                        if let Some(ref old) = *p {
+                            let _ = old.stop().await;
+                        }
+                        *p = None;
+
                         let cfg = config_for_play2.read().await;
-                        if cfg.playback.default_player == "mpv" {
+                        let player_type = cfg.playback.default_player.clone();
+                        drop(cfg);
+
+                        let new_result = if player_type == "mpv" {
                             PlayerWrapper::new_mpv()
                         } else {
                             PlayerWrapper::new_vlc()
-                        }
-                    }) {
-                                Ok(new_player) => {
-                                    *p = Some(new_player);
-                                }
-                                Err(e) => {
-                                    error!("Failed to create VlcPlayer: {}", e);
-                                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                                        ui.global::<AppBridge>().set_error_message(
-                                            format!("Player error: {}", e).into(),
-                                        );
-                                        ui.global::<AppBridge>().set_is_loading(false);
-                                    });
-                                    return;
-                                }
+                        };
+                        match new_result {
+                            Ok(new_player) => {
+                                info!("Created {} player", player_type);
+                                *p = Some(new_player);
+                            }
+                            Err(e) => {
+                                error!("Failed to create {} player: {}", player_type, e);
+                                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                    ui.global::<AppBridge>().set_error_message(
+                                        format!("Player error: {}", e).into(),
+                                    );
+                                    ui.global::<AppBridge>().set_is_loading(false);
+                                });
+                                return;
                             }
                         }
                         Ok::<(), ()>(())
