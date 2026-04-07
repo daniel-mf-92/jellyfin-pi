@@ -10,6 +10,20 @@ STREAMING_MAX_ADJUST=5
 JMP_LOG="$HOME/.local/share/jellyfinmediaplayer/logs/mediaplayer.log"
 MPV_LOG="/tmp/mpv-jellyfin.log"
 
+JELLYFIN_API_HOST="${JELLYFIN_API#http://}"
+JELLYFIN_API_HOST="${JELLYFIN_API_HOST#https://}"
+JELLYFIN_API_HOST="${JELLYFIN_API_HOST%%/*}"
+
+is_jellyfin_mpv_running() {
+    [[ -n "$JELLYFIN_API_HOST" ]] && pgrep -f "mpv.*${JELLYFIN_API_HOST}" >/dev/null 2>&1 && return 0
+    pgrep -f "mpv.*/tmp/jellyfin-buffer" >/dev/null 2>&1
+}
+
+kill_jellyfin_mpv_processes() {
+    [[ -n "$JELLYFIN_API_HOST" ]] && pkill -f "mpv.*${JELLYFIN_API_HOST}" 2>/dev/null
+    pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
+}
+
 get_jellyfin_playing_item() {
     curl -sf "${JELLYFIN_API}/Sessions?api_key=${JELLYFIN_API_KEY}" 2>/dev/null | python3 -c '
 import sys, json
@@ -153,7 +167,7 @@ streaming_jmp_stall_check() {
 }
 
 streaming_mpv_monitor() {
-    if ! pgrep -f "mpv.*localhost" >/dev/null 2>&1 && ! pgrep -f "mpv.*/tmp/jellyfin-buffer" >/dev/null 2>&1; then
+    if ! is_jellyfin_mpv_running; then
         return 0
     fi
 
@@ -213,8 +227,7 @@ with open('$BW_FILE', 'w') as f:
             log "STREAM" "Reduced video bitrate: ${VIDEO_BR_CURRENT} -> ${new_video_br} (audio: ${new_audio_br}, res: ${new_max_w}x${new_max_h})"
 
             > "$MPV_LOG"
-            pkill -f "mpv.*localhost" 2>/dev/null
-            pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
+            kill_jellyfin_mpv_processes
             sleep 2
 
             # Record change timestamp and reset upscale counter
@@ -258,8 +271,7 @@ print('yes' if lb > 0 and cb > lb * 2.0 else 'no')
                 if [[ -n "$playing_item" ]]; then
                     log "STREAM" "Bandwidth stable: launched at ${launched_br}, now ${VIDEO_BR_CURRENT} (${good_count} good readings, ${elapsed_since_change}s hold). Upscaling..."
                     > "$MPV_LOG"
-                    pkill -f "mpv.*localhost" 2>/dev/null
-                    pkill -f "mpv.*/tmp/jellyfin-buffer" 2>/dev/null
+                    kill_jellyfin_mpv_processes
                     sleep 2
                     launch_mpv_jellyfin "$playing_item" "$VIDEO_BR_CURRENT" "$AUDIO_BR_CURRENT"
                     # Record change timestamp and reset counter

@@ -137,10 +137,10 @@ GAMEPAD_POLL_S = 0.100  # 100ms poll interval in GAMEPAD mode (reduced CPU)
 SELF_HEAL_POLL_S = 5.0  # periodic health checks (launcher + mode files + grab state)
 GO_HOME_DEBOUNCE_S = 0.35
 
-# Controller heartbeat (pi-home-a -> azure relay)
+# Controller heartbeat (optional relay target via env)
 CONTROLLER_HEARTBEAT_ENABLED = True
 CONTROLLER_HEARTBEAT_INTERVAL_S = 20.0
-CONTROLLER_HEARTBEAT_TARGET = "azureuser@relay-host.local"
+CONTROLLER_HEARTBEAT_TARGET = os.environ.get("CONTROLLER_HEARTBEAT_TARGET", "").strip()
 CONTROLLER_HEARTBEAT_FILE = "/tmp/gaming-controller-heartbeat"
 
 
@@ -734,7 +734,7 @@ class DpadRepeat:
 class MediaController:
     """Handle media-specific actions."""
 
-    HOME_BIN = "/home/your-username/bin"
+    HOME_BIN = os.path.join(os.path.expanduser("~"), "bin")
 
     @staticmethod
     def _run(script, *args):
@@ -979,7 +979,7 @@ class UnifiedController:
 
     def _send_controller_heartbeat(self, force=False):
         """Send throttled controller-activity heartbeat to Azure relay."""
-        if not CONTROLLER_HEARTBEAT_ENABLED:
+        if not CONTROLLER_HEARTBEAT_ENABLED or not CONTROLLER_HEARTBEAT_TARGET:
             return
 
         now = time.monotonic()

@@ -22,10 +22,14 @@ use api::models::*;
 
 /// Load .env file (gitignored) for credentials.
 fn load_dotenv() {
-    for path in &[".env", "/home/your-username/jellyfin-pi/.env"] {
-        let p = std::path::Path::new(path);
+    let mut paths = vec![std::path::PathBuf::from(".env")];
+    if let Ok(home) = std::env::var("HOME") {
+        paths.push(std::path::Path::new(&home).join("jellyfin-pi/.env"));
+    }
+
+    for p in paths {
         if p.exists() {
-            if let Ok(contents) = std::fs::read_to_string(p) {
+            if let Ok(contents) = std::fs::read_to_string(&p) {
                 for line in contents.lines() {
                     let line = line.trim();
                     if line.is_empty() || line.starts_with('#') { continue; }
@@ -2151,12 +2155,7 @@ async fn load_public_users(
         Ok(users) => {
             info!("Loaded {} public users", users.len());
             let mut user_infos = Vec::with_capacity(users.len());
-            let filtered_users: Vec<_> = users.iter().filter(|u| {
-                let name_lower = u.name.to_lowercase();
-                name_lower.contains("daniel") || name_lower.contains("marta")
-            }).collect();
-            info!("Filtered to {} users (daniel/marta only)", filtered_users.len());
-            for user in &filtered_users {
+            for user in &users {
                 let avatar = load_user_avatar(user, &server_url, &image_cache).await;
                 user_infos.push(user_dto_to_user_info(user, &server_url, avatar));
             }

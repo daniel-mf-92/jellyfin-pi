@@ -65,9 +65,17 @@ Modes auto-switch based on foreground app (/tmp/foreground-app):
 ### 1. Clone
 
 ```bash
-git clone https://github.com/your-github-username/jellyfin-pi.git
+git clone https://github.com/<your-github-username>/jellyfin-pi.git
 cd jellyfin-pi
 ```
+
+### 1b. Install git secret guard (recommended)
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This enables repo hooks that block commits/pushes containing hardcoded personal data, private infra addresses, or common secret/token patterns.
 
 ### 2. Build JMP from source
 

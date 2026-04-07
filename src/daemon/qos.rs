@@ -75,6 +75,31 @@ impl QosController {
         }
     }
 
+    fn qos_remote_host() -> Option<String> {
+        std::env::var("QOS_REMOTE_HOST")
+            .ok()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    fn jellyfin_host_hint() -> Option<String> {
+        std::env::var("JELLYFIN_URL")
+            .ok()
+            .and_then(|url| {
+                let url = url.trim();
+                let without_scheme = url
+                    .strip_prefix("http://")
+                    .or_else(|| url.strip_prefix("https://"))
+                    .unwrap_or(url);
+                let host = without_scheme.split('/').next().unwrap_or("").trim();
+                if host.is_empty() {
+                    None
+                } else {
+                    Some(host.to_string())
+                }
+            })
+    }
+
     /// Enable streaming QoS mode.
     async fn enable(&self) {
         info!("QoS: ENABLING streaming mode");
@@ -91,19 +116,24 @@ impl QosController {
         // 4. Kill bandwidth hogs
         self.kill_bandwidth_hogs().await;
 
-        // 5. Notify Azure VM QoS (background, non-blocking)
-        tokio::spawn(async {
-            let _ = Command::new("ssh")
-                .args([
-                    "-o", "ConnectTimeout=3",
-                    "-o", "BatchMode=yes",
-                    "-o", "StrictHostKeyChecking=no",
-                    "relay-host.local",
-                    "$HOME/bin/jellyfin-qos.sh enable",
-                ])
-                .output()
-                .await;
-        });
+        // 5. Notify QoS relay (background, non-blocking)
+        if let Some(remote_host) = Self::qos_remote_host() {
+            tokio::spawn(async move {
+                let _ = Command::new("ssh")
+                    .arg("-o")
+                    .arg("ConnectTimeout=3")
+                    .arg("-o")
+                    .arg("BatchMode=yes")
+                    .arg("-o")
+                    .arg("StrictHostKeyChecking=no")
+                    .arg(remote_host)
+                    .arg("$HOME/bin/jellyfin-qos.sh enable")
+                    .output()
+                    .await;
+            });
+        } else {
+            debug!("QoS: QOS_REMOTE_HOST not set, skipping relay enable");
+        }
 
         *self.shared.qos_active.write().await = true;
         let _ = self.event_tx.send(DaemonEvent::QosEnabled);
@@ -123,19 +153,24 @@ impl QosController {
         // 3. Restore all priorities to 0
         self.restore_priorities().await;
 
-        // 4. Notify Azure VM QoS disable
-        tokio::spawn(async {
-            let _ = Command::new("ssh")
-                .args([
-                    "-o", "ConnectTimeout=3",
-                    "-o", "BatchMode=yes",
-                    "-o", "StrictHostKeyChecking=no",
-                    "relay-host.local",
-                    "$HOME/bin/jellyfin-qos.sh disable",
-                ])
-                .output()
-                .await;
-        });
+        // 4. Notify QoS relay disable
+        if let Some(remote_host) = Self::qos_remote_host() {
+            tokio::spawn(async move {
+                let _ = Command::new("ssh")
+                    .arg("-o")
+                    .arg("ConnectTimeout=3")
+                    .arg("-o")
+                    .arg("BatchMode=yes")
+                    .arg("-o")
+                    .arg("StrictHostKeyChecking=no")
+                    .arg(remote_host)
+                    .arg("$HOME/bin/jellyfin-qos.sh disable")
+                    .output()
+                    .await;
+            });
+        } else {
+            debug!("QoS: QOS_REMOTE_HOST not set, skipping relay disable");
+        }
 
         *self.shared.qos_active.write().await = false;
         let _ = self.event_tx.send(DaemonEvent::QosDisabled);
@@ -292,15 +327,21 @@ impl QosController {
 
         // Kill large curl transfers that aren't Jellyfin-related
         let curl_pids = get_pids("curl").await;
+        let jellyfin_host_hint = Self::jellyfin_host_hint();
         for pid in curl_pids {
             let cmdline = tokio::fs::read_to_string(format!("/proc/{}/cmdline", pid))
                 .await
                 .unwrap_or_default();
 
+            let is_jellyfin_request = jellyfin_host_hint
+                .as_ref()
+                .map(|host| cmdline.contains(host))
+                .unwrap_or(false);
+
             // Skip Jellyfin buffer/API calls
             if cmdline.contains("localhost")
                 || cmdline.contains("jellyfin-buffer")
-                || cmdline.contains("localhost:8096")
+                || is_jellyfin_request
             {
                 continue;
             }

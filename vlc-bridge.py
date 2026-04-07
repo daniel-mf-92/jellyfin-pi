@@ -38,7 +38,7 @@ PLAYBACK FLOW
 ENVIRONMENT
   WAYLAND_DISPLAY=wayland-0
   XDG_RUNTIME_DIR=/run/user/1000
-  Jellyfin server: http://localhost:8096
+  Jellyfin server: set via JELLYFIN_URL (e.g. http://localhost:8096)
 
 DEPENDENCIES
   Python 3 stdlib + websocket-client (pip install websocket-client)

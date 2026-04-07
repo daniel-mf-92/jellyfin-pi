@@ -5,7 +5,7 @@ Wants=bluetooth.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /home/your-username/bin/unified-controller.py
+ExecStart=/usr/bin/python3 %h/bin/unified-controller.py
 Restart=always
 RestartSec=5
 Environment=DISPLAY=:0

@@ -7,6 +7,10 @@
 
 QOS_STATE_FILE="$STATE_DIR/media-qos-active"
 QOS_GRACE_PERIOD=600  # 10 min grace after stream ends
+QOS_REMOTE_HOST="${QOS_REMOTE_HOST:-}"
+JELLYFIN_API_HOST="${JELLYFIN_API#http://}"
+JELLYFIN_API_HOST="${JELLYFIN_API_HOST#https://}"
+JELLYFIN_API_HOST="${JELLYFIN_API_HOST%%/*}"
 
 is_media_playing() {
     pgrep -x vlc >/dev/null 2>&1 && return 0
@@ -23,10 +27,14 @@ media_qos_enable() {
         sudo killall -STOP go2rtc 2>/dev/null && log "QOS" "go2rtc SIGSTOP sent (frozen)"
     fi
 
-    # Notify Azure VM to enable peer-aware tc shaping (background, non-blocking)
-    ssh -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no relay-host.local \
-        "\$HOME/bin/jellyfin-qos.sh enable" >>/tmp/azure-qos-call.log 2>&1 &
-    log "QOS" "Azure VM QoS enable requested (background)"
+    # Notify QoS relay to enable peer-aware shaping (background, non-blocking)
+    if [[ -n "$QOS_REMOTE_HOST" ]]; then
+        ssh -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no "$QOS_REMOTE_HOST" \
+            "\$HOME/bin/jellyfin-qos.sh enable" >>/tmp/azure-qos-call.log 2>&1 &
+        log "QOS" "QoS relay enable requested (background)"
+    else
+        log "QOS" "QOS_REMOTE_HOST not set; skipping relay QoS enable"
+    fi
 
     # Boost media player priority
     for pid in $(pgrep -x vlc 2>/dev/null) $(pgrep -x ffplay 2>/dev/null) $(pgrep -x mpv 2>/dev/null); do
@@ -70,7 +78,7 @@ media_qos_enable() {
         cl=$(ps -p $pid -o args= 2>/dev/null)
         [[ "$cl" =~ "localhost" ]] && continue
         [[ "$cl" =~ "jellyfin-buffer" ]] && continue
-        [[ "$cl" =~ "localhost:8096" ]] && continue
+        [[ -n "$JELLYFIN_API_HOST" && "$cl" == *"$JELLYFIN_API_HOST"* ]] && continue
         local cpu
         cpu=$(ps -p "$pid" -o %cpu= 2>/dev/null | tr -d ' ' | cut -d. -f1)
         [[ "${cpu:-0}" -gt 15 ]] && { kill "$pid" 2>/dev/null && ((killed++)); }
@@ -94,10 +102,14 @@ media_qos_disable() {
     # SIGCONT go2rtc (resume camera relay)
     sudo killall -CONT go2rtc 2>/dev/null && log "QOS" "go2rtc SIGCONT sent (resumed)"
 
-    # Notify Azure VM to disable peer-aware tc shaping
-    ssh -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no relay-host.local \
-        "\$HOME/bin/jellyfin-qos.sh disable" >>/tmp/azure-qos-call.log 2>&1 &
-    log "QOS" "Azure VM QoS disable requested (background)"
+    # Notify QoS relay to disable peer-aware shaping
+    if [[ -n "$QOS_REMOTE_HOST" ]]; then
+        ssh -o ConnectTimeout=3 -o BatchMode=yes -o StrictHostKeyChecking=no "$QOS_REMOTE_HOST" \
+            "\$HOME/bin/jellyfin-qos.sh disable" >>/tmp/azure-qos-call.log 2>&1 &
+        log "QOS" "QoS relay disable requested (background)"
+    else
+        log "QOS" "QOS_REMOTE_HOST not set; skipping relay QoS disable"
+    fi
 
     # tc teardown removed: no local tc rules to clean up (see media_qos_enable)
 
