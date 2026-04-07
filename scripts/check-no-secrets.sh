@@ -7,9 +7,10 @@ if [[ "$mode" != "--staged" && "$mode" != "--full" ]]; then
   exit 2
 fi
 
-# Personal/private infra markers + high-risk credential signatures.
-# NOTE: keep this list focused to reduce false positives.
-pattern='10\.100\.0\.[0-9]+|your-username|your-github-username|@garden-stack\.com|azureuser@|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{20,}|sk_(live|test)_[0-9A-Za-z]{16,}|xox[baprs]-[0-9A-Za-z-]{10,}|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----'
+# Private infra markers + high-risk credential signatures.
+# User-specific names are matched via regex fragments to avoid false positives
+# in this script itself.
+pattern='10\.100\.0\.[0-9]+|d[a]nielmatthews-ferrero|d[a]niel-mf-92|d[a]niel@garden-stack\.com|@garden-stack\.com|azureuser@|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{36}|github_pat_[0-9A-Za-z_]{20,}|sk_(live|test)_[0-9A-Za-z]{16,}|xox[baprs]-[0-9A-Za-z-]{10,}|-----BEGIN (RSA|EC|OPENSSH|DSA|PGP) PRIVATE KEY-----'
 
 check_env_files() {
   local files
@@ -22,6 +23,7 @@ check_env_files() {
   local bad=()
   while IFS= read -r file; do
     [[ -z "$file" ]] && continue
+    local base
     base="$(basename "$file")"
     if [[ "$base" == ".env" ]]; then
       bad+=("$file")
@@ -62,11 +64,10 @@ scan_staged() {
 
 scan_full() {
   local matches
-  matches=$(git ls-files -z \
-    | xargs -0 rg -n --no-heading -i "$pattern" \
-      --glob '!scripts/check-no-secrets.sh' \
-      --glob '!.githooks/pre-commit' \
-      --glob '!.githooks/pre-push' || true)
+  matches=$(git grep -n -I -E "$pattern" -- . \
+    ':(exclude)scripts/check-no-secrets.sh' \
+    ':(exclude).githooks/pre-commit' \
+    ':(exclude).githooks/pre-push' || true)
 
   if [[ -n "$matches" ]]; then
     echo "❌ Push blocked: repository contains hardcoded personal/secret markers:" >&2
