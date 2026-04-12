@@ -8,6 +8,33 @@ pub use controls::PlaybackControls;
 use vlc::{PlayerError, PlayerEvent, PlayerResult, TrackInfo};
 use tokio::sync::mpsc;
 
+use log::info;
+use std::process::Command as StdCommand;
+
+/// Kill ALL running media player processes system-wide.
+/// Ensures only one media player can ever be active at a time.
+/// Called before launching any new player instance.
+pub fn kill_all_media_players() {
+    let targets = [
+        "vlc", "cvlc", "mpv", "ffplay", "mplayer",
+        "jellyfinmediaplayer", "jellyfin-pi",
+        "totem", "celluloid", "parole",
+    ];
+    for target in &targets {
+        // Use pkill to kill by exact process name
+        let _ = StdCommand::new("pkill")
+            .args(["-x", target])
+            .output();
+    }
+    // Also kill by broader pattern for VLC variants
+    let _ = StdCommand::new("pkill")
+        .args(["-f", "vlc --fullscreen"])
+        .output();
+    // Small grace period for processes to die
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    info!("kill_all_media_players: cleared all competing players");
+}
+
 /// Unified player wrapper dispatching to VLC or MPV.
 pub enum PlayerWrapper {
     Vlc(VlcPlayer),

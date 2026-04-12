@@ -106,6 +106,10 @@ impl MpvPlayer {
 
     pub async fn play_url(&self, url: &str, start_position_ms: Option<i64>) -> PlayerResult<()> {
         info!("mpv play_url: {}", url);
+
+        // Kill ALL media players system-wide (single-instance enforcement)
+        super::kill_all_media_players();
+
         self.kill_existing().await;
         let mut args = vec![
             "--fullscreen".into(), "--input-ipc-server".into(), self.socket_path.clone(),

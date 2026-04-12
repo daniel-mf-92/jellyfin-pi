@@ -186,7 +186,10 @@ impl VlcPlayer {
     pub async fn play_url(&self, url: &str, start_position_ms: Option<i64>) -> PlayerResult<()> {
         info!("play_url: {}", url);
 
-        // Kill any existing VLC instance
+        // Kill ALL media players system-wide (single-instance enforcement)
+        super::kill_all_media_players();
+
+        // Kill any existing VLC instance (our own child)
         self.kill_existing().await;
 
         // Adaptive cache sizing based on available RAM

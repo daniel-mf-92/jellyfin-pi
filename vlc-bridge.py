@@ -717,6 +717,22 @@ stream_cache = StreamCache()
 # VLC launcher
 # ---------------------------------------------------------------------------
 
+
+def _kill_all_media_players():
+    """Kill ALL running media player processes to enforce single-instance playback."""
+    import signal as _sig
+    targets_exact = ['vlc', 'cvlc', 'mpv', 'ffplay', 'mplayer',
+                     'jellyfinmediaplayer', 'jellyfin-pi',
+                     'totem', 'celluloid', 'parole']
+    for t in targets_exact:
+        subprocess.run(['pkill', '-x', t], capture_output=True)
+    # Broader pattern for VLC variants
+    subprocess.run(['pkill', '-f', 'vlc --fullscreen'], capture_output=True)
+    import time as _t
+    _t.sleep(0.2)
+    log.info("kill_all_media_players: cleared all competing players")
+
+
 def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
                stream_bitrate_bps=None):
     """
@@ -729,7 +745,10 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
     """
     global current_vlc_proc
 
-    # Kill any existing VLC first
+    # Kill ALL media players system-wide (single-instance enforcement)
+    _kill_all_media_players()
+
+    # Kill any existing VLC first (our own tracked process)
     with vlc_lock:
         if current_vlc_proc and current_vlc_proc.poll() is None:
             log.info("Killing existing VLC process")
