@@ -17,8 +17,9 @@ export component HomeScreen inherits Rectangle {
     in property <UserInfo> current-user;
     in property <string> current-time: "00:00";
 
-    in-out property <int> focused-row: 0;
+    in-out property <int> focused-row: -1;
     in-out property <int> focused-col: 0;
+    in-out property <int> focused-lib: 0;
 
     callback item-selected(/* item_id */ string);
     callback item-play(/* item_id */ string);
@@ -51,20 +52,30 @@ export component HomeScreen inherits Rectangle {
 
         key-pressed(event) => {
             if (event.text == Key.UpArrow) {
-                if (root.focused-row > 0) {
+                if (root.focused-row > -1) {
                     root.focused-row -= 1;
+                    if (root.focused-row == -1) {
+                        root.focused-lib = 0;
+                    }
                 }
                 return accept;
             }
             if (event.text == Key.DownArrow) {
-                if (root.focused-row < root.rows.length - 1) {
+                if (root.focused-row == -1) {
+                    root.focused-row = 0;
+                    root.focused-col = 0;
+                } else if (root.focused-row < root.rows.length - 1) {
                     root.focused-row += 1;
                 }
                 return accept;
             }
             // Left/Right arrows navigate within the focused row
             if (event.text == Key.RightArrow) {
-                if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
+                if (root.focused-row == -1) {
+                    if (root.focused-lib < root.library-tiles.length - 1) {
+                        root.focused-lib += 1;
+                    }
+                } else if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col < root.rows[root.focused-row].items.length - 1) {
                         root.focused-col += 1;
                     }
@@ -72,14 +83,22 @@ export component HomeScreen inherits Rectangle {
                 return accept;
             }
             if (event.text == Key.LeftArrow) {
-                if (root.focused-col > 0) {
+                if (root.focused-row == -1) {
+                    if (root.focused-lib > 0) {
+                        root.focused-lib -= 1;
+                    }
+                } else if (root.focused-col > 0) {
                     root.focused-col -= 1;
                 }
                 return accept;
             }
-            // Enter/Space selects the focused item
+            // Enter/Space → library select (row -1) or play item (row >= 0)
             if (event.text == Key.Return || event.text == " ") {
-                if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
+                if (root.focused-row == -1) {
+                    if (root.focused-lib >= 0 && root.focused-lib < root.library-tiles.length) {
+                        root.library-selected(root.library-tiles[root.focused-lib].id);
+                    }
+                } else if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
                         root.item-selected(root.rows[root.focused-row].items[root.focused-col].id);
                     }
@@ -174,6 +193,8 @@ export component HomeScreen inherits Rectangle {
         LibraryTilesRow {
             height: 50px;
             libraries: root.library-tiles;
+            row-focused: root.focused-row == -1;
+            focused-index <=> root.focused-lib;
             library-selected(id) => { root.library-selected(id); }
         }
 

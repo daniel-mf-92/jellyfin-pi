@@ -798,6 +798,19 @@ fn setup_navigation_callbacks(
             }
         });
     });
+
+    // library-selected(library_id)
+    let ui_weak = ui.as_weak();
+    ui.global::<AppBridge>().on_library_selected({
+        let ui_weak = ui_weak.clone();
+        move |library_id| {
+            let ui_weak = ui_weak.clone();
+            let library_id_str = library_id.to_string();
+            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                ui.global::<AppBridge>().invoke_navigate("library".into(), library_id_str.into());
+            });
+        }
+    });
 }
 
 fn setup_auth_callbacks(
@@ -2258,6 +2271,17 @@ async fn load_home_data(
         let model = VecModel::from(rows);
         ui.global::<AppBridge>()
             .set_home_rows(ModelRc::new(model));
+
+        // Populate library tiles from views
+        let tiles: Vec<LibraryTile> = views.iter().map(|v| {
+            LibraryTile {
+                id: SharedString::from(&v.id),
+                name: SharedString::from(&v.name),
+                collection_type: SharedString::from(v.collection_type.as_deref().unwrap_or("")),
+            }
+        }).collect();
+        ui.global::<AppBridge>()
+            .set_library_tiles(ModelRc::new(VecModel::from(tiles)));
         ui.global::<AppBridge>().set_is_loading(false);
     }
 

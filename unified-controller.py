@@ -1319,8 +1319,8 @@ class UnifiedController:
         # ── NAVIGATION mode buttons ──
         if self.mode == Mode.NAVIGATION:
             if code == ecodes.BTN_EAST:
-                # Moonlight UI expects Enter; VLC playback prefers play/pause.
-                if self._moonlight_foreground:
+                # Moonlight/JMP UI expects Enter; VLC playback prefers play/pause.
+                if self._moonlight_foreground or self._jmp_foreground:
                     self.vinput.key_tap(ecodes.KEY_ENTER)
                 elif _read_foreground_app_hint().startswith("vlc") or self._is_media_playing():
                     if not _mpris_play_pause():
@@ -1329,9 +1329,9 @@ class UnifiedController:
                     self.vinput.key_tap(ecodes.KEY_ENTER)
 
             elif code == ecodes.BTN_SOUTH:
-                # Moonlight back = Escape; JMP/web back = Backspace
+                # Moonlight/JMP back = Escape; web back = Backspace
                 self._pause_and_stop_media_for_home()
-                if self._moonlight_foreground:
+                if self._moonlight_foreground or self._jmp_foreground:
                     self.vinput.key_tap(ecodes.KEY_ESC)
                 else:
                     self.vinput.key_tap(ecodes.KEY_BACKSPACE)
