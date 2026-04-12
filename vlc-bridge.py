@@ -91,6 +91,7 @@ CDP_PORT = int(os.environ.get("CDP_PORT", "9222"))
 CDP_URL = f"http://localhost:{CDP_PORT}"
 
 VLC_BIN = "/usr/bin/vlc"
+VLC_CPU_CORES = {1, 2, 3}  # Pin VLC to these cores (Pi5 has 0-3)
 VLC_AUDIO_DESYNC = -300  # ms, matches mpv audio-delay=-0.3
 FOREGROUND_FILE = "/tmp/foreground-app"
 JMP_APP_ID = "com.github.iwalton3.jellyfin-media-player"
@@ -717,22 +718,6 @@ stream_cache = StreamCache()
 # VLC launcher
 # ---------------------------------------------------------------------------
 
-
-def _kill_all_media_players():
-    """Kill ALL running media player processes to enforce single-instance playback."""
-    import signal as _sig
-    targets_exact = ['vlc', 'cvlc', 'mpv', 'ffplay', 'mplayer',
-                     'jellyfinmediaplayer', 'jellyfin-pi',
-                     'totem', 'celluloid', 'parole']
-    for t in targets_exact:
-        subprocess.run(['pkill', '-x', t], capture_output=True)
-    # Broader pattern for VLC variants
-    subprocess.run(['pkill', '-f', 'vlc --fullscreen'], capture_output=True)
-    import time as _t
-    _t.sleep(0.2)
-    log.info("kill_all_media_players: cleared all competing players")
-
-
 def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
                stream_bitrate_bps=None):
     """
@@ -745,10 +730,7 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
     """
     global current_vlc_proc
 
-    # Kill ALL media players system-wide (single-instance enforcement)
-    _kill_all_media_players()
-
-    # Kill any existing VLC first (our own tracked process)
+    # Kill any existing VLC first
     with vlc_lock:
         if current_vlc_proc and current_vlc_proc.poll() is None:
             log.info("Killing existing VLC process")
@@ -861,6 +843,13 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
 
     vlc_start_time = time.time()
 
+    def _pin_to_cores():
+        """Pin VLC to CPU cores 1-3, leaving core 0 for system/JMP."""
+        try:
+            os.sched_setaffinity(0, VLC_CPU_CORES)
+        except Exception:
+            pass  # non-fatal
+
     try:
         with vlc_lock:
             current_vlc_proc = subprocess.Popen(
@@ -868,7 +857,9 @@ def launch_vlc(url, start_time_secs=0, item_id=None, jellyfin_auth=None,
                 env=env,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
+                preexec_fn=_pin_to_cores,
             )
+        log.info(f"VLC pinned to cores {VLC_CPU_CORES} (PID {current_vlc_proc.pid})")
 
         # Kill splash once VLC window appears (non-blocking)
         if splash_proc:
