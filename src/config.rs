@@ -101,6 +101,9 @@ pub struct DaemonConfig {
     pub flex_heal_enabled: bool,
     /// Enable buffer manager.
     pub buffer_enabled: bool,
+    /// Auto-pause VLC when another app takes the foreground.
+    #[serde(default = "default_true")]
+    pub pause_on_defocus: bool,
 }
 
 impl Default for DaemonConfig {
@@ -118,11 +121,13 @@ impl Default for DaemonConfig {
             audio_heal_enabled: true,
             flex_heal_enabled: true,
             buffer_enabled: false,
+            pause_on_defocus: true,
         }
     }
 }
 
 fn default_player() -> String { "vlc".to_string() }
+fn default_true() -> bool { true }
 
 impl Default for AppConfig {
     fn default() -> Self {

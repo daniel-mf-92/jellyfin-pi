@@ -5,6 +5,7 @@ pub mod qos;
 pub mod audio;
 pub mod streaming;
 pub mod system;
+pub mod focus_pause;
 
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch, RwLock};
@@ -157,10 +158,11 @@ impl DaemonManager {
             }
         };
 
-        // Fan-out: distribute PlayerEvents to QoS, streaming health
+        // Fan-out: distribute PlayerEvents to QoS, streaming health, focus-pause
         let (qos_tx, qos_rx) = mpsc::unbounded_channel::<PlayerEvent>();
         let (streaming_tx, streaming_rx) = mpsc::unbounded_channel::<PlayerEvent>();
         let (system_player_tx, system_player_rx) = mpsc::unbounded_channel::<PlayerEvent>();
+        let (focus_pause_tx, focus_pause_rx) = mpsc::unbounded_channel::<PlayerEvent>();
 
         // Fan-out task
         self.task_handles.push(tokio::spawn(async move {
@@ -168,6 +170,7 @@ impl DaemonManager {
             while let Some(event) = rx.recv().await {
                 let _ = qos_tx.send(event.clone());
                 let _ = streaming_tx.send(event.clone());
+                let _ = focus_pause_tx.send(event.clone());
                 let _ = system_player_tx.send(event);
             }
         }));
@@ -189,6 +192,12 @@ impl DaemonManager {
         let init_handle = tokio::spawn(async move {
             let cfg = config_clone.read().await;
             let daemon_cfg = &cfg.daemon;
+
+            // 0. Focus-pause watcher (auto-pause VLC when app loses foreground)
+            if daemon_cfg.pause_on_defocus {
+                let watcher = focus_pause::FocusPauseWatcher::new(focus_pause_rx);
+                tokio::spawn(async move { watcher.run().await });
+            }
 
             // 1. System tasks (IMU block, foreground-app, screen-alive, flex-launcher)
             let system = SystemTasks::new(
