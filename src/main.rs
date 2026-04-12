@@ -2357,7 +2357,7 @@ async fn load_home_data(
             all_rows.push(ContentRowData {
                 title: SharedString::from("My Libraries"),
                 items: ModelRc::new(VecModel::from(library_cards)),
-                row_type: SharedString::from("poster"),
+                row_type: SharedString::from("landscape"),
             });
             for i in 0..model.row_count() {
                 if let Some(row) = model.row_data(i) {
