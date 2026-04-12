@@ -363,6 +363,20 @@ export component AppWindow inherits Window {
                 y: (parent.height - self.height) / 2;
                 active: true;
             }
+
+            // Escape must ALWAYS work, even during loading
+            FocusScope {
+                width: 100%;
+                height: 100%;
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        AppBridge.is-loading = false;
+                        AppBridge.go-back();
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
         }
 
         // Error message overlay

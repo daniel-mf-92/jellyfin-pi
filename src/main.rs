@@ -661,6 +661,48 @@ fn setup_navigation_callbacks(
                 }
                 "detail" => {
                     let item_id = param_str.clone();
+
+                    // Check if this is a CollectionFolder (library) — redirect to library screen
+                    let is_collection_folder = {
+                        let c = client.read().await;
+                        match c.get_item(&item_id).await {
+                            Ok(item) => item.collection_type.is_some() || item.item_type == "CollectionFolder",
+                            Err(_) => false,
+                        }
+                    };
+
+                    if is_collection_folder {
+                        // Navigate to library screen instead
+                        state
+                            .navigate_to(Screen::Library {
+                                library_id: item_id.clone(),
+                                title: String::new(),
+                            })
+                            .await;
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_current_screen("library".into());
+                            ui.global::<AppBridge>().set_is_loading(true);
+                        });
+                        if let Err(e) = load_library(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &item_id,
+                            None,
+                            None,
+                        )
+                        .await
+                        {
+                            error!("Failed to load library {}: {}", item_id, e);
+                            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>()
+                                    .set_error_message(format!("Failed to load library: {}", e).into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                        }
+                        return;
+                    }
+
                     state
                         .navigate_to(Screen::Detail {
                             item_id: item_id.clone(),
@@ -2272,7 +2314,7 @@ async fn load_home_data(
         ui.global::<AppBridge>()
             .set_home_rows(ModelRc::new(model));
 
-        // Populate library tiles from views
+        // Populate library tiles from views (as media cards with images)
         let tiles: Vec<LibraryTile> = views.iter().map(|v| {
             LibraryTile {
                 id: SharedString::from(&v.id),
@@ -2282,6 +2324,46 @@ async fn load_home_data(
         }).collect();
         ui.global::<AppBridge>()
             .set_library_tiles(ModelRc::new(VecModel::from(tiles)));
+
+        // Also add a "My Libraries" row at the TOP of home rows with poster images
+        let mut library_cards: Vec<MediaItem> = Vec::new();
+        for view in &views {
+            let poster = {
+                let img_tag = view.image_tags.as_ref()
+                    .and_then(|t| t.get("Primary"))
+                    .cloned()
+                    .unwrap_or_default();
+                if !img_tag.is_empty() {
+                    let url = format!("{}/Items/{}/Images/Primary?maxHeight=300&quality=80&tag={}",
+                        server_url, view.id, img_tag);
+                    image_cache.load_image(&url).await.unwrap_or_default()
+                } else {
+                    slint::Image::default()
+                }
+            };
+            library_cards.push(MediaItem {
+                id: SharedString::from(&view.id),
+                title: SharedString::from(&view.name),
+                image_source: poster,
+                item_type: SharedString::from("CollectionFolder"),
+                ..Default::default()
+            });
+        }
+        if !library_cards.is_empty() {
+            // Insert library row at position 0
+            let model = ui.global::<AppBridge>().get_home_rows();
+            let mut all_rows: Vec<ContentRowData> = Vec::new();
+            all_rows.push(ContentRowData {
+                title: SharedString::from("My Libraries"),
+                items: ModelRc::new(VecModel::from(library_cards)),
+                row_type: SharedString::from("poster"),
+            });
+            for i in 0..model.row_count() {
+                all_rows.push(model.row_data(i).unwrap());
+            }
+            ui.global::<AppBridge>()
+                .set_home_rows(ModelRc::new(VecModel::from(all_rows)));
+        }
         ui.global::<AppBridge>().set_is_loading(false);
     }
 
