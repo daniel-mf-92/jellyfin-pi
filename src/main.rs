@@ -2351,6 +2351,7 @@ async fn load_home_data(
         }
         if !library_cards.is_empty() {
             // Insert library row at position 0
+            use slint::Model;
             let model = ui.global::<AppBridge>().get_home_rows();
             let mut all_rows: Vec<ContentRowData> = Vec::new();
             all_rows.push(ContentRowData {
@@ -2359,7 +2360,9 @@ async fn load_home_data(
                 row_type: SharedString::from("poster"),
             });
             for i in 0..model.row_count() {
-                all_rows.push(model.row_data(i).unwrap());
+                if let Some(row) = model.row_data(i) {
+                    all_rows.push(row);
+                }
             }
             ui.global::<AppBridge>()
                 .set_home_rows(ModelRc::new(VecModel::from(all_rows)));
