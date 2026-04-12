@@ -190,11 +190,15 @@ export component AppWindow inherits Window {
             height: 100%;
             rows: AppBridge.home-rows;
             current-user: AppBridge.current-user;
+            library-tiles: AppBridge.library-tiles;
             item-selected(id) => {
                 AppBridge.navigate("detail", id);
             }
             item-play(id) => {
                 AppBridge.play-item(id);
+            }
+            library-selected(id) => {
+                AppBridge.navigate("library", id);
             }
             open-search() => {
                 AppBridge.navigate("search", "");
