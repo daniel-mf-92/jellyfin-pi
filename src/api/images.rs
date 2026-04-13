@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
+use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,6 +20,11 @@ const DEFAULT_MAX_MEMORY_ITEMS: usize = 10;
 /// This protects the UI process from large backdrops/posters that ignore
 /// Jellyfin's `maxHeight`/`maxWidth` hint parameters.
 const MAX_DECODED_IMAGE_DIMENSION: u32 = 640;
+
+/// Reject source images above this dimension before full decode to avoid
+/// extreme temporary allocations during decode.
+const MAX_SOURCE_IMAGE_DIMENSION: u32 = 3000;
+const MAX_SOURCE_IMAGE_PIXELS: u64 = 2_500_000;
 
 /// Maximum number of concurrent image downloads during preload.
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
@@ -256,6 +262,43 @@ impl ImageCache {
 
     /// Decode raw image bytes (JPEG, PNG, WebP, etc.) into a Slint `Image`.
     fn decode_to_slint(bytes: &[u8]) -> Option<SlintImage> {
+        let (src_w, src_h) = match image::ImageReader::new(Cursor::new(bytes)).with_guessed_format() {
+            Ok(reader) => match reader.into_dimensions() {
+                Ok((w, h)) => (w, h),
+                Err(e) => {
+                    warn!("Skipping image with unreadable dimensions: {}", e);
+                    return None;
+                }
+            },
+            Err(e) => {
+                warn!("Skipping image with unknown format: {}", e);
+                return None;
+            }
+        };
+
+        let max_src_dim = src_w.max(src_h);
+        if max_src_dim > MAX_SOURCE_IMAGE_DIMENSION {
+            warn!(
+                "Skipping oversized source image {}x{} (max allowed {}px)",
+                src_w,
+                src_h,
+                MAX_SOURCE_IMAGE_DIMENSION
+            );
+            return None;
+        }
+
+        let src_pixels = (src_w as u64).saturating_mul(src_h as u64);
+        if src_pixels > MAX_SOURCE_IMAGE_PIXELS {
+            warn!(
+                "Skipping oversized source image {}x{} ({} px > {} px)",
+                src_w,
+                src_h,
+                src_pixels,
+                MAX_SOURCE_IMAGE_PIXELS
+            );
+            return None;
+        }
+
         let mut img = match image::load_from_memory(bytes) {
             Ok(i) => i,
             Err(e) => {
