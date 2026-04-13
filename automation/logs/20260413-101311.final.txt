@@ -1,0 +1,17 @@
+Done — I fixed one P0 issue end-to-end and pushed it.
+
+**What I Fixed (P0)**
+- Added a navigation in-flight guard for `"detail"` loads to prevent repeated `A/Enter` presses from spawning overlapping detail requests that keep the loading overlay stuck and drive memory up (`src/main.rs:618`, `src/main.rs:670`).
+- The guard is released on success/error and on CollectionFolder redirect path, so detail navigation can recover cleanly (`src/main.rs:714`, `src/main.rs:743`).
+- `go-back()` now always clears loading state and resets that guard, so Escape/B reliably cancels out of stuck loading flows (`src/main.rs:820`).
+
+**Validation**
+- `cargo check` passes locally (warnings only, no errors).
+- Commit: `8423d4b` on `slint-rewrite`.
+- Pushed to `origin/slint-rewrite`.
+- Latest CI: GitHub Actions run `24333157853` is `in_progress` (`Secret Guard` workflow).
+
+**What to Test on Pi**
+- From Home, press `A` on an item repeatedly: should open detail once, not black-screen lock.
+- From Login, select a user: should transition to Home without permanent `Loading...`.
+- While loading overlay is visible, press `B/Escape`: should always back out and clear loading.
