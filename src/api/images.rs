@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use image::GenericImageView;
 use log::{debug, error, info, warn};
@@ -15,6 +16,8 @@ const DEFAULT_MAX_MEMORY_ITEMS: usize = 50;
 
 /// Maximum number of concurrent image downloads during preload.
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
+const IMAGE_CONNECT_TIMEOUT_SECS: u64 = 5;
+const IMAGE_REQUEST_TIMEOUT_SECS: u64 = 15;
 
 /// Thread-safe, async image cache that stores decoded Slint images in memory
 /// and raw image bytes on disk for fast reloading across sessions.
@@ -45,6 +48,12 @@ impl ImageCache {
         } else {
             info!("Image cache directory: {:?}", cache_dir);
         }
+
+        let http = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(IMAGE_CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(IMAGE_REQUEST_TIMEOUT_SECS))
+            .build()
+            .unwrap_or(http);
 
         Self {
             cache_dir,

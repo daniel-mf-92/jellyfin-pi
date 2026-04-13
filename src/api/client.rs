@@ -1,11 +1,14 @@
 use reqwest::Client;
 use std::fmt;
+use std::time::Duration;
 
 use crate::api::models::*;
 use crate::config::AppConfig;
 
 // Fields to request when fetching items
 const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines,Trickplay";
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
+const HTTP_REQUEST_TIMEOUT_SECS: u64 = 15;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -64,8 +67,14 @@ pub struct JellyfinClient {
 impl JellyfinClient {
     /// Create a new client from application config.
     pub fn new(config: &AppConfig) -> Self {
+        let http = Client::builder()
+            .connect_timeout(Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
+            .timeout(Duration::from_secs(HTTP_REQUEST_TIMEOUT_SECS))
+            .build()
+            .unwrap_or_else(|_| Client::new());
+
         Self {
-            http: Client::new(),
+            http,
             server_url: config.server.url.clone(),
             access_token: None,
             user_id: None,
