@@ -1,5 +1,6 @@
 use std::sync::Arc;
 use tokio::process::Command;
+use tokio::sync::Mutex;
 use tokio::time::Duration;
 use log::{info, warn, debug};
 
@@ -12,6 +13,7 @@ const XDG_RUNTIME_DIR: &str = "/run/user/1000";
 pub struct AudioHealer {
     shared: Arc<DaemonShared>,
     interval_sec: u64,
+    hdmi_miss_streak: Mutex<u8>,
 }
 
 impl AudioHealer {
@@ -19,6 +21,7 @@ impl AudioHealer {
         Self {
             shared,
             interval_sec,
+            hdmi_miss_streak: Mutex::new(0),
         }
     }
 
@@ -134,6 +137,11 @@ impl AudioHealer {
             });
 
         if let Some(id) = hdmi_id {
+            {
+                let mut miss_streak = self.hdmi_miss_streak.lock().await;
+                *miss_streak = 0;
+            }
+
             // Check if it's the default (has * prefix)
             let is_default = status
                 .lines()
@@ -146,12 +154,29 @@ impl AudioHealer {
                 info!("Reset WirePlumber default sink to HDMI (id: {})", id);
             }
         } else {
-            // HDMI sink missing — restart WirePlumber
+            let misses = {
+                let mut miss_streak = self.hdmi_miss_streak.lock().await;
+                *miss_streak = miss_streak.saturating_add(1);
+                *miss_streak
+            };
+
+            // Debounce transient PipeWire race conditions before restart.
+            if misses < 3 {
+                debug!("HDMI sink not visible yet (miss {}/3), deferring WirePlumber restart", misses);
+                return;
+            }
+
+            // HDMI sink missing repeatedly — restart WirePlumber
             let mut cb = self.shared.circuit_breaker.write().await;
             if !cb.try_restart("wireplumber", None) {
                 return;
             }
             drop(cb);
+
+            {
+                let mut miss_streak = self.hdmi_miss_streak.lock().await;
+                *miss_streak = 0;
+            }
 
             warn!("HDMI sink missing, restarting WirePlumber...");
             let _ = Command::new("systemctl")
