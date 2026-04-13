@@ -157,9 +157,13 @@ export component AppWindow inherits Window {
     FocusScope {
         width: 100%;
         height: 100%;
+        init => { self.focus(); }
 
         key-pressed(event) => {
             if (event.text == Key.Escape) {
+                if (AppBridge.is-loading) {
+                    AppBridge.is-loading = false;
+                }
                 AppBridge.go-back();
                 return accept;
             }
@@ -364,6 +368,7 @@ export component AppWindow inherits Window {
             FocusScope {
                 width: 100%;
                 height: 100%;
+                init => { self.focus(); }
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
                         AppBridge.is-loading = false;

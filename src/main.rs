@@ -724,20 +724,35 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("detail".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = load_item_detail(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        &item_id,
+                    let detail_result = tokio::time::timeout(
+                        tokio::time::Duration::from_secs(20),
+                        load_item_detail(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &item_id,
+                        ),
                     )
-                    .await
-                    {
-                        error!("Failed to load detail for {}: {}", item_id, e);
-                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                            ui.global::<AppBridge>()
-                                .set_error_message(format!("Failed to load details: {}", e).into());
-                            ui.global::<AppBridge>().set_is_loading(false);
-                        });
+                    .await;
+
+                    match detail_result {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            error!("Failed to load detail for {}: {}", item_id, e);
+                            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>()
+                                    .set_error_message(format!("Failed to load details: {}", e).into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                        }
+                        Err(_) => {
+                            error!("Detail load timed out for {}", item_id);
+                            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>()
+                                    .set_error_message("Loading details timed out. Press Escape to go back.".into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                        }
                     }
 
                     detail_load_in_flight.store(false, Ordering::Release);
