@@ -13,18 +13,18 @@ use slint::SharedPixelBuffer;
 use tokio::sync::RwLock;
 
 /// Maximum number of images kept in memory before eviction kicks in.
-const DEFAULT_MAX_MEMORY_ITEMS: usize = 20;
+const DEFAULT_MAX_MEMORY_ITEMS: usize = 10;
 
 /// Hard cap for decoded image dimensions kept in memory.
 /// This protects the UI process from large backdrops/posters that ignore
 /// Jellyfin's `maxHeight`/`maxWidth` hint parameters.
-const MAX_DECODED_IMAGE_DIMENSION: u32 = 1280;
+const MAX_DECODED_IMAGE_DIMENSION: u32 = 640;
 
 /// Maximum number of concurrent image downloads during preload.
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
 const IMAGE_CONNECT_TIMEOUT_SECS: u64 = 5;
 const IMAGE_REQUEST_TIMEOUT_SECS: u64 = 15;
-const MAX_IMAGE_DOWNLOAD_BYTES: usize = 8 * 1024 * 1024;
+const MAX_IMAGE_DOWNLOAD_BYTES: usize = 4 * 1024 * 1024;
 
 /// Thread-safe, async image cache that stores decoded Slint images in memory
 /// and raw image bytes on disk for fast reloading across sessions.
