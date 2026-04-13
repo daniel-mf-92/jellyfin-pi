@@ -81,8 +81,13 @@ export component HomeScreen inherits Rectangle {
                 }
                 return accept;
             }
-            // Enter/Space → select item
-            if (event.text == Key.Return || event.text == " ") {
+            // Enter/Space/A-button aliases → select item
+            if (
+                event.text == Key.Return ||
+                event.text == " " ||
+                event.text == "a" ||
+                event.text == "A"
+            ) {
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
                         root.item-selected(root.rows[root.focused-row].items[root.focused-col].id);
