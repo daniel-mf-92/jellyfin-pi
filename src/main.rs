@@ -2562,6 +2562,8 @@ async fn load_seasons(
     image_cache: Arc<ImageCache>,
     series_id: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    const MAX_SEASONS_RENDERED: usize = 50;
+
     let c = client.read().await;
     let server_url = c.server_url.clone();
     let seasons = c
@@ -2570,14 +2572,36 @@ async fn load_seasons(
         .map_err(|e| format!("Failed to get seasons: {}", e))?;
     drop(c);
 
-    let season_items = items_to_media_items(&seasons, &server_url, &image_cache).await;
+    let filtered_seasons: Vec<BaseItemDto> = seasons
+        .into_iter()
+        .filter(|item| item.item_type == "Season")
+        .take(MAX_SEASONS_RENDERED)
+        .collect();
+
+    if filtered_seasons.is_empty() {
+        warn!(
+            "No season items returned for series {} (API payload may be malformed)",
+            series_id
+        );
+    }
+
+    let season_items = if filtered_seasons.len() > 20 {
+        info!(
+            "Rendering {} seasons without posters for series {} to control memory",
+            filtered_seasons.len(),
+            series_id
+        );
+        items_to_media_items_no_images(&filtered_seasons, &server_url)
+    } else {
+        items_to_media_items(&filtered_seasons, &server_url, &image_cache).await
+    };
 
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_detail_seasons(ModelRc::new(VecModel::from(season_items)));
     }
 
-    info!("Loaded {} seasons for series {}", seasons.len(), series_id);
+    info!("Loaded {} seasons for series {}", filtered_seasons.len(), series_id);
     Ok(())
 }
 
