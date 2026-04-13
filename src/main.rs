@@ -265,6 +265,26 @@ async fn items_to_media_items(
     result
 }
 
+/// Convert a list of `BaseItemDto` into a `Vec<MediaItem>` without loading
+/// any remote images. Useful for memory-safe fallback rows on constrained
+/// devices when rich image rows would trigger excessive RSS growth.
+fn items_to_media_items_no_images(
+    items: &[BaseItemDto],
+    server_url: &str,
+) -> Vec<MediaItem> {
+    items
+        .iter()
+        .map(|item| {
+            base_item_to_media_item(
+                item,
+                server_url,
+                SlintImage::default(),
+                SlintImage::default(),
+            )
+        })
+        .collect()
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -2482,7 +2502,7 @@ async fn load_item_detail(
         let c = client.read().await;
         c.get_similar(item_id, 12).await.unwrap_or_default()
     };
-    let related_items = items_to_media_items(&similar, &server_url, &image_cache).await;
+    let related_items = items_to_media_items_no_images(&similar, &server_url);
     if let Some(ui) = ui_weak.upgrade() {
         let current_id = ui.global::<AppBridge>().get_detail_item().id;
         if current_id.as_str() == item_id_owned.as_str() {
@@ -2510,20 +2530,11 @@ async fn load_item_detail(
 
     let mut cast_members: Vec<CastMember> = Vec::with_capacity(filtered_people.len());
     for p in &filtered_people {
-        let person_image = if let (Some(ref pid), Some(ref tag)) = (&p.id, &p.primary_image_tag) {
-            let url = format!(
-                "{}/Items/{}/Images/Primary?maxHeight=200&quality=80&tag={}",
-                server_url, pid, tag
-            );
-            image_cache.load_image(&url).await.unwrap_or_default()
-        } else {
-            SlintImage::default()
-        };
         cast_members.push(CastMember {
             id: SharedString::from(p.id.as_deref().unwrap_or("")),
             name: SharedString::from(p.name.as_str()),
             role: SharedString::from(p.role.as_deref().unwrap_or("")),
-            image: person_image,
+            image: SlintImage::default(),
         });
     }
 
