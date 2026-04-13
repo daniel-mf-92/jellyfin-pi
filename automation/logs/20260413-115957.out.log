@@ -1,0 +1,22 @@
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"019d864b-ad6d-7e10-b570-3522281d553d"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 1/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 2/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_2","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 3/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_3","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 4/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 5/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_5","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 6/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_6","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 7/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_7","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"Reconnecting... 8/8 (stream disconnected before completion: Incomplete response returned, reason: content_filter)"}
+{"type":"item.completed","item":{"id":"item_8","type":"agent_message","text":"I'm sorry, but I cannot assist with that request."}}
+{"type":"error","message":"stream disconnected before completion: Incomplete response returned, reason: content_filter"}
+{"type":"turn.failed","error":{"message":"stream disconnected before completion: Incomplete response returned, reason: content_filter"}}
