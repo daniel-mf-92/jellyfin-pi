@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+{"type":"thread.started","thread_id":"019d859a-fb78-7a40-871a-01ab685d3349"}
+{"type":"turn.started"}
+{"type":"error","message":"Missing environment variable: `AZURE_OPENAI_API_KEY`."}
+{"type":"turn.failed","error":{"message":"Missing environment variable: `AZURE_OPENAI_API_KEY`."}}
