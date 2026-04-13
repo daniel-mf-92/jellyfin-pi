@@ -2,47 +2,60 @@ You are an autonomous Codex agent auditing and fixing the jellyfin-pi Slint/Rust
 
 Repository: ~/Documents/local-codebases/jellyfin-pi
 Branch: slint-rewrite
-Config (on Pi): ~/.config/jellyfin-pi/config.toml → url = "http://10.100.0.2:8096"
-Pi binary: /usr/local/bin/jellyfin-pi (built natively on Pi5 via cargo build --release)
-Logs (on Pi): /tmp/jmp-slint.log
-Pi SSH: ssh danielmatthews-ferrero@10.100.0.17 (via WireGuard)
+UI Spec: JELLYFIN_UI_SPEC.md (READ THIS FIRST -- it defines what the app should look and behave like)
+
+## MANDATORY FIRST STEP
+
+Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contains:
+- The exact UI flow the app must match (standard Jellyfin Android TV)
+- Controller mapping
+- Critical behaviors (scrolling, loading, navigation)
+- E2E verification checklist with exact commands
+- File structure reference
+- Jellyfin API reference
 
 ## Architecture
-- Rust backend: src/main.rs (3000+ lines) — Jellyfin API client, player management, callbacks
-- Slint UI: ui/*.slint — home, detail, library, player, search, settings screens
-- Controller: unified-controller.py — Switch Pro → virtual keyboard/mouse for Slint
-- Player: VLC (cvlc) or mpv launched as subprocess
+- Rust backend: src/main.rs (3000+ lines) -- Jellyfin API, player, callbacks
+- Slint UI: ui/*.slint -- declarative UI components
+- Controller: unified-controller.py -- Switch Pro -> keyboard events for Slint
+- Player: VLC (cvlc) subprocess
 - Jellyfin server: http://10.100.0.2:8096 on Mac Mini
-
-## Known Issues (PRIORITY ORDER)
-
-### P0 — CRITICAL (app is unusable without these)
-1. **Selecting any media item causes permanent "Loading..." black screen** — The navigate("detail", id) callback hangs. Load never completes. Escape should cancel loading and go back (FocusScope added but may not receive focus over the loading overlay). Debug by checking /tmp/jmp-slint.log on Pi after pressing A on an item.
-2. **A button does nothing on home screen** — In NAVIGATION mode, unified-controller.py sends KEY_ENTER when _jmp_foreground is true, but Slint FocusScope may not be receiving it. Verify the focus chain works.
-3. **Selecting user at login also causes Loading... crash** — Same pattern as detail navigation.
-
-### P1 — HIGH (core UX broken)
-4. **Horizontal scroll does not follow focused item** — content-row.slint viewport-width fix was applied but may not work. When navigating right with dpad, items go off-screen. Test by checking if viewport-x changes when focused-index changes.
-5. **"My Libraries" cards (Movies, TV Shows, Collections) should be wider** — Currently set to landscape row_type but may still be poster-sized. Cards should be clearly distinct from regular media cards.
-6. **"Error cannot play — not found"** — play-item callback gets 404 from Jellyfin playback info API. Check if item IDs are correct, if the auth token is valid, if the API endpoint format matches Jellyfin 10.11.5.
-
-### P2 — MEDIUM (polish)
-7. **CollectionFolder items should navigate to library grid, not detail** — Redirect logic added but needs testing.
-8. **B button (Escape) must ALWAYS go back** — Even from loading screens, error screens, any state.
+- Pi SSH: ssh danielmatthews-ferrero@10.100.0.17 (via WireGuard)
+- Pi binary: /usr/local/bin/jellyfin-pi
+- Pi logs: /tmp/jmp-slint.log
+- Pi config: ~/.config/jellyfin-pi/config.toml
 
 ## Execution Contract
 
-1. Read the code and logs. SSH to Pi to check /tmp/jmp-slint.log.
-2. Pick the highest-priority unfixed issue.
-3. Identify root cause by reading the Rust/Slint code.
-4. Fix it with minimal, targeted changes.
-5. Run `cargo check` locally (Mac Mini, will have compile errors for linux-only deps but catches Slint/logic errors).
-6. Commit with descriptive message. Push to origin/slint-rewrite.
-7. Report what you fixed and what to test.
+1. Read JELLYFIN_UI_SPEC.md
+2. SSH to Pi and read /tmp/jmp-slint.log to see current errors
+3. Identify the highest-priority broken behavior from the spec
+4. Read the relevant Rust/Slint code
+5. Fix it with minimal, targeted changes
+6. Run `cargo check` on Mac Mini to verify compilation
+7. Commit and push to origin/slint-rewrite
+8. SSH to Pi: pull, build, install, restart, read log to verify fix
+9. Report what you fixed and verification result
+
+## E2E Verification (MUST DO after every fix)
+
+```bash
+# Build on Pi
+ssh danielmatthews-ferrero@10.100.0.17 "cd ~/jellyfin-pi && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
+
+# Install and restart
+ssh danielmatthews-ferrero@10.100.0.17 "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; echo 5991 | sudo -S cp ~/jellyfin-pi/target/release/jellyfin-pi /usr/local/bin/jellyfin-pi; rm -f /tmp/jmp-slint.log; echo jellyfin-pi > /tmp/foreground-app; WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"
+
+# Wait and check log
+sleep 8
+ssh danielmatthews-ferrero@10.100.0.17 "cat /tmp/jmp-slint.log" | grep -E "INFO|ERROR|WARN" | grep -v "winit\|sctk\|tracing\|hyper\|reqwest"
+```
+
+The fix is NOT done until the Pi log shows the issue is resolved.
 
 ## Safety
 - Do NOT modify config.toml on Pi
-- Do NOT restart Jellyfin server
-- Do NOT run cargo build on Pi (user will do that manually)
+- Do NOT restart Jellyfin server on Mac Mini
 - Do NOT force push or delete branches
-- Keep changes minimal and focused — one issue per iteration
+- Keep changes minimal -- one issue per iteration
+- Always commit before moving to next issue
