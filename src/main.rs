@@ -2431,10 +2431,10 @@ async fn load_item_detail(
         .map_err(|e| format!("Failed to get item: {}", e))?;
     drop(c);
 
-    // Load images for the main item
+    // Load the poster first for quick first paint; backdrop is loaded lazily after
+    // the detail content is shown so we don't block on large image downloads.
     let poster = load_poster_image(&item, &server_url, &image_cache, 300).await;
-    let backdrop = load_backdrop_image(&item, &server_url, &image_cache, 800).await;
-    let detail_item = base_item_to_media_item(&item, &server_url, poster, backdrop);
+    let detail_item = base_item_to_media_item(&item, &server_url, poster, SlintImage::default());
 
     // If this is a series, auto-load seasons
     let is_series = item.item_type == "Series";
@@ -2469,6 +2469,23 @@ async fn load_item_detail(
 
         // Unblock the loading overlay as soon as primary detail content is ready.
         ui.global::<AppBridge>().set_is_loading(false);
+    }
+
+    // Load backdrop after initial render. If it times out or fails, keep the
+    // default backdrop and continue.
+    let backdrop = tokio::time::timeout(
+        tokio::time::Duration::from_secs(3),
+        load_backdrop_image(&item, &server_url, &image_cache, 800),
+    )
+    .await
+    .unwrap_or_default();
+
+    if let Some(ui) = ui_weak.upgrade() {
+        let mut current_detail = ui.global::<AppBridge>().get_detail_item();
+        if current_detail.id.as_str() == item_id_owned.as_str() {
+            current_detail.backdrop_source = backdrop;
+            ui.global::<AppBridge>().set_detail_item(current_detail);
+        }
     }
 
     // Load similar items after initial render.
