@@ -1,0 +1,18 @@
+Done — I fixed the highest-priority spec/log issue and verified it on Pi.
+
+**What I changed**
+- Updated startup auth flow in `/Users/danielmatthews-ferrero/Documents/local-codebases/jellyfin-pi/src/main.rs:377` so `/Users/Public` is loaded **only if** saved-token and env-credential auto-login both fail.
+- This aligns with spec (“skip login when token exists”) and removes the startup login-network failure path that was appearing in logs.
+
+**Validation**
+- Local compile: `cargo check` passes (warnings only).
+- Pushed commit: `6e31593` on `origin/slint-rewrite`.
+- Pi deploy/build/install/restart completed successfully.
+- Pi log now shows:
+  - `Home data loaded successfully`
+  - `Auto-login with saved token succeeded`
+  - No `Failed to load public users` entry after startup.
+
+**Note**
+- `gh run list --repo daniel-mf-92/jellyfin-pi --limit 1` shows `Secret Guard` failed for pre-existing repository content, not this code change.
+- Next iteration should target the remaining RSS growth path (the 4GB OOM guard trigger).
