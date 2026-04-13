@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use image::imageops::FilterType;
 use image::GenericImageView;
 use log::{debug, error, info, warn};
 use slint::Image as SlintImage;
@@ -12,7 +13,12 @@ use slint::SharedPixelBuffer;
 use tokio::sync::RwLock;
 
 /// Maximum number of images kept in memory before eviction kicks in.
-const DEFAULT_MAX_MEMORY_ITEMS: usize = 50;
+const DEFAULT_MAX_MEMORY_ITEMS: usize = 20;
+
+/// Hard cap for decoded image dimensions kept in memory.
+/// This protects the UI process from large backdrops/posters that ignore
+/// Jellyfin's `maxHeight`/`maxWidth` hint parameters.
+const MAX_DECODED_IMAGE_DIMENSION: u32 = 1280;
 
 /// Maximum number of concurrent image downloads during preload.
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
@@ -219,13 +225,26 @@ impl ImageCache {
 
     /// Decode raw image bytes (JPEG, PNG, WebP, etc.) into a Slint `Image`.
     fn decode_to_slint(bytes: &[u8]) -> Option<SlintImage> {
-        let img = match image::load_from_memory(bytes) {
+        let mut img = match image::load_from_memory(bytes) {
             Ok(i) => i,
             Err(e) => {
                 error!("Failed to decode image: {}", e);
                 return None;
             }
         };
+
+        let (width, height) = img.dimensions();
+        let max_dim = width.max(height);
+        if max_dim > MAX_DECODED_IMAGE_DIMENSION {
+            let scale = MAX_DECODED_IMAGE_DIMENSION as f32 / max_dim as f32;
+            let new_width = ((width as f32 * scale).round() as u32).max(1);
+            let new_height = ((height as f32 * scale).round() as u32).max(1);
+            debug!(
+                "Resizing decoded image from {}x{} to {}x{}",
+                width, height, new_width, new_height
+            );
+            img = img.resize(new_width, new_height, FilterType::Triangle);
+        }
 
         let rgba = img.to_rgba8();
         let (width, height) = img.dimensions();
