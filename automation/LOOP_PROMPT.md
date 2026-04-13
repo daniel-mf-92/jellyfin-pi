@@ -59,3 +59,50 @@ The fix is NOT done until the Pi log shows the issue is resolved.
 - Do NOT force push or delete branches
 - Keep changes minimal -- one issue per iteration
 - Always commit before moving to next issue
+
+
+## Visual E2E Test (MUST RUN after every fix)
+
+A visual test script exists at `~/bin/jellyfin-e2e-test.sh` on Pi-home-a.
+It takes screenshots, sends key events via wtype, and verifies UI content via OCR.
+
+```bash
+# Run the full E2E test suite on Pi
+ssh danielmatthews-ferrero@10.100.0.17 "bash ~/bin/jellyfin-e2e-test.sh"
+
+# Check results
+ssh danielmatthews-ferrero@10.100.0.17 "cat /tmp/jellyfin-e2e/results.json"
+
+# View individual screenshots (SCP to Mac Mini)
+scp danielmatthews-ferrero@10.100.0.17:/tmp/jellyfin-e2e/*.png /tmp/
+```
+
+### What the test does:
+1. Screenshots home screen -> OCR checks for "Movies", "TV Shows", "Libraries"
+2. Verifies no stuck "Loading" spinner
+3. Sends Right arrow keys -> screenshots -> verifies horizontal scroll worked
+4. Sends Down arrows -> verifies vertical navigation between rows
+5. Sends Enter (A button) -> screenshots -> verifies detail/library screen loads (not stuck loading)
+6. Sends Escape (B button) -> verifies returns to home screen
+7. Navigates to library card -> Enter -> verifies library grid loads
+
+### Using screenshots for debugging:
+```bash
+# Take a screenshot at any point
+ssh danielmatthews-ferrero@10.100.0.17 "WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 grim /tmp/screen.png"
+# Copy to Mac Mini for inspection
+scp danielmatthews-ferrero@10.100.0.17:/tmp/screen.png /tmp/
+
+# Send key events to simulate controller
+ssh danielmatthews-ferrero@10.100.0.17 "WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wtype -k Return"   # A button
+ssh danielmatthews-ferrero@10.100.0.17 "WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wtype -k Escape"   # B button
+ssh danielmatthews-ferrero@10.100.0.17 "WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wtype -k Right"    # D-pad right
+ssh danielmatthews-ferrero@10.100.0.17 "WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 wtype -k Down"     # D-pad down
+```
+
+### Acceptance criteria:
+- E2E test passes with 0 FAIL
+- Home screen shows library cards with images (not just text)
+- Selecting any item shows detail screen within 5 seconds (no permanent loading)
+- Escape always returns to previous screen
+- Horizontal scroll follows focused item (cards don't go off-screen)
