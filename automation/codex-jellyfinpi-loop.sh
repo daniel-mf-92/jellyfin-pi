@@ -50,10 +50,24 @@ pick_endpoint() {
   done
   [[ ${#files[@]} -eq 0 ]] && return 1
   local file="${files[$((RANDOM % ${#files[@]}))]}"
-  LB_BASE_URL=$(python3 -c "import json; d=json.load(open('$file')); print(d['base_url'])" 2>/dev/null)
-  LB_API_KEY=$(python3 -c "import json; d=json.load(open('$file')); print(d['api_key'])" 2>/dev/null)
-  LB_MODEL=$(python3 -c "import json; d=json.load(open('$file')); print(d.get('model','gpt-53-codex'))" 2>/dev/null)
+
+  # Files contain JSON array of endpoints - pick random one
+  local py_out
+  py_out=$(python3 -c "
+import json, random, sys, shlex
+d = json.load(open(sys.argv[1]))
+e = random.choice(d) if isinstance(d, list) else d
+print(e['base_url'])
+print(e['api_key'])
+print(e.get('model', 'gpt-53-codex'))
+" "$file" 2>/dev/null) || return 1
+
+  LB_BASE_URL=$(echo "$py_out" | sed -n '1p')
+  LB_API_KEY=$(echo "$py_out" | sed -n '2p')
+  LB_MODEL=$(echo "$py_out" | sed -n '3p')
+
   export CODEX_API_KEY="$LB_API_KEY"
+  export AZURE_OPENAI_API_KEY="$LB_API_KEY"
 }
 
 # --- Main loop ---
