@@ -1,0 +1,20 @@
+Done — I fixed the top P0 loading hang path and pushed it.
+
+**What I Fixed**
+- Root cause was `load_item_detail` doing heavy work (similar + cast image fetches) before clearing loading, which could stall on slow/unreachable image/API calls and leave the black “Loading...” overlay up.
+- I changed detail loading to render the primary item first, clear loading immediately, then asynchronously fill related and cast data.
+- I added guards so late async updates only apply if the same detail item is still active (prevents stale overwrite during rapid navigation).
+- Change location: `/Users/danielmatthews-ferrero/Documents/local-codebases/jellyfin-pi/src/main.rs:2378`.
+
+**Validation / Git**
+- `cargo check` passes locally (warnings only, no new compile errors).
+- Committed: `74ea288` with message `Fix detail loading hang by rendering primary detail first`.
+- Pushed to `origin/slint-rewrite`.
+- CI checked: latest run `24332650394` failed in `Secret Guard` due existing `automation/logs/*` content (not from this code change).
+
+**What to Test on Pi**
+- From Home, press `A` on multiple items quickly: detail should appear without permanent loading overlay.
+- From Login, select a user: should no longer stick on loading.
+- While loading detail, press `B`/Escape: should cancel/back as before.
+
+Want me to do the next P0 now (`A` button on home / focus chain in Slint + controller enter mapping)?
