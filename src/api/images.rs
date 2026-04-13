@@ -24,6 +24,7 @@ const MAX_DECODED_IMAGE_DIMENSION: u32 = 1280;
 const MAX_CONCURRENT_DOWNLOADS: usize = 10;
 const IMAGE_CONNECT_TIMEOUT_SECS: u64 = 5;
 const IMAGE_REQUEST_TIMEOUT_SECS: u64 = 15;
+const MAX_IMAGE_DOWNLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 /// Thread-safe, async image cache that stores decoded Slint images in memory
 /// and raw image bytes on disk for fast reloading across sessions.
@@ -208,13 +209,43 @@ impl ImageCache {
                     warn!("Image download failed (HTTP {}): {}", resp.status(), url);
                     return None;
                 }
-                match resp.bytes().await {
-                    Ok(b) => Some(b.to_vec()),
-                    Err(e) => {
-                        error!("Failed to read image response body: {}", e);
-                        None
+                if let Some(len) = resp.content_length() {
+                    if len > MAX_IMAGE_DOWNLOAD_BYTES as u64 {
+                        warn!(
+                            "Skipping oversized image ({} bytes > {}): {}",
+                            len,
+                            MAX_IMAGE_DOWNLOAD_BYTES,
+                            url
+                        );
+                        return None;
                     }
                 }
+                let mut downloaded = 0usize;
+                let mut data = Vec::new();
+                let mut stream = resp.bytes_stream();
+                use futures::StreamExt;
+                while let Some(chunk) = stream.next().await {
+                    match chunk {
+                        Ok(bytes) => {
+                            downloaded += bytes.len();
+                            if downloaded > MAX_IMAGE_DOWNLOAD_BYTES {
+                                warn!(
+                                    "Aborting image download above {} bytes: {}",
+                                    MAX_IMAGE_DOWNLOAD_BYTES,
+                                    url
+                                );
+                                return None;
+                            }
+                            data.extend_from_slice(&bytes);
+                        }
+                        Err(e) => {
+                            error!("Failed to read image response body: {}", e);
+                            return None;
+                        }
+                    }
+                }
+
+                Some(data)
             }
             Err(e) => {
                 error!("Image download request failed: {}", e);
