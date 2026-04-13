@@ -55,6 +55,7 @@ use state::{StateManager, Screen};
 use config::AppConfig;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
@@ -614,16 +615,20 @@ fn setup_navigation_callbacks(
     state: Arc<StateManager>,
     daemon_screen_tx: tokio::sync::watch::Sender<String>,
 ) {
+    let detail_load_in_flight = Arc::new(AtomicBool::new(false));
+
     // navigate(screen, param)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
     let state_clone = state.clone();
+    let detail_flag_clone = detail_load_in_flight.clone();
     ui.global::<AppBridge>().on_navigate(move |screen, param| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
         let state = state_clone.clone();
+        let detail_load_in_flight = detail_flag_clone.clone();
         let screen_str = screen.to_string();
         let param_str = param.to_string();
 
@@ -661,6 +666,12 @@ fn setup_navigation_callbacks(
                 }
                 "detail" => {
                     let item_id = param_str.clone();
+
+                    // Prevent duplicate detail loads from repeated A/Enter presses.
+                    if detail_load_in_flight.swap(true, Ordering::AcqRel) {
+                        debug!("Ignoring duplicate detail navigation while load is in flight: {}", item_id);
+                        return;
+                    }
 
                     // Check if this is a CollectionFolder (library) — redirect to library screen
                     let is_collection_folder = {
@@ -700,6 +711,7 @@ fn setup_navigation_callbacks(
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
                         }
+                        detail_load_in_flight.store(false, Ordering::Release);
                         return;
                     }
 
@@ -727,6 +739,8 @@ fn setup_navigation_callbacks(
                             ui.global::<AppBridge>().set_is_loading(false);
                         });
                     }
+
+                    detail_load_in_flight.store(false, Ordering::Release);
                 }
                 "library" => {
                     let library_id = param_str.clone();
@@ -793,17 +807,23 @@ fn setup_navigation_callbacks(
     let state_clone = state.clone();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
+    let detail_flag_clone = detail_load_in_flight.clone();
     ui.global::<AppBridge>().on_go_back(move || {
         let ui_weak = ui_weak.clone();
         let state = state_clone.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
+        let detail_load_in_flight = detail_flag_clone.clone();
 
         let _ = slint::spawn_local(async move {
             // Clear error message on back
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_error_message("".into());
+                ui.global::<AppBridge>().set_is_loading(false);
             });
+
+            // Allow navigating to detail again immediately after a cancellation/back action.
+            detail_load_in_flight.store(false, Ordering::Release);
 
             // Dismiss screensaver if active
             {
