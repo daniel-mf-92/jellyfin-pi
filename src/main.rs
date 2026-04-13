@@ -374,17 +374,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     setup_user_action_callbacks(&ui, client.clone());
 
-    // 7. Load public users on login screen
-    {
-        let ui_weak = ui.as_weak();
-        let client_clone = client.clone();
-        let image_cache_clone = image_cache.clone();
-        let _ = slint::spawn_local(async move {
-            load_public_users(ui_weak, client_clone, image_cache_clone).await;
-        });
-    }
-
-    // 8. Auto-login: saved token first, then hardcoded credentials
+    // 7-8. Auto-login: saved token first, then hardcoded credentials.
+    // If auto-login fails, load public users for the login screen.
     {
         let ui_handle = ui_weak.clone();
         let client_clone = client.clone();
@@ -438,70 +429,83 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if !authenticated {
                 let username = match std::env::var("JELLYFIN_USERNAME") {
                     Ok(u) if !u.is_empty() => u,
-                    _ => { warn!("JELLYFIN_USERNAME not set in .env"); return; }
+                    _ => {
+                        warn!("JELLYFIN_USERNAME not set in .env");
+                        String::new()
+                    }
                 };
                 let password = match std::env::var("JELLYFIN_PASSWORD") {
                     Ok(p) if !p.is_empty() => p,
-                    _ => { warn!("JELLYFIN_PASSWORD not set in .env"); return; }
-                };
-
-                info!("Auto-login with credentials for user: {}", username);
-
-                let auth_result = {
-                    let mut c = client_clone.write().await;
-                    c.authenticate(&username, &password).await
-                };
-
-                match auth_result {
-                    Ok(result) => {
-                        info!("Auto-login succeeded for user: {}", username);
-                        state_clone
-                            .set_user(result.user.clone(), result.access_token.clone())
-                            .await;
-
-                        // Save token for faster login next time
-                        {
-                            let mut cfg = config_clone.write().await;
-                            cfg.save_auth(&result.user.id, &result.access_token);
-                        }
-
-                        // Set current user in UI
-                        let server_url = {
-                            let c = client_clone.read().await;
-                            c.server_url.clone()
-                        };
-                        let avatar =
-                            load_user_avatar(&result.user, &server_url, &image_clone).await;
-                        let user_info =
-                            user_dto_to_user_info(&result.user, &server_url, avatar);
-                        if let Some(ui) = ui_handle.upgrade() {
-                            ui.global::<AppBridge>().set_current_user(user_info);
-                        }
-
-                        // Start daemon tasks now that we're authenticated
-                        daemon_mgr_clone.lock().await.start(client_clone.clone(), config_clone.clone(), state_clone.clone());
-
-                        state_clone.navigate_replace(Screen::Home).await;
-                        let _ = ui_handle.upgrade_in_event_loop(|ui| {
-                            ui.global::<AppBridge>().set_current_screen("home".into());
-                        });
-
-                        if let Err(e) = load_home_data(
-                            ui_handle.clone(),
-                            client_clone,
-                            image_clone,
-                            state_clone,
-                        )
-                        .await
-                        {
-                            error!("Failed to load home after auto-login: {}", e);
-                        }
+                    _ => {
+                        warn!("JELLYFIN_PASSWORD not set in .env");
+                        String::new()
                     }
-                    Err(e) => {
-                        warn!("Auto-login failed: {}. Showing login screen.", e);
+                };
+
+                if !username.is_empty() && !password.is_empty() {
+                    info!("Auto-login with credentials for user: {}", username);
+
+                    let auth_result = {
+                        let mut c = client_clone.write().await;
+                        c.authenticate(&username, &password).await
+                    };
+
+                    match auth_result {
+                        Ok(result) => {
+                            info!("Auto-login succeeded for user: {}", username);
+                            state_clone
+                                .set_user(result.user.clone(), result.access_token.clone())
+                                .await;
+
+                            // Save token for faster login next time
+                            {
+                                let mut cfg = config_clone.write().await;
+                                cfg.save_auth(&result.user.id, &result.access_token);
+                            }
+
+                            // Set current user in UI
+                            let server_url = {
+                                let c = client_clone.read().await;
+                                c.server_url.clone()
+                            };
+                            let avatar =
+                                load_user_avatar(&result.user, &server_url, &image_clone).await;
+                            let user_info =
+                                user_dto_to_user_info(&result.user, &server_url, avatar);
+                            if let Some(ui) = ui_handle.upgrade() {
+                                ui.global::<AppBridge>().set_current_user(user_info);
+                            }
+
+                            // Start daemon tasks now that we're authenticated
+                            daemon_mgr_clone.lock().await.start(client_clone.clone(), config_clone.clone(), state_clone.clone());
+
+                            state_clone.navigate_replace(Screen::Home).await;
+                            let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_current_screen("home".into());
+                            });
+
+                            if let Err(e) = load_home_data(
+                                ui_handle.clone(),
+                                client_clone.clone(),
+                                image_clone.clone(),
+                                state_clone.clone(),
+                            )
+                            .await
+                            {
+                                error!("Failed to load home after auto-login: {}", e);
+                            }
+                            authenticated = true;
+                        }
+                        Err(e) => {
+                            warn!("Auto-login failed: {}. Showing login screen.", e);
+                        }
                     }
                 }
             }
+
+            if !authenticated {
+                load_public_users(ui_handle, client_clone, image_clone).await;
+                }
         });
     }
 
