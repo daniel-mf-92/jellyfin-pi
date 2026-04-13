@@ -2384,14 +2384,12 @@ async fn load_item_detail(
     let c = client.read().await;
     let server_url = c.server_url.clone();
 
-    // Fetch item and similar concurrently
-    let (item_result, similar_result) = tokio::join!(
-        c.get_item(item_id),
-        c.get_similar(item_id, 12),
-    );
-
-    let item = item_result.map_err(|e| format!("Failed to get item: {}", e))?;
-    let similar = similar_result.unwrap_or_default();
+    // Fetch the primary item first so we can render the detail screen quickly.
+    // Related/cast data is loaded after the initial detail payload is displayed.
+    let item = c
+        .get_item(item_id)
+        .await
+        .map_err(|e| format!("Failed to get item: {}", e))?;
     drop(c);
 
     // Load images for the main item
@@ -2399,12 +2397,10 @@ async fn load_item_detail(
     let backdrop = load_backdrop_image(&item, &server_url, &image_cache, 800).await;
     let detail_item = base_item_to_media_item(&item, &server_url, poster, backdrop);
 
-    // Load similar items
-    let related_items = items_to_media_items(&similar, &server_url, &image_cache).await;
-
     // If this is a series, auto-load seasons
     let is_series = item.item_type == "Series";
     let series_id = item.id.clone();
+    let item_id_owned = item.id.clone();
 
     // Build genre tags from item data
     let genre_tags: Vec<GenreTag> = item.genres
@@ -2416,11 +2412,47 @@ async fn load_item_detail(
         })
         .unwrap_or_default();
 
-    // Build cast & crew with images (async)
-    let filtered_people: Vec<_> = item.people
+    if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppBridge>().set_detail_item(detail_item);
+        ui.global::<AppBridge>()
+            .set_detail_related(ModelRc::default());
+        // Clear previous seasons/episodes
+        ui.global::<AppBridge>()
+            .set_detail_seasons(ModelRc::default());
+        ui.global::<AppBridge>()
+            .set_detail_episodes(ModelRc::default());
+        // Set genres
+        ui.global::<AppBridge>()
+            .set_genres(ModelRc::new(VecModel::from(genre_tags)));
+        // Set cast & crew
+        ui.global::<AppBridge>()
+            .set_cast_members(ModelRc::default());
+
+        // Unblock the loading overlay as soon as primary detail content is ready.
+        ui.global::<AppBridge>().set_is_loading(false);
+    }
+
+    // Load similar items after initial render.
+    let similar = {
+        let c = client.read().await;
+        c.get_similar(item_id, 12).await.unwrap_or_default()
+    };
+    let related_items = items_to_media_items(&similar, &server_url, &image_cache).await;
+    if let Some(ui) = ui_weak.upgrade() {
+        let current_id = ui.global::<AppBridge>().get_detail_item().id;
+        if current_id.as_str() == item_id_owned.as_str() {
+            ui.global::<AppBridge>()
+                .set_detail_related(ModelRc::new(VecModel::from(related_items)));
+        }
+    }
+
+    // Build cast & crew with images after initial render.
+    let filtered_people: Vec<_> = item
+        .people
         .as_ref()
         .map(|people| {
-            people.iter()
+            people
+                .iter()
                 .filter(|p| {
                     let pt = p.person_type.as_deref().unwrap_or("");
                     pt == "Actor" || pt == "Director" || pt == "Writer" || pt == "GuestStar"
@@ -2451,22 +2483,11 @@ async fn load_item_detail(
     }
 
     if let Some(ui) = ui_weak.upgrade() {
-        ui.global::<AppBridge>().set_detail_item(detail_item);
-        ui.global::<AppBridge>()
-            .set_detail_related(ModelRc::new(VecModel::from(related_items)));
-        // Clear previous seasons/episodes
-        ui.global::<AppBridge>()
-            .set_detail_seasons(ModelRc::default());
-        ui.global::<AppBridge>()
-            .set_detail_episodes(ModelRc::default());
-        // Set genres
-        ui.global::<AppBridge>()
-            .set_genres(ModelRc::new(VecModel::from(genre_tags)));
-        // Set cast & crew
-        ui.global::<AppBridge>()
-            .set_cast_members(ModelRc::new(VecModel::from(cast_members)));
-
-        ui.global::<AppBridge>().set_is_loading(false);
+        let current_id = ui.global::<AppBridge>().get_detail_item().id;
+        if current_id.as_str() == item_id_owned.as_str() {
+            ui.global::<AppBridge>()
+                .set_cast_members(ModelRc::new(VecModel::from(cast_members)));
+        }
     }
 
     // Auto-load seasons for series
