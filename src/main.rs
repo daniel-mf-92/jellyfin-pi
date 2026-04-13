@@ -863,19 +863,8 @@ fn setup_navigation_callbacks(
                         .set_current_screen(SharedString::from(&screen_name));
                 });
 
-                // Reload data for the destination screen if needed
-                match &screen {
-                    Screen::Home => {
-                        let _ = load_home_data(
-                            ui_weak.clone(),
-                            client,
-                            image_cache,
-                            state,
-                        )
-                        .await;
-                    }
-                    _ => {}
-                }
+                // Keep back-navigation immediate. Home content is already cached in
+                // the UI model, so avoid forcing a synchronous reload here.
             }
         });
     });
