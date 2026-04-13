@@ -2419,13 +2419,10 @@ async fn load_item_detail(
 
     // Fetch the primary item first so we can render the detail screen quickly.
     // Related/cast data is loaded after the initial detail payload is displayed.
-    let item = tokio::time::timeout(
-        tokio::time::Duration::from_secs(10),
-        c.get_item(item_id),
-    )
-    .await
-    .map_err(|_| "Loading details timed out".to_string())?
-    .map_err(|e| format!("Failed to get item: {}", e))?;
+    let item = c
+        .get_item(item_id)
+        .await
+        .map_err(|e| format!("Failed to get item: {}", e))?;
     drop(c);
 
     // Load the poster first for quick first paint; backdrop is loaded lazily after
