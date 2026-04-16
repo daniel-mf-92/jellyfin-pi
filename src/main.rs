@@ -78,7 +78,7 @@ const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep foreground startup responsive; fall through quickly to login/background recovery.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 60;
 
 slint::include_modules!();
 
