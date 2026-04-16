@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Visual parity comparison: Jellyfin web UI vs jellyfin-pi Slint app
+# Visual parity comparison: Jellyfin web UI vs Pi-Media-Player Slint app
 # Run on Mac Mini. Requires: reference screenshots + Pi screenshots already taken.
 set -uo pipefail
 
-REF_DIR="$HOME/Documents/local-codebases/jellyfin-pi/automation/reference-screenshots"
+REF_DIR="$HOME/Documents/local-codebases/Pi-Media-Player/automation/reference-screenshots"
 TEST_DIR="/tmp/jellyfin-e2e"
-REPORT_DIR="$HOME/Documents/local-codebases/jellyfin-pi/automation/parity-reports"
+REPORT_DIR="$HOME/Documents/local-codebases/Pi-Media-Player/automation/parity-reports"
 REPORT_FILE="$REPORT_DIR/$(date +%Y%m%d-%H%M%S).md"
 PI_HOST="danielmatthews-ferrero@10.100.0.17"
 WL_ENV="WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000"
@@ -18,11 +18,11 @@ echo "" >> "$REPORT_FILE"
 # --- Step 1: Capture reference screenshots if missing ---
 if [[ ! -f "$REF_DIR/02-home.png" ]]; then
     echo "Capturing Jellyfin web UI reference screenshots..."
-    node "$HOME/Documents/local-codebases/jellyfin-pi/automation/capture-jellyfin-reference.js"
+    node "$HOME/Documents/local-codebases/Pi-Media-Player/automation/capture-jellyfin-reference.js"
 fi
 
 # --- Step 2: Capture Slint app screenshots via Pi ---
-echo "Capturing jellyfin-pi Slint app screenshots from Pi..."
+echo "Capturing Pi-Media-Player Slint app screenshots from Pi..."
 
 take_pi_screenshot() {
     local name="$1"

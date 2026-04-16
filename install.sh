@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Jellyfin TV - Install Script for Raspberry Pi 5
-# Installs the Slint + Rust client as a systemd service
+# Pi-Media-Player - Install Script for Raspberry Pi 5
+# Installs the Slint + Rust client (Jellyfin backend) as a systemd service
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BINARY_NAME="jellyfin-pi"
+BINARY_NAME="pi-media-player"
 INSTALL_DIR="/usr/local/bin"
 CONFIG_DIR="$HOME/.config/jellyfin-pi"
 SERVICE_DIR="$HOME/.config/systemd/user"
 
-echo "=== Jellyfin TV Installer ==="
+echo "=== Pi-Media-Player Installer ==="
 
 # 1. Find binary
 BINARY=""
@@ -71,9 +71,9 @@ fi
 echo "--- Creating systemd service ---"
 mkdir -p "$SERVICE_DIR"
 
-cat > "$SERVICE_DIR/jellyfin-pi.service" << EOF
+cat > "$SERVICE_DIR/pi-media-player.service" << EOF
 [Unit]
-Description=Jellyfin TV Client (Slint + Rust)
+Description=Pi-Media-Player Client (Slint + Rust, Jellyfin backend)
 After=graphical-session.target
 Wants=graphical-session.target
 
@@ -93,7 +93,7 @@ EOF
 # 5. Create DRM/KMS launcher (alternative to systemd, for direct boot)
 cat > "$CONFIG_DIR/launch.sh" << 'LAUNCHER'
 #!/usr/bin/env bash
-# Launch Jellyfin TV directly on DRM/KMS (no desktop environment needed)
+# Launch Pi-Media-Player directly on DRM/KMS (no desktop environment needed)
 export RUST_LOG=info
 export SLINT_BACKEND=linuxkms
 export SLINT_FULLSCREEN=1
@@ -104,7 +104,7 @@ if [ ! -w /dev/dri/card1 ]; then
     echo "Run: sudo usermod -a -G video,render $USER"
 fi
 
-exec /usr/local/bin/jellyfin-pi "$@"
+exec /usr/local/bin/pi-media-player "$@"
 LAUNCHER
 chmod +x "$CONFIG_DIR/launch.sh"
 
@@ -142,22 +142,22 @@ else
 fi
 
 echo "Automation scripts ready. Add to master script:"
-echo "  JELLYFIN_TV_DIR=\"\$HOME/jellyfin-pi\""
+echo "  JELLYFIN_TV_DIR=\"\$HOME/Pi-Media-Player\""
 echo "  [ -d \"\$JELLYFIN_TV_DIR/scripts\" ] && source \"\$JELLYFIN_TV_DIR/scripts/jellyfin-cron.sh\""
 
 # 8. Enable and start service
 echo "--- Enabling service ---"
 systemctl --user daemon-reload
-systemctl --user enable jellyfin-pi.service
+systemctl --user enable pi-media-player.service
 
 echo ""
 echo "=== Installation complete ==="
 echo ""
 echo "Commands:"
-echo "  Start:   systemctl --user start jellyfin-pi"
-echo "  Stop:    systemctl --user stop jellyfin-pi"
-echo "  Status:  systemctl --user status jellyfin-pi"
-echo "  Logs:    journalctl --user -u jellyfin-pi -f"
+echo "  Start:   systemctl --user start pi-media-player"
+echo "  Stop:    systemctl --user stop pi-media-player"
+echo "  Status:  systemctl --user status pi-media-player"
+echo "  Logs:    journalctl --user -u pi-media-player -f"
 echo "  Direct:  $CONFIG_DIR/launch.sh"
 echo ""
 echo "Config: $CONFIG_DIR/config.toml"

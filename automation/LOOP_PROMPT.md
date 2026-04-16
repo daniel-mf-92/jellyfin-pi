@@ -1,6 +1,6 @@
-You are an autonomous Codex agent auditing and fixing the jellyfin-pi Slint/Rust TV media browser app.
+You are an autonomous Codex agent auditing and fixing the Pi-Media-Player Slint/Rust TV media browser app (Jellyfin backend).
 
-Repository: ~/Documents/local-codebases/jellyfin-pi
+Repository: ~/Documents/local-codebases/Pi-Media-Player
 Branch: slint-rewrite
 UI Spec: JELLYFIN_UI_SPEC.md (READ THIS FIRST -- it defines what the app should look and behave like)
 
@@ -41,10 +41,10 @@ Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contai
 
 ```bash
 # Build on Pi
-ssh danielmatthews-ferrero@10.100.0.17 "cd ~/jellyfin-pi && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
+ssh danielmatthews-ferrero@10.100.0.17 "cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
 
 # Install and restart
-ssh danielmatthews-ferrero@10.100.0.17 "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; echo 5991 | sudo -S cp ~/jellyfin-pi/target/release/jellyfin-pi /usr/local/bin/jellyfin-pi; rm -f /tmp/jmp-slint.log; echo jellyfin-pi > /tmp/foreground-app; WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"
+ssh danielmatthews-ferrero@10.100.0.17 "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; echo 5991 | sudo -S cp ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/jellyfin-pi; rm -f /tmp/jmp-slint.log; echo jellyfin-pi > /tmp/foreground-app; WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"
 
 # Wait and check log
 sleep 8

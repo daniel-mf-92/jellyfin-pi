@@ -20,7 +20,7 @@ set -euo pipefail
 # =============================================================================
 
 JMP_VERSION="${1:-1.11.1}"
-BUILD_DIR="/tmp/jellyfin-pi-build"
+BUILD_DIR="/tmp/pi-media-player-build"
 NPROC=$(nproc)
 
 echo "=== Jellyfin Media Player ARM64 Build (VLC backend) ==="

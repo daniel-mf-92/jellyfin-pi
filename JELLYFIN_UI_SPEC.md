@@ -1,6 +1,6 @@
 # Jellyfin Pi — UI Specification & E2E Verification Guide
 
-This document is the single source of truth for what the Slint/Rust jellyfin-pi app
+This document is the single source of truth for what the Slint/Rust Pi-Media-Player app
 should look and behave like. **The target is the standard Jellyfin web/Android TV UI.**
 
 ## Reference: Standard Jellyfin UI Flow
@@ -58,7 +58,7 @@ Open any Jellyfin client (web at http://10.100.0.2:8096, Android TV, iOS) and ob
 
 ## Controller Mapping (unified-controller.py)
 
-When jellyfin-pi is the foreground app (_jmp_foreground == True):
+When Pi-Media-Player is the foreground app (_jmp_foreground == True):
 - **A button (BTN_EAST)** -> KEY_ENTER (select/confirm)
 - **B button (BTN_SOUTH)** -> KEY_ESCAPE (back)
 - **D-pad** -> Arrow keys
@@ -101,19 +101,19 @@ After making changes, verify ALL of these work:
 ### Build Verification
 ```bash
 # 1. Check Slint compiles (on Mac Mini -- fast, catches UI errors)
-cd ~/Documents/local-codebases/jellyfin-pi
+cd ~/Documents/local-codebases/Pi-Media-Player
 cargo check 2>&1 | grep "^error" | head -5
 # Must show: NO errors (warnings OK)
 
 # 2. Full release build (on Pi -- takes ~2 min)
 ssh danielmatthews-ferrero@10.100.0.17 \
-  "cd ~/jellyfin-pi && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
+  "cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
 # Must show: "Finished release" with 0 errors
 
 # 3. Install and launch
 ssh danielmatthews-ferrero@10.100.0.17 \
   "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; \
-   echo 5991 | sudo -S cp ~/jellyfin-pi/target/release/jellyfin-pi /usr/local/bin/jellyfin-pi; \
+   echo 5991 | sudo -S cp ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/jellyfin-pi; \
    echo jellyfin-pi > /tmp/foreground-app; \
    WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland \
    nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"

@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# jellyfin-pi/scripts/lib/common.sh
+# Pi-Media-Player/scripts/lib/common.sh
 # Shared infrastructure for JMP automation scripts.
 # Sourced by jellyfin-cron.sh (and transitively by the master script).
 # Provides fallback implementations when running standalone (not from master).

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Jellyfin TV - Build Script for Raspberry Pi 5
-# Builds the Slint + Rust Jellyfin TV client natively on ARM64
+# Pi-Media-Player - Build Script for Raspberry Pi 5
+# Builds the Slint + Rust Pi-Media-Player client (Jellyfin backend) natively on ARM64
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_TYPE="${1:-release}"
 
-echo "=== Jellyfin TV Build Script ==="
+echo "=== Pi-Media-Player Build Script ==="
 echo "Target: Raspberry Pi 5 (ARM64)"
 echo "Build type: ${BUILD_TYPE}"
 
@@ -60,17 +60,17 @@ install_rust() {
 build() {
     cd "$SCRIPT_DIR"
     
-    echo "--- Building Jellyfin TV ---"
+    echo "--- Building Pi-Media-Player ---"
     
     # Set environment for Slint linuxkms backend
     export SLINT_BACKEND=linuxkms
     
     if [ "$BUILD_TYPE" = "release" ]; then
         cargo build --release
-        BINARY="target/release/jellyfin-pi"
+        BINARY="target/release/pi-media-player"
     else
         cargo build
-        BINARY="target/debug/jellyfin-pi"
+        BINARY="target/debug/pi-media-player"
     fi
     
     if [ -f "$BINARY" ]; then

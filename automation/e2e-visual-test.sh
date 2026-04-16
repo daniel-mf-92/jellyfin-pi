@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# jellyfin-pi E2E visual test — takes screenshots, sends key events, verifies UI via OCR
+# Pi-Media-Player E2E visual test — takes screenshots, sends key events, verifies UI via OCR
 # Run on Pi-home-a or via SSH from Mac Mini
 set -euo pipefail
 
@@ -12,7 +12,7 @@ PASS=0
 FAIL=0
 
 mkdir -p "$SCREENSHOT_DIR"
-echo "$(date) — jellyfin-pi E2E test starting" > "$LOG"
+echo "$(date) — Pi-Media-Player E2E test starting" > "$LOG"
 
 screenshot() {
     local name="$1"
@@ -89,7 +89,7 @@ check_not_black() {
 # ============================================================================
 
 echo ""
-echo "=== jellyfin-pi E2E Visual Test ==="
+echo "=== Pi-Media-Player E2E Visual Test ==="
 echo ""
 
 # Verify app is running

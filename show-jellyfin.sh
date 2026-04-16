@@ -50,9 +50,9 @@ fi
 
 # Full launch
 if command -v timeout >/dev/null 2>&1; then
-  timeout 15s "$HOME/jellyfin-pi/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
+  timeout 15s "$HOME/Pi-Media-Player/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
 else
-  "$HOME/jellyfin-pi/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
+  "$HOME/Pi-Media-Player/launch-jmp.sh" >/tmp/show-jellyfin.log 2>&1 || true
 fi
 
 sleep 1

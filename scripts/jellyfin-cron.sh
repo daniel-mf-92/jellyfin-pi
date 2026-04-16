@@ -1,11 +1,11 @@
 #!/bin/bash
 # =============================================================================
-# jellyfin-pi/scripts/jellyfin-cron.sh
+# Pi-Media-Player/scripts/jellyfin-cron.sh
 # Entry point sourced by pi-home-a master script.
 # Sources all JMP automation scripts and calls them in order.
 #
 # Usage from master script:
-#   JELLYFIN_TV_DIR="$HOME/jellyfin-pi"
+#   JELLYFIN_TV_DIR="$HOME/Pi-Media-Player"
 #   if [ -d "$JELLYFIN_TV_DIR/scripts" ]; then
 #       source "$JELLYFIN_TV_DIR/scripts/jellyfin-cron.sh"
 #   fi

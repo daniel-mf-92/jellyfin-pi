@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-$HOME/Documents/local-codebases/jellyfin-pi}"
+REPO_DIR="${REPO_DIR:-$HOME/Documents/local-codebases/Pi-Media-Player}"
 PROMPT_FILE="${PROMPT_FILE:-$REPO_DIR/automation/LOOP_PROMPT.md}"
 LOG_DIR="${LOG_DIR:-$REPO_DIR/automation/logs}"
 SLEEP_SECONDS="${SLEEP_SECONDS:-180}"
@@ -136,7 +136,7 @@ Iteration $ITERATION at $TS. Fix the highest-priority issue you can identify fro
   # Push any changes
   if [[ -n "$(git status --porcelain)" ]]; then
     git add -A
-    git commit -m "codex: jellyfin-pi iteration $ITERATION auto-fix ($TS)" --no-verify 2>/dev/null || true
+    git commit -m "codex: pi-media-player iteration $ITERATION auto-fix ($TS)" --no-verify 2>/dev/null || true
     git push origin "$BRANCH_NAME" 2>/dev/null || true
     echo "[$TS] Pushed changes from iteration $ITERATION"
   fi

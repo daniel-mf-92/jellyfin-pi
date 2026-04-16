@@ -1,6 +1,6 @@
-# jellyfin-pi
+# Pi-Media-Player
 
-**A complete TV media center for Raspberry Pi 5 -- Jellyfin Media Player built from source for ARM64, with gamepad navigation, hardware video decoding, and a TV-friendly launcher.**
+**A complete TV media center for Raspberry Pi 5 -- Jellyfin Media Player built from source for ARM64, with gamepad navigation, hardware video decoding, and a TV-friendly launcher. Slint/Rust UI on top of the Jellyfin streaming backend.**
 
 Jellyfin Media Player (JMP) does not ship ARM64 Linux builds. This project builds JMP from source in about 60 seconds on a Pi 5 using Debian Trixie's pre-built QtWebEngine packages, then wraps it in a full living-room setup: a TV home screen (flex-launcher), Nintendo Switch Pro Controller support with mode-aware input mapping, Pi 5 V4L2 hardware decoding, HDMI audio with lip-sync compensation, Moonlight game streaming, and self-healing systemd services. Every config file is included -- clone, install, sit on the couch.
 
@@ -65,8 +65,8 @@ Modes auto-switch based on foreground app (/tmp/foreground-app):
 ### 1. Clone
 
 ```bash
-git clone https://github.com/<your-github-username>/jellyfin-pi.git
-cd jellyfin-pi
+git clone https://github.com/daniel-mf-92/Pi-Media-Player.git
+cd Pi-Media-Player
 ```
 
 ### 1b. Install git secret guard (recommended)
