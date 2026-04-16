@@ -9,6 +9,7 @@ use crate::config::AppConfig;
 const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 15;
+const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -65,6 +66,38 @@ pub struct JellyfinClient {
 }
 
 impl JellyfinClient {
+    fn summarize_server_error_body(body: &str) -> String {
+        let trimmed = body.trim();
+        if trimmed.is_empty() {
+            return "empty response".into();
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.contains("jellyfin startup")
+            || lower.contains("server has encountered an error")
+            || lower.contains("server is could not complete startup")
+        {
+            return "Jellyfin server is starting or unavailable".into();
+        }
+
+        let compact = trimmed
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        if compact.contains("<html") || compact.contains("<!DOCTYPE") {
+            return "HTML error response from server".into();
+        }
+
+        let mut chars = compact.chars();
+        let truncated: String = chars.by_ref().take(MAX_SERVER_ERROR_BODY_LEN).collect();
+        if chars.next().is_some() {
+            format!("{}...", truncated)
+        } else {
+            truncated
+        }
+    }
+
     /// Create a new client from application config.
     pub fn new(config: &AppConfig) -> Self {
         let http = Client::builder()
@@ -120,7 +153,8 @@ impl JellyfinClient {
             Err(ApiError::Auth("Unauthorized".into()))
         } else {
             let body = resp.text().await.unwrap_or_default();
-            Err(ApiError::Server(format!("{status}: {body}")))
+            let summary = Self::summarize_server_error_body(&body);
+            Err(ApiError::Server(format!("{status}: {summary}")))
         }
     }
 
