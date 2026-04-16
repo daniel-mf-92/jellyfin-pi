@@ -477,6 +477,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let auth_failure = lower.contains("auth error")
                             || lower.contains("unauthorized")
                             || lower.contains("not authenticated");
+                        let mut should_clear_saved_auth = auth_failure;
                         let transient_startup_failure = lower.contains("503")
                             || lower.contains("server is starting")
                             || lower.contains("service unavailable")
@@ -533,21 +534,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         break;
                                     }
                                     Err(retry_err) => {
+                                        let retry_text = retry_err.to_string();
+                                        let retry_lower = retry_text.to_ascii_lowercase();
+                                        let retry_auth_failure = retry_lower.contains("auth error")
+                                            || retry_lower.contains("unauthorized")
+                                            || retry_lower.contains("not authenticated");
+                                        let retry_transient_startup_failure = retry_lower.contains("503")
+                                            || retry_lower.contains("server is starting")
+                                            || retry_lower.contains("service unavailable")
+                                            || retry_lower.contains("network error")
+                                            || retry_lower.contains("timed out")
+                                            || retry_lower.contains("connection");
+
                                         warn!(
                                             "Saved-token auto-login retry {}/{} failed: {}",
                                             retry_attempt,
                                             SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS,
-                                            retry_err
+                                            retry_text
                                         );
 
-                                        let server_responding = {
-                                            let c = client_clone.read().await;
-                                            c.get_public_system_info().await.is_ok()
-                                        };
-
-                                        if server_responding {
+                                        if retry_auth_failure {
+                                            should_clear_saved_auth = true;
                                             warn!(
-                                                "Jellyfin is reachable but saved-token home load still fails; falling back to credential/public-user login"
+                                                "Saved token became invalid during retry; falling back to credential/public-user login"
+                                            );
+                                            break;
+                                        }
+
+                                        if !retry_transient_startup_failure {
+                                            warn!(
+                                                "Saved-token auto-login failed with non-transient error during retry; falling back to credential/public-user login"
                                             );
                                             break;
                                         }
@@ -562,7 +578,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             c.user_id = None;
                         }
 
-                        if auth_failure {
+                        if should_clear_saved_auth {
                             let mut cfg = config_clone.write().await;
                             cfg.clear_auth();
                         }
