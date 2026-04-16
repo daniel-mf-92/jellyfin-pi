@@ -396,6 +396,20 @@ export component AppWindow inherits Window {
             height: 100%;
             background: Theme.background.with-alpha(0.85);
 
+            FocusScope {
+                width: 100%;
+                height: 100%;
+                init => { self.focus(); }
+                key-pressed(event) => {
+                    if (event.text == Key.Escape) {
+                        AppBridge.error-message = "";
+                        AppBridge.is-loading = false;
+                        return accept;
+                    }
+                    return reject;
+                }
+            }
+
             Rectangle {
                 width: 600px;
                 height: 200px;
