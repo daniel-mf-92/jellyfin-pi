@@ -76,6 +76,8 @@ const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
+const SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS: u32 = 30;
+const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 
 slint::include_modules!();
 
@@ -475,9 +477,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if !auth_failure && transient_startup_failure {
-                            let max_retry_attempts = 5;
-                            for retry_attempt in 1..=max_retry_attempts {
-                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                            for retry_attempt in 1..=SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(
+                                    SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS,
+                                ))
+                                .await;
                                 match load_home_data(
                                     ui_handle.clone(),
                                     client_clone.clone(),
@@ -489,7 +493,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Ok(()) => {
                                         info!(
                                             "Saved-token auto-login recovered after transient startup error on retry {}/{}",
-                                            retry_attempt, max_retry_attempts
+                                            retry_attempt, SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS
                                         );
                                         daemon_mgr_clone.lock().await.start(
                                             client_clone.clone(),
@@ -506,7 +510,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Err(retry_err) => {
                                         warn!(
                                             "Saved-token auto-login retry {}/{} failed: {}",
-                                            retry_attempt, max_retry_attempts, retry_err
+                                            retry_attempt,
+                                            SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS,
+                                            retry_err
                                         );
                                     }
                                 }
