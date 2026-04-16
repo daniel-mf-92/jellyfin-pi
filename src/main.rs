@@ -25,6 +25,16 @@ fn load_dotenv() {
     let mut paths = vec![std::path::PathBuf::from(".env")];
     if let Ok(home) = std::env::var("HOME") {
         paths.push(std::path::Path::new(&home).join("jellyfin-pi/.env"));
+        paths.push(std::path::Path::new(&home).join("Pi-Media-Player/.env"));
+    }
+
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            paths.push(exe_dir.join(".env"));
+            if let Some(parent_dir) = exe_dir.parent() {
+                paths.push(parent_dir.join(".env"));
+            }
+        }
     }
 
     for p in paths {
