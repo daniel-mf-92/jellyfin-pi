@@ -76,7 +76,7 @@ const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
-const SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS: u32 = 30;
+const SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS: u32 = 3;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 
 slint::include_modules!();
@@ -477,6 +477,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if !auth_failure && transient_startup_failure {
+                            let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_error_message(
+                                    "Jellyfin is starting… retrying connection.".into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+
                             for retry_attempt in 1..=SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS {
                                 tokio::time::sleep(tokio::time::Duration::from_secs(
                                     SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS,
@@ -502,6 +509,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         );
                                         state_clone.navigate_replace(Screen::Home).await;
                                         let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                                            ui.global::<AppBridge>().set_error_message("".into());
                                             ui.global::<AppBridge>().set_current_screen("home".into());
                                         });
                                         authenticated = true;
@@ -2386,7 +2394,7 @@ async fn load_public_users(
     };
 
     // Keep foreground loading under ~10s (spec) before switching to background retry.
-    let max_attempts_before_background_retry = 5;
+    let max_attempts_before_background_retry = 1;
     let is_transient_startup_error = |err_text: &str| {
         let lower = err_text.to_ascii_lowercase();
         lower.contains("503")
