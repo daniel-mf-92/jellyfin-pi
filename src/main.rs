@@ -2262,7 +2262,16 @@ async fn load_public_users(
         c.server_url.clone()
     };
 
-    let max_attempts = 6;
+    let max_attempts = 24;
+    let is_transient_startup_error = |err_text: &str| {
+        let lower = err_text.to_ascii_lowercase();
+        lower.contains("503")
+            || lower.contains("server is starting")
+            || lower.contains("service unavailable")
+            || lower.contains("network error")
+            || lower.contains("timed out")
+            || lower.contains("connection")
+    };
     let mut users_result = None;
     for attempt in 1..=max_attempts {
         let result = {
@@ -2276,10 +2285,16 @@ async fn load_public_users(
                 break;
             }
             Err(e) => {
+                let transient = is_transient_startup_error(&e.to_string());
                 warn!(
                     "Failed to load public users (attempt {}/{}): {}",
                     attempt, max_attempts, e
                 );
+                if !transient {
+                    users_result = Some(Err(e));
+                    break;
+                }
+
                 if attempt < max_attempts {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 } else {
