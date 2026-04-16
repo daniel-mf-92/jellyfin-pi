@@ -444,12 +444,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     Err(e) => {
                         let err_text = e.to_string();
-                        let auth_failure = {
-                            let lower = err_text.to_ascii_lowercase();
-                            lower.contains("auth error")
-                                || lower.contains("unauthorized")
-                                || lower.contains("not authenticated")
-                        };
+                        let lower = err_text.to_ascii_lowercase();
+                        let auth_failure = lower.contains("auth error")
+                            || lower.contains("unauthorized")
+                            || lower.contains("not authenticated");
+                        let transient_startup_failure = lower.contains("503")
+                            || lower.contains("server is starting")
+                            || lower.contains("service unavailable")
+                            || lower.contains("network error")
+                            || lower.contains("timed out")
+                            || lower.contains("connection");
 
                         if auth_failure {
                             warn!("Saved token is no longer valid: {}", err_text);
@@ -460,9 +464,50 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             );
                         }
 
-                        let mut c = client_clone.write().await;
-                        c.access_token = None;
-                        c.user_id = None;
+                        if !auth_failure && transient_startup_failure {
+                            let max_retry_attempts = 5;
+                            for retry_attempt in 1..=max_retry_attempts {
+                                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                                match load_home_data(
+                                    ui_handle.clone(),
+                                    client_clone.clone(),
+                                    image_clone.clone(),
+                                    state_clone.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(()) => {
+                                        info!(
+                                            "Saved-token auto-login recovered after transient startup error on retry {}/{}",
+                                            retry_attempt, max_retry_attempts
+                                        );
+                                        daemon_mgr_clone.lock().await.start(
+                                            client_clone.clone(),
+                                            config_clone.clone(),
+                                            state_clone.clone(),
+                                        );
+                                        state_clone.navigate_replace(Screen::Home).await;
+                                        let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                                            ui.global::<AppBridge>().set_current_screen("home".into());
+                                        });
+                                        authenticated = true;
+                                        break;
+                                    }
+                                    Err(retry_err) => {
+                                        warn!(
+                                            "Saved-token auto-login retry {}/{} failed: {}",
+                                            retry_attempt, max_retry_attempts, retry_err
+                                        );
+                                    }
+                                }
+                            }
+                        }
+
+                        if !authenticated {
+                            let mut c = client_clone.write().await;
+                            c.access_token = None;
+                            c.user_id = None;
+                        }
 
                         if auth_failure {
                             let mut cfg = config_clone.write().await;
