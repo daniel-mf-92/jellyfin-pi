@@ -2236,11 +2236,40 @@ async fn load_public_users(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
 ) {
-    let c = client.read().await;
-    let server_url = c.server_url.clone();
+    let server_url = {
+        let c = client.read().await;
+        c.server_url.clone()
+    };
 
-    match c.get_public_users().await {
-        Ok(users) => {
+    let max_attempts = 6;
+    let mut users_result = None;
+    for attempt in 1..=max_attempts {
+        let result = {
+            let c = client.read().await;
+            c.get_public_users().await
+        };
+
+        match result {
+            Ok(users) => {
+                users_result = Some(Ok(users));
+                break;
+            }
+            Err(e) => {
+                warn!(
+                    "Failed to load public users (attempt {}/{}): {}",
+                    attempt, max_attempts, e
+                );
+                if attempt < max_attempts {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                } else {
+                    users_result = Some(Err(e));
+                }
+            }
+        }
+    }
+
+    match users_result {
+        Some(Ok(users)) => {
             info!("Loaded {} public users", users.len());
             let mut user_infos = Vec::with_capacity(users.len());
             for user in &users {
@@ -2254,11 +2283,26 @@ async fn load_public_users(
                     .set_users(ModelRc::new(model));
             }
         }
-        Err(e) => {
+        Some(Err(e)) => {
             error!("Failed to load public users: {}", e);
             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                 ui.global::<AppBridge>()
-                    .set_error_message(format!("Cannot connect to server: {}", e).into());
+                    .set_error_message(
+                        format!(
+                            "Cannot connect to server after {} attempts: {}",
+                            max_attempts, e
+                        )
+                        .into(),
+                    );
+            });
+        }
+        None => {
+            error!("Failed to load public users: exhausted retries with no result");
+            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                ui.global::<AppBridge>()
+                    .set_error_message(
+                        format!("Cannot connect to server after {} attempts", max_attempts).into(),
+                    );
             });
         }
     }
