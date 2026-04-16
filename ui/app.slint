@@ -186,6 +186,7 @@ export component AppWindow inherits Window {
             width: 100%;
             height: 100%;
             users: AppBridge.users;
+            error: AppBridge.error-message;
             select-user(id) => {
                 AppBridge.login(id, "");
             }
@@ -391,7 +392,7 @@ export component AppWindow inherits Window {
         }
 
         // Error message overlay
-        if AppBridge.error-message != "" : Rectangle {
+        if AppBridge.error-message != "" && AppBridge.current-screen != "login" : Rectangle {
             width: 100%;
             height: 100%;
             background: Theme.background.with-alpha(0.85);
