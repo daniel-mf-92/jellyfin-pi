@@ -76,8 +76,8 @@ const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
-const SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS: u32 = 2;
-const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 3;
+const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 5;
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 180;
 
 slint::include_modules!();
 
@@ -505,7 +505,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
-                            for retry_attempt in 1..=SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS {
+                            let retry_window = std::time::Duration::from_secs(
+                                SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS,
+                            );
+                            let retry_started_at = std::time::Instant::now();
+                            let mut retry_attempt: u32 = 0;
+
+                            while retry_started_at.elapsed() < retry_window {
+                                retry_attempt += 1;
                                 tokio::time::sleep(tokio::time::Duration::from_secs(
                                     SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS,
                                 ))
@@ -523,8 +530,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 {
                                     Ok(()) => {
                                         info!(
-                                            "Saved-token auto-login recovered after transient startup error on retry {}/{}",
-                                            retry_attempt, SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS
+                                            "Saved-token auto-login recovered after transient startup error on retry {} after {:.1}s",
+                                            retry_attempt,
+                                            retry_started_at.elapsed().as_secs_f32()
                                         );
                                         daemon_mgr_clone.lock().await.start(
                                             client_clone.clone(),
@@ -553,9 +561,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             || retry_lower.contains("connection");
 
                                         warn!(
-                                            "Saved-token auto-login retry {}/{} failed: {}",
+                                            "Saved-token auto-login retry {} failed: {}",
                                             retry_attempt,
-                                            SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS,
                                             retry_text
                                         );
 
@@ -575,6 +582,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         }
                                     }
                                 }
+                            }
+
+                            if !authenticated && !should_clear_saved_auth {
+                                warn!(
+                                    "Saved-token transient retry window exhausted after {:.1}s; falling back to credential/public-user login",
+                                    retry_started_at.elapsed().as_secs_f32()
+                                );
                             }
                         }
 
