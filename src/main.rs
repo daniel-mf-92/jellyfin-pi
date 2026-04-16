@@ -437,10 +437,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         authenticated = true;
                     }
                     Err(e) => {
-                        warn!("Saved token expired: {}", e);
+                        let err_text = e.to_string();
+                        let auth_failure = {
+                            let lower = err_text.to_ascii_lowercase();
+                            lower.contains("auth error")
+                                || lower.contains("unauthorized")
+                                || lower.contains("not authenticated")
+                        };
+
+                        if auth_failure {
+                            warn!("Saved token is no longer valid: {}", err_text);
+                        } else {
+                            warn!(
+                                "Saved token auto-login failed due to server/network issue (keeping token in config): {}",
+                                err_text
+                            );
+                        }
+
                         let mut c = client_clone.write().await;
                         c.access_token = None;
                         c.user_id = None;
+
+                        if auth_failure {
+                            let mut cfg = config_clone.write().await;
+                            cfg.clear_auth();
+                        }
                     }
                 }
             }
