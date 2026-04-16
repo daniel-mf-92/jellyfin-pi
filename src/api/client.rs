@@ -1,4 +1,5 @@
 use reqwest::Client;
+use serde::de::DeserializeOwned;
 use std::fmt;
 use std::time::Duration;
 
@@ -158,6 +159,30 @@ impl JellyfinClient {
         }
     }
 
+    async fn parse_json_response<T: DeserializeOwned>(
+        &self,
+        resp: reqwest::Response,
+    ) -> ApiResult<T> {
+        let body = resp.text().await.map_err(ApiError::Network)?;
+        let trimmed = body.trim_start_matches('\u{feff}').trim_start();
+
+        if trimmed.starts_with('<') {
+            let summary = Self::summarize_server_error_body(trimmed);
+            if summary == "Jellyfin server is starting or unavailable" {
+                return Err(ApiError::Server(format!("503: {summary}")));
+            }
+            return Err(ApiError::Server(format!("Unexpected HTML response: {summary}")));
+        }
+
+        serde_json::from_str::<T>(trimmed).map_err(|e| {
+            if trimmed.to_ascii_lowercase().contains("jellyfin startup") {
+                ApiError::Server("503: Jellyfin server is starting or unavailable".into())
+            } else {
+                ApiError::Server(format!("Invalid JSON response: {e}"))
+            }
+        })
+    }
+
     // -----------------------------------------------------------------------
     // System / Auth
     // -----------------------------------------------------------------------
@@ -172,7 +197,7 @@ impl JellyfinClient {
             .send()
             .await?;
         let resp = self.check_response(resp).await?;
-        Ok(resp.json().await?)
+        self.parse_json_response(resp).await
     }
 
     /// POST /Users/AuthenticateByName
@@ -218,7 +243,7 @@ impl JellyfinClient {
         let url = format!("{}/System/Info/Public", self.server_url);
         let resp = self.http.get(&url).send().await?;
         let resp = self.check_response(resp).await?;
-        Ok(resp.json().await?)
+        self.parse_json_response(resp).await
     }
 
     // -----------------------------------------------------------------------
