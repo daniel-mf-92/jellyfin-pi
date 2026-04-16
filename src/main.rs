@@ -675,59 +675,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // 11a. RSS self-monitoring: prevent OOM
-    tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            if let Some(mb) = read_rss_mb() {
-                if mb > RSS_EMERGENCY_EXIT_MB {
-                    log::error!(
-                        "RSS {}MB exceeds {}MB emergency limit — forcing trim before exit",
-                        mb,
-                        RSS_EMERGENCY_EXIT_MB
-                    );
-                    trim_process_memory();
-                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-
-                    if let Some(after_trim_mb) = read_rss_mb() {
-                        if after_trim_mb > RSS_EMERGENCY_EXIT_MB {
-                            log::error!(
-                                "RSS still {}MB after trim (>{}MB) — exiting to prevent OOM",
-                                after_trim_mb,
-                                RSS_EMERGENCY_EXIT_MB
-                            );
-                            std::process::exit(1);
-                        }
-
-                        log::warn!(
-                            "RSS recovered to {}MB after emergency trim; continuing",
-                            after_trim_mb
-                        );
-                    }
-                } else if mb > RSS_SOFT_LIMIT_MB {
-                    log::error!(
-                        "RSS {}MB exceeds {}MB soft limit — forcing allocator trim",
-                        mb,
-                        RSS_SOFT_LIMIT_MB
-                    );
-                    trim_process_memory();
-                } else if mb > RSS_WARN_MB {
-                    log::warn!("RSS {}MB above warning threshold {}MB", mb, RSS_WARN_MB);
-                } else if mb > 500 {
-                    log::info!("RSS: {}MB", mb);
-                }
-            }
-        }
-    });
-
-    // 11a-bis. Periodic cache clearing when RSS is high (runs on Slint event loop since ImageCache is !Send)
+    // 11a. RSS monitoring and cache trimming (runs on Slint event loop since ImageCache is !Send)
     {
         let image_cache_rss = image_cache.clone();
         let _ = slint::spawn_local(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 if let Some(mb) = read_rss_mb() {
-                    if mb > RSS_CACHE_CLEAR_MB {
+                    if mb > RSS_EMERGENCY_EXIT_MB {
+                        log::error!(
+                            "RSS {}MB exceeds {}MB emergency limit — clearing cache and trimming allocator",
+                            mb,
+                            RSS_EMERGENCY_EXIT_MB
+                        );
+                        image_cache_rss.clear_memory_cache().await;
+                        trim_process_memory();
+                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                        if let Some(after_trim_mb) = read_rss_mb() {
+                            if after_trim_mb > RSS_EMERGENCY_EXIT_MB {
+                                log::error!(
+                                    "RSS still {}MB after emergency trim (>{}MB) — keeping app alive while cache trimming runs",
+                                    after_trim_mb,
+                                    RSS_EMERGENCY_EXIT_MB
+                                );
+                            } else {
+                                log::warn!(
+                                    "RSS recovered to {}MB after emergency trim; continuing",
+                                    after_trim_mb
+                                );
+                            }
+                        }
+                    } else if mb > RSS_SOFT_LIMIT_MB {
+                        log::error!(
+                            "RSS {}MB exceeds {}MB soft limit — forcing allocator trim",
+                            mb,
+                            RSS_SOFT_LIMIT_MB
+                        );
+                        trim_process_memory();
+                    } else if mb > RSS_CACHE_CLEAR_MB {
                         log::warn!(
                             "RSS {}MB > {}MB — clearing image memory cache and trimming allocator",
                             mb,
@@ -735,6 +721,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                         image_cache_rss.clear_memory_cache().await;
                         trim_process_memory();
+                    } else if mb > RSS_WARN_MB {
+                        log::warn!("RSS {}MB above warning threshold {}MB", mb, RSS_WARN_MB);
+                    } else if mb > 500 {
+                        log::info!("RSS: {}MB", mb);
                     }
                 }
             }
