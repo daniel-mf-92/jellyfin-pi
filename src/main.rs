@@ -453,11 +453,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     c.access_token = Some(token.clone());
                     c.user_id = Some(user_id.clone());
                 }
-                match load_home_data(
-                    ui_handle.clone(),
-                    client_clone.clone(),
-                    image_clone.clone(),
-                    state_clone.clone(),
+                match with_loading_timeout(
+                    "Home load (saved token)",
+                    load_home_data(
+                        ui_handle.clone(),
+                        client_clone.clone(),
+                        image_clone.clone(),
+                        state_clone.clone(),
+                    ),
                 )
                 .await
                 {
@@ -507,11 +510,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS,
                                 ))
                                 .await;
-                                match load_home_data(
-                                    ui_handle.clone(),
-                                    client_clone.clone(),
-                                    image_clone.clone(),
-                                    state_clone.clone(),
+                                match with_loading_timeout(
+                                    "Home load (saved token retry)",
+                                    load_home_data(
+                                        ui_handle.clone(),
+                                        client_clone.clone(),
+                                        image_clone.clone(),
+                                        state_clone.clone(),
+                                    ),
                                 )
                                 .await
                                 {
@@ -656,11 +662,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ui.global::<AppBridge>().set_current_screen("home".into());
                             });
 
-                            if let Err(e) = load_home_data(
-                                ui_handle.clone(),
-                                client_clone.clone(),
-                                image_clone.clone(),
-                                state_clone.clone(),
+                            if let Err(e) = with_loading_timeout(
+                                "Home load (credentials auto-login)",
+                                load_home_data(
+                                    ui_handle.clone(),
+                                    client_clone.clone(),
+                                    image_clone.clone(),
+                                    state_clone.clone(),
+                                ),
                             )
                             .await
                             {
@@ -1162,11 +1171,14 @@ fn setup_auth_callbacks(
                         ui.global::<AppBridge>().set_current_screen("home".into());
                     });
 
-                    if let Err(e) = load_home_data(
-                        ui_weak.clone(),
-                        client.clone(),
-                        image_cache,
-                        state,
+                    if let Err(e) = with_loading_timeout(
+                        "Home load (post-login)",
+                        load_home_data(
+                            ui_weak.clone(),
+                            client.clone(),
+                            image_cache,
+                            state,
+                        ),
                     )
                     .await
                     {
