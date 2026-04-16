@@ -61,6 +61,11 @@ use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
 use slint::{Image as SlintImage, ModelRc, VecModel, SharedString};
 
+const RSS_WARN_MB: u64 = 2500;
+const RSS_SOFT_LIMIT_MB: u64 = 4000;
+const RSS_CACHE_CLEAR_MB: u64 = 1800;
+const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
+
 slint::include_modules!();
 
 // =============================================================================
@@ -581,11 +586,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if line.starts_with("VmRSS:") {
                         let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
                         let mb = kb / 1024;
-                        if mb > 4000 {
-                            log::error!("RSS {}MB exceeds 4GB safety limit — exiting to prevent OOM", mb);
+                        if mb > RSS_EMERGENCY_EXIT_MB {
+                            log::error!(
+                                "RSS {}MB exceeds {}MB emergency limit — exiting to prevent OOM",
+                                mb,
+                                RSS_EMERGENCY_EXIT_MB
+                            );
                             std::process::exit(1);
-                        } else if mb > 3000 {
-                            log::warn!("RSS {}MB approaching 2.5GB limit", mb);
+                        } else if mb > RSS_SOFT_LIMIT_MB {
+                            log::error!(
+                                "RSS {}MB exceeds {}MB soft limit — keeping app alive while cache trimming runs",
+                                mb,
+                                RSS_SOFT_LIMIT_MB
+                            );
+                        } else if mb > RSS_WARN_MB {
+                            log::warn!("RSS {}MB above warning threshold {}MB", mb, RSS_WARN_MB);
                         } else if mb > 500 {
                             log::info!("RSS: {}MB", mb);
                         }
@@ -606,8 +621,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if line.starts_with("VmRSS:") {
                             let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
                             let mb = kb / 1024;
-                            if mb > 3000 {
-                                log::warn!("RSS {}MB > 2GB — clearing image memory cache", mb);
+                            if mb > RSS_CACHE_CLEAR_MB {
+                                log::warn!(
+                                    "RSS {}MB > {}MB — clearing image memory cache",
+                                    mb,
+                                    RSS_CACHE_CLEAR_MB
+                                );
                                 image_cache_rss.clear_memory_cache().await;
                             }
                         }
