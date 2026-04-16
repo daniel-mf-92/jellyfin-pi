@@ -2262,7 +2262,7 @@ async fn load_public_users(
         c.server_url.clone()
     };
 
-    let max_attempts = 24;
+    let max_attempts_before_background_retry = 24;
     let is_transient_startup_error = |err_text: &str| {
         let lower = err_text.to_ascii_lowercase();
         lower.contains("503")
@@ -2273,7 +2273,9 @@ async fn load_public_users(
             || lower.contains("connection")
     };
     let mut users_result = None;
-    for attempt in 1..=max_attempts {
+    let mut attempt: usize = 0;
+    loop {
+        attempt += 1;
         let result = {
             let c = client.read().await;
             c.get_public_users().await
@@ -2288,17 +2290,27 @@ async fn load_public_users(
                 let transient = is_transient_startup_error(&e.to_string());
                 warn!(
                     "Failed to load public users (attempt {}/{}): {}",
-                    attempt, max_attempts, e
+                    attempt, max_attempts_before_background_retry, e
                 );
                 if !transient {
                     users_result = Some(Err(e));
                     break;
                 }
 
-                if attempt < max_attempts {
+                if attempt == max_attempts_before_background_retry {
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_error_message(
+                                "Cannot connect to Jellyfin yet; retrying in background..."
+                                    .into(),
+                            );
+                    });
+                }
+
+                if attempt < max_attempts_before_background_retry {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 } else {
-                    users_result = Some(Err(e));
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
                 }
             }
         }
@@ -2325,8 +2337,8 @@ async fn load_public_users(
                 ui.global::<AppBridge>()
                     .set_error_message(
                         format!(
-                            "Cannot connect to server after {} attempts: {}",
-                            max_attempts, e
+                            "Cannot connect to server: {}",
+                            e
                         )
                         .into(),
                     );
@@ -2336,9 +2348,7 @@ async fn load_public_users(
             error!("Failed to load public users: exhausted retries with no result");
             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                 ui.global::<AppBridge>()
-                    .set_error_message(
-                        format!("Cannot connect to server after {} attempts", max_attempts).into(),
-                    );
+                    .set_error_message("Cannot connect to server".into());
             });
         }
     }
