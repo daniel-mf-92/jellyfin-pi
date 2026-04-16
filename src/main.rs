@@ -2316,21 +2316,12 @@ async fn load_public_users(
                     break;
                 }
 
-                if attempt == max_attempts_before_background_retry {
-                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                        ui.global::<AppBridge>()
-                            .set_error_message(
-                                "Cannot connect to Jellyfin yet; retrying in background..."
-                                    .into(),
-                            );
-                    });
+                if attempt >= max_attempts_before_background_retry {
+                    users_result = Some(Err(e));
+                    break;
                 }
 
-                if attempt < max_attempts_before_background_retry {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-                } else {
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-                }
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             }
         }
     }
