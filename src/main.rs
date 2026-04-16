@@ -2291,10 +2291,7 @@ async fn load_public_users(
             || lower.contains("timed out")
             || lower.contains("connection")
     };
-    let mut users_result = None;
-    let mut attempt: usize = 0;
-    loop {
-        attempt += 1;
+    for attempt in 1..=max_attempts_before_background_retry {
         let result = {
             let c = client.read().await;
             c.get_public_users().await
@@ -2302,8 +2299,8 @@ async fn load_public_users(
 
         match result {
             Ok(users) => {
-                users_result = Some(Ok(users));
-                break;
+                apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+                return;
             }
             Err(e) => {
                 let transient = is_transient_startup_error(&e.to_string());
@@ -2312,55 +2309,89 @@ async fn load_public_users(
                     attempt, max_attempts_before_background_retry, e
                 );
                 if !transient {
-                    users_result = Some(Err(e));
-                    break;
+                    error!("Failed to load public users: {}", e);
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_error_message(format!("Cannot connect to server: {}", e).into());
+                    });
+                    return;
                 }
 
-                if attempt >= max_attempts_before_background_retry {
-                    users_result = Some(Err(e));
-                    break;
+                if attempt < max_attempts_before_background_retry {
+                    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 }
-
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
             }
         }
     }
 
-    match users_result {
-        Some(Ok(users)) => {
-            info!("Loaded {} public users", users.len());
-            let mut user_infos = Vec::with_capacity(users.len());
-            for user in &users {
-                let avatar = load_user_avatar(user, &server_url, &image_cache).await;
-                user_infos.push(user_dto_to_user_info(user, &server_url, avatar));
-            }
+    warn!(
+        "Failed to load public users after {} attempts; continuing background retry",
+        max_attempts_before_background_retry
+    );
+    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+        ui.global::<AppBridge>()
+            .set_error_message("Server unavailable, retrying...".into());
+    });
 
-            if let Some(ui) = ui_weak.upgrade() {
-                let model = VecModel::from(user_infos);
-                ui.global::<AppBridge>()
-                    .set_users(ModelRc::new(model));
+    let mut retry_attempt: usize = 0;
+    loop {
+        retry_attempt += 1;
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+        let result = {
+            let c = client.read().await;
+            c.get_public_users().await
+        };
+
+        match result {
+            Ok(users) => {
+                info!(
+                    "Recovered public users after background retry attempt {}",
+                    retry_attempt
+                );
+                apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+                return;
+            }
+            Err(e) => {
+                let transient = is_transient_startup_error(&e.to_string());
+                if !transient {
+                    error!("Failed to load public users during background retry: {}", e);
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_error_message(format!("Cannot connect to server: {}", e).into());
+                    });
+                    return;
+                }
+
+                if retry_attempt % 6 == 0 {
+                    warn!(
+                        "Still waiting for Jellyfin while loading public users (background attempt {}): {}",
+                        retry_attempt, e
+                    );
+                }
             }
         }
-        Some(Err(e)) => {
-            error!("Failed to load public users: {}", e);
-            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                ui.global::<AppBridge>()
-                    .set_error_message(
-                        format!(
-                            "Cannot connect to server: {}",
-                            e
-                        )
-                        .into(),
-                    );
-            });
-        }
-        None => {
-            error!("Failed to load public users: exhausted retries with no result");
-            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                ui.global::<AppBridge>()
-                    .set_error_message("Cannot connect to server".into());
-            });
-        }
+    }
+
+}
+
+async fn apply_loaded_public_users(
+    ui_weak: &slint::Weak<AppWindow>,
+    server_url: &str,
+    image_cache: &Arc<ImageCache>,
+    users: Vec<UserDto>,
+) {
+    info!("Loaded {} public users", users.len());
+    let mut user_infos = Vec::with_capacity(users.len());
+    for user in &users {
+        let avatar = load_user_avatar(user, server_url, image_cache).await;
+        user_infos.push(user_dto_to_user_info(user, server_url, avatar));
+    }
+
+    if let Some(ui) = ui_weak.upgrade() {
+        let model = VecModel::from(user_infos);
+        ui.global::<AppBridge>().set_users(ModelRc::new(model));
+        ui.global::<AppBridge>().set_error_message("".into());
     }
 }
 
