@@ -161,6 +161,11 @@ export component AppWindow inherits Window {
 
         key-pressed(event) => {
             if (event.text == Key.Escape) {
+                if (AppBridge.error-message != "") {
+                    AppBridge.error-message = "";
+                    AppBridge.is-loading = false;
+                    return accept;
+                }
                 if (AppBridge.is-loading) {
                     AppBridge.is-loading = false;
                 }
@@ -371,6 +376,11 @@ export component AppWindow inherits Window {
                 init => { self.focus(); }
                 key-pressed(event) => {
                     if (event.text == Key.Escape) {
+                        if (AppBridge.error-message != "") {
+                            AppBridge.error-message = "";
+                            AppBridge.is-loading = false;
+                            return accept;
+                        }
                         AppBridge.is-loading = false;
                         AppBridge.go-back();
                         return accept;
