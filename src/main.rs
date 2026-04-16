@@ -529,20 +529,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // --- Fallback: authenticate with hardcoded credentials ---
             if !authenticated {
-                let username = match std::env::var("JELLYFIN_USERNAME") {
-                    Ok(u) if !u.is_empty() => u,
-                    _ => {
-                        warn!("JELLYFIN_USERNAME not set in .env");
+                let username = std::env::var("JELLYFIN_USERNAME")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        std::env::var("JELLYFIN_USER")
+                            .ok()
+                            .filter(|value| !value.is_empty())
+                    })
+                    .unwrap_or_else(|| {
+                        warn!("JELLYFIN_USERNAME/JELLYFIN_USER not set in .env");
                         String::new()
-                    }
-                };
-                let password = match std::env::var("JELLYFIN_PASSWORD") {
-                    Ok(p) if !p.is_empty() => p,
-                    _ => {
-                        warn!("JELLYFIN_PASSWORD not set in .env");
+                    });
+
+                let password = std::env::var("JELLYFIN_PASSWORD")
+                    .ok()
+                    .filter(|value| !value.is_empty())
+                    .or_else(|| {
+                        std::env::var("JELLYFIN_PASS")
+                            .ok()
+                            .filter(|value| !value.is_empty())
+                    })
+                    .unwrap_or_else(|| {
+                        warn!("JELLYFIN_PASSWORD/JELLYFIN_PASS not set in .env");
                         String::new()
-                    }
-                };
+                    });
 
                 if !username.is_empty() && !password.is_empty() {
                     info!("Auto-login with credentials for user: {}", username);
