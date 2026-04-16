@@ -96,15 +96,22 @@ impl StateManager {
             info!("Navigate back: {} -> {} (stack depth: {})", from_name, to_name, state.screen_stack.len());
             Some(state.current_screen.clone())
         } else {
-            // Stack is empty: if not already on Home, go to Home
-            if state.current_screen != Screen::Home {
-                let from_name = state.current_screen.name().to_string();
-                state.current_screen = Screen::Home;
-                info!("Navigate back: {} -> home (stack was empty, defaulting to home)", from_name);
-                Some(Screen::Home)
-            } else {
-                debug!("Go back requested but already on Home with empty stack");
-                None
+            // Stack is empty: never jump from Login to Home.
+            match state.current_screen {
+                Screen::Login => {
+                    debug!("Go back requested on Login with empty stack; staying on login");
+                    None
+                }
+                Screen::Home => {
+                    debug!("Go back requested but already on Home with empty stack");
+                    None
+                }
+                _ => {
+                    let from_name = state.current_screen.name().to_string();
+                    state.current_screen = Screen::Home;
+                    info!("Navigate back: {} -> home (stack was empty, defaulting to home)", from_name);
+                    Some(Screen::Home)
+                }
             }
         }
     }
