@@ -193,7 +193,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .send()
             .await?;
         let resp = self.check_response(resp).await?;
@@ -221,7 +221,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .json(&Body {
                 username,
                 pw: password,
@@ -261,7 +261,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .send()
             .await?;
         let resp = self.check_response(resp).await?;
@@ -280,7 +280,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("Limit", limit.to_string()),
                 ("MediaTypes", "Video".into()),
@@ -304,7 +304,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("UserId", user_id.to_string()),
                 ("Limit", limit.to_string()),
@@ -332,7 +332,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("ParentId", parent_id),
                 ("Limit", &limit.to_string()),
@@ -393,7 +393,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&params)
             .send()
             .await?;
@@ -415,7 +415,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[("Fields", ITEM_FIELDS)])
             .send()
             .await?;
@@ -434,7 +434,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("UserId", user_id),
                 ("Fields", ITEM_FIELDS),
@@ -461,7 +461,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("UserId", user_id),
                 ("SeasonId", season_id),
@@ -489,7 +489,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("UserId", user_id.to_string()),
                 ("Limit", limit.to_string()),
@@ -521,7 +521,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[
                 ("UserId", user_id.to_string()),
                 ("SearchTerm", query.into()),
@@ -561,7 +561,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[("UserId", user_id)])
             .json(&Body { device_profile: profile })
             .send()
@@ -576,7 +576,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .query(&[("IncludeSegmentTypes", "Intro,Outro,Recap,Preview")])
             .send()
             .await?;
@@ -594,7 +594,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .json(info)
             .send()
             .await?;
@@ -611,7 +611,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .json(info)
             .send()
             .await?;
@@ -628,7 +628,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .json(info)
             .send()
             .await?;
@@ -659,13 +659,13 @@ impl JellyfinClient {
         let resp = if is_favorite {
             self.http
                 .post(&url)
-                .header("Authorization", self.auth_header())
+                .header("X-Emby-Authorization", self.auth_header())
                 .send()
                 .await?
         } else {
             self.http
                 .delete(&url)
-                .header("Authorization", self.auth_header())
+                .header("X-Emby-Authorization", self.auth_header())
                 .send()
                 .await?
         };
@@ -688,7 +688,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .post(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .send()
             .await?;
         self.check_response(resp).await?;
@@ -709,7 +709,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .delete(&url)
-            .header("Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.auth_header())
             .send()
             .await?;
         self.check_response(resp).await?;
