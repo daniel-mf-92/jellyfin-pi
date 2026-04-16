@@ -2281,7 +2281,8 @@ async fn load_public_users(
         c.server_url.clone()
     };
 
-    let max_attempts_before_background_retry = 24;
+    // Keep foreground loading under ~10s (spec) before switching to background retry.
+    let max_attempts_before_background_retry = 5;
     let is_transient_startup_error = |err_text: &str| {
         let lower = err_text.to_ascii_lowercase();
         lower.contains("503")
@@ -2313,6 +2314,7 @@ async fn load_public_users(
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                         ui.global::<AppBridge>()
                             .set_error_message(format!("Cannot connect to server: {}", e).into());
+                        ui.global::<AppBridge>().set_is_loading(false);
                     });
                     return;
                 }
@@ -2330,7 +2332,8 @@ async fn load_public_users(
     );
     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
         ui.global::<AppBridge>()
-            .set_error_message("Server unavailable, retrying...".into());
+            .set_error_message("Cannot connect to Jellyfin (retrying in background)...".into());
+        ui.global::<AppBridge>().set_is_loading(false);
     });
 
     let mut retry_attempt: usize = 0;
@@ -2359,6 +2362,7 @@ async fn load_public_users(
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                         ui.global::<AppBridge>()
                             .set_error_message(format!("Cannot connect to server: {}", e).into());
+                        ui.global::<AppBridge>().set_is_loading(false);
                     });
                     return;
                 }
