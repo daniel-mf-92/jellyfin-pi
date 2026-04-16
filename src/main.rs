@@ -65,6 +65,7 @@ const RSS_WARN_MB: u64 = 2500;
 const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
+const LOADING_TIMEOUT_SECS: u64 = 10;
 
 slint::include_modules!();
 
@@ -712,13 +713,15 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("home".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = load_home_data(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        state,
-                    )
-                    .await
+                    if let Err(e) = with_loading_timeout(
+                        "Home load",
+                        load_home_data(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            state,
+                        ),
+                    ).await
                     {
                         error!("Failed to load home data: {}", e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -758,15 +761,17 @@ fn setup_navigation_callbacks(
                             ui.global::<AppBridge>().set_current_screen("library".into());
                             ui.global::<AppBridge>().set_is_loading(true);
                         });
-                        if let Err(e) = load_library(
-                            ui_weak.clone(),
-                            client,
-                            image_cache,
-                            &item_id,
-                            None,
-                            None,
-                        )
-                        .await
+                        if let Err(e) = with_loading_timeout(
+                            "Library load",
+                            load_library(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &item_id,
+                                None,
+                                None,
+                            ),
+                        ).await
                         {
                             error!("Failed to load library {}: {}", item_id, e);
                             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -788,13 +793,15 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("detail".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = load_item_detail(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        &item_id,
-                    )
-                    .await
+                    if let Err(e) = with_loading_timeout(
+                        "Detail load",
+                        load_item_detail(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &item_id,
+                        ),
+                    ).await
                     {
                         error!("Failed to load detail for {}: {}", item_id, e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -819,15 +826,17 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("library".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = load_library(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        &library_id,
-                        None,
-                        None,
-                    )
-                    .await
+                    if let Err(e) = with_loading_timeout(
+                        "Library load",
+                        load_library(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &library_id,
+                            None,
+                            None,
+                        ),
+                    ).await
                     {
                         error!("Failed to load library {}: {}", library_id, e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -926,6 +935,21 @@ fn setup_navigation_callbacks(
             });
         }
     });
+}
+
+
+async fn with_loading_timeout<T>(
+    operation: &str,
+    future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS), future).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err(format!(
+            "{} timed out after {}s",
+            operation, LOADING_TIMEOUT_SECS
+        )),
+    }
 }
 
 fn setup_auth_callbacks(
@@ -1951,8 +1975,10 @@ fn setup_content_callbacks(
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
             });
-            if let Err(e) =
-                load_home_data(ui_weak.clone(), client, image_cache, state).await
+            if let Err(e) = with_loading_timeout(
+                "Home refresh",
+                load_home_data(ui_weak.clone(), client, image_cache, state),
+            ).await
             {
                 error!("Failed to load home data: {}", e);
                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -2010,15 +2036,17 @@ fn setup_content_callbacks(
                 } else {
                     Some(mapped_filter.as_str())
                 };
-                if let Err(e) = load_library(
-                    ui_weak.clone(),
-                    client,
-                    image_cache,
-                    &library_id_str,
-                    sort_opt,
-                    filter_opt,
-                )
-                .await
+                if let Err(e) = with_loading_timeout(
+                    "Library refresh",
+                    load_library(
+                        ui_weak.clone(),
+                        client,
+                        image_cache,
+                        &library_id_str,
+                        sort_opt,
+                        filter_opt,
+                    ),
+                ).await
                 {
                     error!("Failed to load library: {}", e);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -2046,13 +2074,15 @@ fn setup_content_callbacks(
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
-                if let Err(e) = load_item_detail(
-                    ui_weak.clone(),
-                    client,
-                    image_cache,
-                    &item_id_str,
-                )
-                .await
+                if let Err(e) = with_loading_timeout(
+                    "Detail refresh",
+                    load_item_detail(
+                        ui_weak.clone(),
+                        client,
+                        image_cache,
+                        &item_id_str,
+                    ),
+                ).await
                 {
                     error!("Failed to load item detail: {}", e);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -2087,8 +2117,10 @@ fn setup_content_callbacks(
                 ui.global::<AppBridge>().set_is_loading(true);
             });
 
-            if let Err(e) =
-                perform_search(ui_weak.clone(), client, image_cache, &query_str).await
+            if let Err(e) = with_loading_timeout(
+                "Search",
+                perform_search(ui_weak.clone(), client, image_cache, &query_str),
+            ).await
             {
                 error!("Search failed: {}", e);
                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {
