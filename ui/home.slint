@@ -90,7 +90,12 @@ export component HomeScreen inherits Rectangle {
             ) {
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
-                        root.item-selected(root.rows[root.focused-row].items[root.focused-col].id);
+                        let selected-item = root.rows[root.focused-row].items[root.focused-col];
+                        if (selected-item.item-type == "CollectionFolder") {
+                            root.open-library(selected-item.id);
+                        } else {
+                            root.item-selected(selected-item.id);
+                        }
                     }
                 }
                 return accept;
