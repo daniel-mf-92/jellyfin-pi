@@ -81,6 +81,23 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 
 slint::include_modules!();
 
+fn read_rss_mb() -> Option<u64> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+    status
+        .lines()
+        .find(|line| line.starts_with("VmRSS:"))
+        .and_then(|line| line.split_whitespace().nth(1))
+        .and_then(|kb| kb.parse::<u64>().ok())
+        .map(|kb| kb / 1024)
+}
+
+fn trim_process_memory() {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
 // =============================================================================
 // Type conversion helpers
 // =============================================================================
@@ -662,30 +679,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tokio::spawn(async move {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-            if let Ok(status) = tokio::fs::read_to_string("/proc/self/status").await {
-                for line in status.lines() {
-                    if line.starts_with("VmRSS:") {
-                        let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-                        let mb = kb / 1024;
-                        if mb > RSS_EMERGENCY_EXIT_MB {
+            if let Some(mb) = read_rss_mb() {
+                if mb > RSS_EMERGENCY_EXIT_MB {
+                    log::error!(
+                        "RSS {}MB exceeds {}MB emergency limit — forcing trim before exit",
+                        mb,
+                        RSS_EMERGENCY_EXIT_MB
+                    );
+                    trim_process_memory();
+                    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+                    if let Some(after_trim_mb) = read_rss_mb() {
+                        if after_trim_mb > RSS_EMERGENCY_EXIT_MB {
                             log::error!(
-                                "RSS {}MB exceeds {}MB emergency limit — exiting to prevent OOM",
-                                mb,
+                                "RSS still {}MB after trim (>{}MB) — exiting to prevent OOM",
+                                after_trim_mb,
                                 RSS_EMERGENCY_EXIT_MB
                             );
                             std::process::exit(1);
-                        } else if mb > RSS_SOFT_LIMIT_MB {
-                            log::error!(
-                                "RSS {}MB exceeds {}MB soft limit — keeping app alive while cache trimming runs",
-                                mb,
-                                RSS_SOFT_LIMIT_MB
-                            );
-                        } else if mb > RSS_WARN_MB {
-                            log::warn!("RSS {}MB above warning threshold {}MB", mb, RSS_WARN_MB);
-                        } else if mb > 500 {
-                            log::info!("RSS: {}MB", mb);
                         }
+
+                        log::warn!(
+                            "RSS recovered to {}MB after emergency trim; continuing",
+                            after_trim_mb
+                        );
                     }
+                } else if mb > RSS_SOFT_LIMIT_MB {
+                    log::error!(
+                        "RSS {}MB exceeds {}MB soft limit — forcing allocator trim",
+                        mb,
+                        RSS_SOFT_LIMIT_MB
+                    );
+                    trim_process_memory();
+                } else if mb > RSS_WARN_MB {
+                    log::warn!("RSS {}MB above warning threshold {}MB", mb, RSS_WARN_MB);
+                } else if mb > 500 {
+                    log::info!("RSS: {}MB", mb);
                 }
             }
         }
@@ -697,20 +726,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = slint::spawn_local(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-                if let Ok(status) = tokio::fs::read_to_string("/proc/self/status").await {
-                    for line in status.lines() {
-                        if line.starts_with("VmRSS:") {
-                            let kb: u64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0);
-                            let mb = kb / 1024;
-                            if mb > RSS_CACHE_CLEAR_MB {
-                                log::warn!(
-                                    "RSS {}MB > {}MB — clearing image memory cache",
-                                    mb,
-                                    RSS_CACHE_CLEAR_MB
-                                );
-                                image_cache_rss.clear_memory_cache().await;
-                            }
-                        }
+                if let Some(mb) = read_rss_mb() {
+                    if mb > RSS_CACHE_CLEAR_MB {
+                        log::warn!(
+                            "RSS {}MB > {}MB — clearing image memory cache and trimming allocator",
+                            mb,
+                            RSS_CACHE_CLEAR_MB
+                        );
+                        image_cache_rss.clear_memory_cache().await;
+                        trim_process_memory();
                     }
                 }
             }
