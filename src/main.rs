@@ -539,6 +539,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             SAVED_TOKEN_TRANSIENT_RETRY_ATTEMPTS,
                                             retry_err
                                         );
+
+                                        let server_responding = {
+                                            let c = client_clone.read().await;
+                                            c.get_public_system_info().await.is_ok()
+                                        };
+
+                                        if server_responding {
+                                            warn!(
+                                                "Jellyfin is reachable but saved-token home load still fails; falling back to credential/public-user login"
+                                            );
+                                            break;
+                                        }
                                     }
                                 }
                             }
