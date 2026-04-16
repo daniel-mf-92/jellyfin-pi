@@ -441,6 +441,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let daemon_mgr_clone = daemon_mgr.clone();
         let _ = slint::spawn_local(async move {
             let mut authenticated = false;
+            let mut schedule_saved_token_background_recovery = false;
 
             // --- Try saved token (fast path) ---
             let (saved_user_id, saved_token) = {
@@ -590,6 +591,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "Saved-token transient retry window exhausted after {:.1}s; falling back to credential/public-user login",
                                     retry_started_at.elapsed().as_secs_f32()
                                 );
+                                schedule_saved_token_background_recovery = true;
                             }
                         }
 
@@ -697,6 +699,113 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 }
+            }
+
+            if !authenticated && schedule_saved_token_background_recovery {
+                let ui_retry = ui_handle.clone();
+                let client_retry = client_clone.clone();
+                let image_retry = image_clone.clone();
+                let state_retry = state_clone.clone();
+                let config_retry = config_clone.clone();
+                let daemon_mgr_retry = daemon_mgr_clone.clone();
+                let _ = slint::spawn_local(async move {
+                    let mut retry_attempt: u32 = 0;
+                    loop {
+                        retry_attempt += 1;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+                        let (saved_user_id, saved_token) = {
+                            let cfg = config_retry.read().await;
+                            (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
+                        };
+
+                        let (Some(user_id), Some(token)) = (saved_user_id, saved_token) else {
+                            break;
+                        };
+
+                        {
+                            let mut c = client_retry.write().await;
+                            c.access_token = Some(token);
+                            c.user_id = Some(user_id);
+                        }
+
+                        match with_loading_timeout(
+                            "Home load (saved token background recovery)",
+                            load_home_data(
+                                ui_retry.clone(),
+                                client_retry.clone(),
+                                image_retry.clone(),
+                                state_retry.clone(),
+                            ),
+                        )
+                        .await
+                        {
+                            Ok(()) => {
+                                info!(
+                                    "Saved-token auto-login recovered in background after startup retry exhaustion (attempt {})",
+                                    retry_attempt
+                                );
+                                daemon_mgr_retry.lock().await.start(
+                                    client_retry.clone(),
+                                    config_retry.clone(),
+                                    state_retry.clone(),
+                                );
+                                state_retry.navigate_replace(Screen::Home).await;
+                                let _ = ui_retry.upgrade_in_event_loop(|ui| {
+                                    ui.global::<AppBridge>().set_error_message("".into());
+                                    ui.global::<AppBridge>().set_current_screen("home".into());
+                                    ui.global::<AppBridge>().set_is_loading(false);
+                                });
+                                break;
+                            }
+                            Err(retry_err) => {
+                                let retry_text = retry_err.to_string();
+                                let retry_lower = retry_text.to_ascii_lowercase();
+                                let retry_auth_failure = retry_lower.contains("auth error")
+                                    || retry_lower.contains("unauthorized")
+                                    || retry_lower.contains("not authenticated");
+                                let retry_transient_startup_failure = retry_lower.contains("503")
+                                    || retry_lower.contains("server is starting")
+                                    || retry_lower.contains("service unavailable")
+                                    || retry_lower.contains("network error")
+                                    || retry_lower.contains("timed out")
+                                    || retry_lower.contains("connection");
+
+                                if retry_auth_failure {
+                                    warn!(
+                                        "Saved token became invalid during background recovery; clearing cached token"
+                                    );
+                                    {
+                                        let mut cfg = config_retry.write().await;
+                                        cfg.clear_auth();
+                                    }
+                                    {
+                                        let mut c = client_retry.write().await;
+                                        c.access_token = None;
+                                        c.user_id = None;
+                                    }
+                                    break;
+                                }
+
+                                if !retry_transient_startup_failure {
+                                    warn!(
+                                        "Stopping saved-token background recovery due to non-transient error: {}",
+                                        retry_text
+                                    );
+                                    break;
+                                }
+
+                                if retry_attempt % 6 == 0 {
+                                    warn!(
+                                        "Still waiting for Jellyfin while recovering saved-token auto-login (background attempt {}): {}",
+                                        retry_attempt,
+                                        retry_text
+                                    );
+                                }
+                            }
+                        }
+                    }
+                });
             }
 
             if !authenticated {
