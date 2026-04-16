@@ -327,7 +327,7 @@ fn items_to_media_items_no_images(
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     load_dotenv();
-    env_logger::init();
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
     info!("Jellyfin TV starting...");
 
     // Clean up stale /dev/shm/jmp-cache from previous runs (was RAM disk cache, now removed)
