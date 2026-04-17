@@ -589,7 +589,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                             if !authenticated && !should_clear_saved_auth {
                                 warn!(
-                                    "Saved-token transient retry window exhausted after {:.1}s; falling back to credential/public-user login",
+                                    "Saved-token transient retry window exhausted after {:.1}s; continuing background recovery while keeping login available",
                                     retry_started_at.elapsed().as_secs_f32()
                                 );
                                 schedule_saved_token_background_recovery = true;
@@ -749,6 +749,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
 
                         let (Some(user_id), Some(token)) = (saved_user_id, saved_token) else {
+                            warn!(
+                                "Saved-token background recovery stopped because cached credentials are no longer available; showing login screen"
+                            );
+                            should_show_login = true;
                             break;
                         };
 
