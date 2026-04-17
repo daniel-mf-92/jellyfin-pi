@@ -814,7 +814,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Keep login usable while saved-token recovery runs in background.
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
-                let mut public_user_retry_task_started = false;
                 info!("Loading public users while saved-token background recovery is active");
                 let users_loaded_in_foreground = load_public_users_foreground_once(
                     ui_handle.clone(),
@@ -826,16 +825,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     warn!(
-                        "Public users unavailable during saved-token recovery; starting background public-user retries while saved-token recovery keeps running"
+                        "Public users unavailable during saved-token recovery; keeping login available while saved-token recovery continues in background"
                     );
-                    public_user_retry_task_started = true;
-                    let ui_public_retry = ui_handle.clone();
-                    let client_public_retry = client_clone.clone();
-                    let image_public_retry = image_clone.clone();
-                    spawn_ui_task(async move {
-                        load_public_users(ui_public_retry, client_public_retry, image_public_retry)
-                            .await;
-                    });
                 }
 
                 let ui_retry = ui_handle.clone();
@@ -964,7 +955,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                if should_show_login && !public_user_retry_task_started {
+                if should_show_login && !users_loaded_in_foreground {
                     load_public_users(ui_retry, client_retry, image_retry).await;
                 }
             }
