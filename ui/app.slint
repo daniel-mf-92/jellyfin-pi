@@ -26,6 +26,7 @@ export global AppBridge {
     // Auth
     callback login(/* user_id */ string, /* password */ string);
     callback logout();
+    callback retry-connection();
 
     // Content loading
     callback request-home-data();
@@ -192,6 +193,9 @@ export component AppWindow inherits Window {
             }
             submit-password(user-id, password) => {
                 AppBridge.login(user-id, password);
+            }
+            request-quick-connect() => {
+                AppBridge.retry-connection();
             }
         }
 

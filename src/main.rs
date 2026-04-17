@@ -1280,6 +1280,24 @@ fn setup_auth_callbacks(
     config: Arc<RwLock<AppConfig>>,
     daemon_mgr: Arc<Mutex<daemon::DaemonManager>>,
 ) {
+    // retry-connection() from login screen
+    let ui_weak = ui.as_weak();
+    let client_clone = client.clone();
+    let image_clone = image_cache.clone();
+    ui.global::<AppBridge>().on_retry_connection(move || {
+        let ui_weak = ui_weak.clone();
+        let client = client_clone.clone();
+        let image_cache = image_clone.clone();
+
+        spawn_ui_task(async move {
+            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                ui.global::<AppBridge>().set_error_message("".into());
+                ui.global::<AppBridge>().set_is_loading(true);
+            });
+            load_public_users(ui_weak, client, image_cache).await;
+        });
+    });
+
     // login(user_id, password)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
@@ -2757,6 +2775,7 @@ async fn apply_loaded_public_users(
         let model = VecModel::from(user_infos);
         ui.global::<AppBridge>().set_users(ModelRc::new(model));
         ui.global::<AppBridge>().set_error_message("".into());
+        ui.global::<AppBridge>().set_is_loading(false);
     }
 }
 
