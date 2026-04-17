@@ -1456,10 +1456,17 @@ fn setup_auth_callbacks(
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
+    let retry_connection_in_flight = Arc::new(AtomicBool::new(false));
     ui.global::<AppBridge>().on_retry_connection(move || {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
+        let retry_connection_in_flight = retry_connection_in_flight.clone();
+
+        if retry_connection_in_flight.swap(true, Ordering::AcqRel) {
+            debug!("Ignoring duplicate retry-connection request while foreground retry is in flight");
+            return;
+        }
 
         spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
@@ -1471,6 +1478,7 @@ fn setup_auth_callbacks(
             // spawning another load_public_users() here would create duplicate
             // infinite retry tasks on each button press.
             let _ = load_public_users_foreground_once(ui_weak, client, image_cache, false).await;
+            retry_connection_in_flight.store(false, Ordering::Release);
         });
     });
 
