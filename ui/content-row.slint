@@ -15,7 +15,8 @@ export component ContentRow inherits VerticalLayout {
     callback item-play-requested(string);
 
     private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
-    private property <length> scroll-target: root.focused-index * (root.card-width + Theme.card-gap);
+    private property <length> step-width: root.card-width + Theme.card-gap;
+    private property <length> raw-scroll-target: max(0px, root.focused-index * root.step-width);
     private property <length> content-width:
         root.items.length > 0
             ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (Theme.overscan-h * 2)
@@ -42,11 +43,13 @@ export component ContentRow inherits VerticalLayout {
     }
 
     // Horizontal scrolling card strip
-    Flickable {
+    row-flickable := Flickable {
         height: root.is-landscape ? Theme.landscape-height + 120px : Theme.poster-height + 120px;
         viewport-width: root.content-width;
+        private property <length> max-scroll: max(0px, root.content-width - self.width);
+        private property <length> clamped-scroll-target: min(self.max-scroll, root.raw-scroll-target);
 
-        viewport-x: -root.scroll-target + Theme.overscan-h;
+        viewport-x: -self.clamped-scroll-target;
 
         animate viewport-x {
             duration: Theme.transition-duration;
