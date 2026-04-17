@@ -750,12 +750,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
                 info!("Loading public users while saved-token background recovery is active");
-                load_public_users_foreground_once(
+                let users_loaded_in_foreground = load_public_users_foreground_once(
                     ui_handle.clone(),
                     client_clone.clone(),
                     image_clone.clone(),
                 )
                 .await;
+
+                if !users_loaded_in_foreground {
+                    // Keep login user loading alive in parallel while saved-token
+                    // recovery keeps trying. This avoids getting stuck on an empty
+                    // login screen if one of the recovery loops stalls.
+                    let ui_public_retry = ui_handle.clone();
+                    let client_public_retry = client_clone.clone();
+                    let image_public_retry = image_clone.clone();
+                    spawn_ui_task(async move {
+                        load_public_users(ui_public_retry, client_public_retry, image_public_retry)
+                            .await;
+                    });
+                }
 
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
@@ -2706,7 +2719,7 @@ async fn load_public_users_foreground_once(
     ui_weak: slint::Weak<AppWindow>,
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
-) {
+) -> bool {
     let server_url = {
         let c = client.read().await;
         c.server_url.clone()
@@ -2723,6 +2736,7 @@ async fn load_public_users_foreground_once(
     match result {
         Ok(users) => {
             apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+            true
         }
         Err(e) => {
             let transient = {
@@ -2741,7 +2755,7 @@ async fn load_public_users_foreground_once(
                     "Public-user loading stopped because Jellyfin setup wizard is not completed"
                 );
                 show_incomplete_jellyfin_setup_message(&ui_weak);
-                return;
+                return false;
             }
 
             let message = if transient {
@@ -2753,6 +2767,7 @@ async fn load_public_users_foreground_once(
                 ui.global::<AppBridge>().set_error_message(message.into());
                 ui.global::<AppBridge>().set_is_loading(false);
             });
+            false
         }
     }
 }
