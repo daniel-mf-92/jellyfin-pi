@@ -1310,9 +1310,16 @@ async fn detect_incomplete_jellyfin_setup(
     client: &Arc<RwLock<JellyfinClient>>,
 ) -> bool {
     let c = client.read().await;
-    match c.get_public_system_info().await {
-        Ok(info) if info.startup_wizard_completed == Some(false) => true,
-        Ok(_) => false,
+    let info_result = tokio::time::timeout(
+        tokio::time::Duration::from_secs(3),
+        c.get_public_system_info(),
+    )
+    .await;
+
+    match info_result {
+        Ok(Ok(info)) if info.startup_wizard_completed == Some(false) => true,
+        Ok(Ok(_)) => false,
+        Ok(Err(_)) => false,
         Err(_) => false,
     }
 }
