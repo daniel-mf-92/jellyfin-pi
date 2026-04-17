@@ -869,14 +869,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    // Keep retries non-blocking here: awaiting a write lock can stall
-                    // both background retry loops if another request is stuck while
-                    // holding a read lock. Best-effort refresh auth state without
-                    // blocking this recovery loop.
-                    if let Ok(mut c) = client_retry.try_write() {
-                        c.access_token = Some(token);
-                        c.user_id = Some(user_id);
-                    }
+                    // Ensure saved auth is definitely applied before each retry.
+                    // A best-effort try_write() can silently fail and then the retry
+                    // runs with empty auth, which prematurely stops recovery.
+                    let mut client_guard = client_retry.write().await;
+                    client_guard.access_token = Some(token);
+                    client_guard.user_id = Some(user_id);
+                    drop(client_guard);
 
                     match with_loading_timeout(
                         "Home load (saved token background recovery)",
