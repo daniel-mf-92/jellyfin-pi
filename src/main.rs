@@ -1413,7 +1413,6 @@ fn setup_auth_callbacks(
         spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_error_message("".into());
-                ui.global::<AppBridge>().set_is_loading(true);
             });
             load_public_users(ui_weak, client, image_cache).await;
         });
