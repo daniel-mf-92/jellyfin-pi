@@ -581,8 +581,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS,
                                 ))
                                 .await;
-                                match with_loading_timeout(
+                                match with_loading_timeout_secs(
                                     "Home load (saved token retry)",
+                                    SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS,
                                     load_home_data(
                                         ui_handle.clone(),
                                         client_clone.clone(),
