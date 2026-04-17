@@ -312,6 +312,7 @@ pub struct PublicSystemInfo {
     pub server_name: String,
     pub version: String,
     pub id: String,
+    #[serde(alias = "startupWizardCompleted")]
     pub startup_wizard_completed: Option<bool>,
 }
 
