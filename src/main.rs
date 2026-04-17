@@ -734,6 +734,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !authenticated && schedule_saved_token_background_recovery {
+                // Keep login usable while saved-token recovery runs in background.
+                // This attempts to load public users immediately instead of waiting
+                // for recovery to fail first.
+                {
+                    let ui_login = ui_handle.clone();
+                    let client_login = client_clone.clone();
+                    let image_login = image_clone.clone();
+                    spawn_ui_task(async move {
+                        info!(
+                            "Loading public users while saved-token background recovery is active"
+                        );
+                        load_public_users(ui_login, client_login, image_login).await;
+                    });
+                }
+
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
                 let image_retry = image_clone.clone();
