@@ -15,10 +15,13 @@ export component ContentRow inherits VerticalLayout {
     callback item-play-requested(string);
 
     private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
-    private property <length> step-width: root.card-width + Theme.card-gap;
+    // MediaCard includes focus-scale padding in its component width.
+    // Use the scaled footprint for scroll calculations to keep focused cards in view.
+    private property <length> card-footprint-width: root.card-width * Theme.focus-scale;
+    private property <length> step-width: root.card-footprint-width + Theme.card-gap;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (Theme.overscan-h * 2)
+            ? (root.items.length * root.card-footprint-width) + ((root.items.length - 1) * Theme.card-gap) + (Theme.overscan-h * 2)
             : Theme.overscan-h * 2;
 
     spacing: 0px;
