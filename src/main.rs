@@ -1419,7 +1419,18 @@ async fn detect_incomplete_jellyfin_setup(
 
     match public_info {
         Ok(info) => {
-            let setup_incomplete = matches!(info.startup_wizard_completed, Some(false));
+            let setup_incomplete_flag = matches!(info.startup_wizard_completed, Some(false));
+            let has_identity_fields = !info.server_name.trim().is_empty()
+                || !info.version.trim().is_empty()
+                || !info.id.trim().is_empty();
+            let setup_incomplete = setup_incomplete_flag && has_identity_fields;
+
+            if setup_incomplete_flag && !has_identity_fields {
+                warn!(
+                    "Ignoring ambiguous startup-wizard status from Jellyfin (empty server metadata while service may still be starting)"
+                );
+            }
+
             if setup_incomplete {
                 warn!(
                     "Jellyfin startup wizard is not completed (server='{}', version='{}')",
