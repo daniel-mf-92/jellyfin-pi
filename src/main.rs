@@ -809,6 +809,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
                 let mut retry_attempt: u32 = 0;
                 let mut should_show_login = false;
+                let mut seeded_recovery_auth = false;
                 loop {
                     retry_attempt += 1;
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -826,10 +827,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    {
+                    if !seeded_recovery_auth {
                         let mut c = client_retry.write().await;
                         c.access_token = Some(token);
                         c.user_id = Some(user_id);
+                        seeded_recovery_auth = true;
                     }
 
                     match with_loading_timeout(
