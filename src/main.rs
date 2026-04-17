@@ -3134,19 +3134,11 @@ async fn load_home_data(
         // Also add a "My Libraries" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
         for view in &views {
-            let poster = {
-                let img_tag = view.image_tags.as_ref()
-                    .and_then(|t| t.get("Primary"))
-                    .cloned()
-                    .unwrap_or_default();
-                if !img_tag.is_empty() {
-                    let url = format!("{}/Items/{}/Images/Primary?maxHeight=300&quality=80&tag={}",
-                        server_url, view.id, img_tag);
-                    let url = append_api_key(url, access_token.as_deref());
-                    image_cache.load_image(&url).await.unwrap_or_default()
-                } else {
-                    slint::Image::default()
-                }
+            let poster = if let Some(url) = view.primary_image_url(&server_url, 300) {
+                let url = append_api_key(url, access_token.as_deref());
+                image_cache.load_image(&url).await.unwrap_or_default()
+            } else {
+                slint::Image::default()
             };
             library_cards.push(MediaItem {
                 id: SharedString::from(&view.id),
