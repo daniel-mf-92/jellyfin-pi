@@ -77,10 +77,9 @@ const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Keep saved-token retries in foreground long enough to ride out
-// typical Jellyfin warm-up without dropping users to the login screen.
-// This better matches the spec: when a saved token exists, skip login.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 30;
+// Extra foreground retry budget after the initial saved-token home load.
+// Total foreground wait stays capped by LOADING_TIMEOUT_SECS.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 8;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
@@ -509,6 +508,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
+                let saved_token_attempt_started_at = std::time::Instant::now();
                 {
                     let mut c = client_clone.write().await;
                     c.access_token = Some(token.clone());
@@ -567,8 +567,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
-                            let retry_window = std::time::Duration::from_secs(
+                            let max_foreground_window = std::time::Duration::from_secs(
                                 SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS,
+                            );
+                            let loading_budget = std::time::Duration::from_secs(LOADING_TIMEOUT_SECS);
+                            let retry_window = std::cmp::min(
+                                max_foreground_window,
+                                loading_budget
+                                    .saturating_sub(saved_token_attempt_started_at.elapsed()),
                             );
                             let retry_started_at = std::time::Instant::now();
                             let mut retry_attempt: u32 = 0;
