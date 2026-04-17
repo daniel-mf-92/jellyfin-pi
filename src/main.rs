@@ -1404,24 +1404,11 @@ async fn with_loading_timeout<T>(
 async fn detect_incomplete_jellyfin_setup(
     client: &Arc<RwLock<JellyfinClient>>,
 ) -> bool {
-    let c = client.read().await;
-    let info_result = tokio::time::timeout(
-        tokio::time::Duration::from_secs(3),
-        c.get_public_system_info(),
-    )
-    .await;
-
-    match info_result {
-        Ok(Ok(info)) if info.startup_wizard_completed == Some(false) => {
-            warn!(
-                "startupWizardCompleted=false reported by Jellyfin; blocking retries until setup completes"
-            );
-            true
-        }
-        Ok(Ok(_)) => false,
-        Ok(Err(_)) => false,
-        Err(_) => false,
-    }
+    // `startupWizardCompleted` can legitimately be `false` during server startup,
+    // while auth/public endpoints still return transient 503 responses.
+    // Treat it as non-blocking so retry loops can recover once Jellyfin is ready.
+    let _ = client;
+    false
 }
 
 fn show_incomplete_jellyfin_setup_message(ui_weak: &slint::Weak<AppWindow>) {
