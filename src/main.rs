@@ -83,6 +83,10 @@ const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 
 slint::include_modules!();
 
+fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
+    let _ = slint::spawn_local(async_compat::Compat::new(future));
+}
+
 fn read_rss_mb() -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     status
@@ -440,7 +444,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let state_clone = state.clone();
         let config_clone = config.clone();
         let daemon_mgr_clone = daemon_mgr.clone();
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             let mut authenticated = false;
             let mut schedule_saved_token_background_recovery = false;
 
@@ -736,7 +740,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let state_retry = state_clone.clone();
                 let config_retry = config_clone.clone();
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
-                let _ = slint::spawn_local(async move {
+                spawn_ui_task(async move {
                     let mut retry_attempt: u32 = 0;
                     let mut should_show_login = false;
                     loop {
@@ -878,7 +882,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 11a. RSS monitoring and cache trimming (runs on Slint event loop since ImageCache is !Send)
     {
         let image_cache_rss = image_cache.clone();
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
                 if let Some(mb) = read_rss_mb() {
@@ -994,7 +998,7 @@ fn setup_navigation_callbacks(
         // Notify daemon of screen change (for foreground-app tracking)
         let _ = daemon_screen_tx.send(screen_str.clone());
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             debug!("Navigate requested: screen={}, param={}", screen_str, param_str);
 
             // Reset idle timer on navigation
@@ -1204,7 +1208,7 @@ fn setup_navigation_callbacks(
         let image_cache = image_clone.clone();
         let detail_load_in_flight = detail_flag_clone.clone();
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             // Clear error message on back
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_error_message("".into());
@@ -1293,7 +1297,7 @@ fn setup_auth_callbacks(
         let user_id_str = user_id.to_string();
         let password_str = password.to_string();
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
                 ui.global::<AppBridge>().set_error_message("".into());
@@ -2094,7 +2098,7 @@ fn setup_playback_callbacks(
         ui.global::<AppBridge>().on_toggle_media_player(move || {
             let config_inner = config_toggle.clone();
             let ui_weak_inner = ui_weak.clone();
-            let _ = slint::spawn_local(async move {
+            spawn_ui_task(async move {
                 let mut cfg = config_inner.write().await;
                 cfg.playback.default_player = if cfg.playback.default_player == "vlc" {
                     "mpv".to_string()
@@ -2290,7 +2294,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let state = state_clone.clone();
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
             });
@@ -2324,7 +2328,7 @@ fn setup_content_callbacks(
             let sort_str = sort.to_string();
             let filter_str = filter.to_string();
 
-            let _ = slint::spawn_local(async move {
+            spawn_ui_task(async move {
                 // If library_id is empty (from sort/filter change), get it from state
                 let library_id_str = if library_id_str.is_empty() {
                     state.get_screen_param().await.unwrap_or_default()
@@ -2389,7 +2393,7 @@ fn setup_content_callbacks(
             let image_cache = image_clone.clone();
             let item_id_str = item_id.to_string();
 
-            let _ = slint::spawn_local(async move {
+            spawn_ui_task(async move {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
@@ -2423,7 +2427,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let query_str = query.to_string();
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             if query_str.trim().is_empty() {
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>()
@@ -2461,7 +2465,7 @@ fn setup_content_callbacks(
         let image_cache = image_clone.clone();
         let series_id_str = series_id.to_string();
 
-        let _ = slint::spawn_local(async move {
+        spawn_ui_task(async move {
             if let Err(e) =
                 load_seasons(ui_weak.clone(), client, image_cache, &series_id_str).await
             {
@@ -2482,7 +2486,7 @@ fn setup_content_callbacks(
             let series_id_str = series_id.to_string();
             let season_id_str = season_id.to_string();
 
-            let _ = slint::spawn_local(async move {
+            spawn_ui_task(async move {
                 if let Err(e) = load_episodes(
                     ui_weak.clone(),
                     client,
