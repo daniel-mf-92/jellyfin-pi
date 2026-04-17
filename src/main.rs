@@ -77,8 +77,9 @@ const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Allow Jellyfin startup spikes without immediately dropping to login/public-user fallback.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 60;
+// Keep saved-token foreground retries within the UI loading budget.
+// Longer recovery continues in background while login/home remains usable.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 
 slint::include_modules!();
 
