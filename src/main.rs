@@ -65,7 +65,7 @@ use state::{StateManager, Screen};
 use config::AppConfig;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
@@ -83,6 +83,9 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // longer recovery continues in the background loop below.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
+const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
+
+static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 
 slint::include_modules!();
 
@@ -1423,27 +1426,39 @@ async fn detect_incomplete_jellyfin_setup(
             let has_identity_fields = !info.server_name.trim().is_empty()
                 || !info.version.trim().is_empty()
                 || !info.id.trim().is_empty();
-            // During Jellyfin startup, `/System/Info/Public` can temporarily return
-            // minimal metadata with `StartupWizardCompleted=false` even when setup is
-            // already complete. Only treat setup as incomplete when identity fields are
-            // present so transient startup states keep retrying instead of hard-stopping.
-            let setup_incomplete = setup_incomplete_flag && has_identity_fields;
+            let setup_incomplete_candidate = setup_incomplete_flag && has_identity_fields;
 
             if setup_incomplete_flag && !has_identity_fields {
+                SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
                 warn!(
                     "Jellyfin reports startup wizard incomplete with minimal metadata; treating as transient startup state"
                 );
+                return false;
             }
 
-            if setup_incomplete {
-                warn!(
-                    "Jellyfin startup wizard is not completed (server='{}', version='{}')",
-                    info.server_name, info.version
-                );
+            if !setup_incomplete_candidate {
+                SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
+                return false;
             }
-            setup_incomplete
+
+            let streak = SETUP_INCOMPLETE_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
+            if streak < SETUP_INCOMPLETE_CONFIRMATION_STREAK {
+                warn!(
+                    "Jellyfin setup appears incomplete (observation {}/{}); waiting for confirmation before stopping retries",
+                    streak,
+                    SETUP_INCOMPLETE_CONFIRMATION_STREAK,
+                );
+                return false;
+            }
+
+            warn!(
+                "Jellyfin startup wizard is not completed (server='{}', version='{}')",
+                info.server_name, info.version
+            );
+            true
         }
         Err(err) => {
+            SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
             debug!(
                 "Could not read Jellyfin public system info while checking setup status: {}",
                 err
