@@ -78,8 +78,10 @@ const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = 3;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Keep login responsive: recovery continues in background instead of blocking startup.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 0;
+// Give saved-token startup a short foreground recovery window before falling
+// back to login + background retry, reducing false login-screen flashes while
+// Jellyfin is still finishing startup.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 6;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
