@@ -2618,10 +2618,13 @@ async fn load_public_users(
             || lower.contains("connection")
     };
     for attempt in 1..=max_attempts_before_background_retry {
-        let result = {
+        let result = with_loading_timeout("Load public users", async {
             let c = client.read().await;
-            c.get_public_users().await
-        };
+            c.get_public_users()
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+        })
+        .await;
 
         match result {
             Ok(users) => {
@@ -2666,10 +2669,13 @@ async fn load_public_users(
         retry_attempt += 1;
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-        let result = {
+        let result = with_loading_timeout("Load public users (background)", async {
             let c = client.read().await;
-            c.get_public_users().await
-        };
+            c.get_public_users()
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+        })
+        .await;
 
         match result {
             Ok(users) => {
