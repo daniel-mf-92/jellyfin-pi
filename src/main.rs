@@ -84,7 +84,9 @@ const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 slint::include_modules!();
 
 fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
-    let _ = slint::spawn_local(async_compat::Compat::new(future));
+    if let Err(e) = slint::spawn_local(async_compat::Compat::new(future)) {
+        error!("Failed to spawn UI task: {}", e);
+    }
 }
 
 fn read_rss_mb() -> Option<u64> {
@@ -747,17 +749,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Keep login usable while saved-token recovery runs in background.
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
-                {
-                    let ui_login = ui_handle.clone();
-                    let client_login = client_clone.clone();
-                    let image_login = image_clone.clone();
-                    spawn_ui_task(async move {
-                        info!(
-                            "Loading public users while saved-token background recovery is active"
-                        );
-                        load_public_users(ui_login, client_login, image_login).await;
-                    });
-                }
+                info!("Loading public users while saved-token background recovery is active");
+                load_public_users_foreground_once(
+                    ui_handle.clone(),
+                    client_clone.clone(),
+                    image_clone.clone(),
+                )
+                .await;
 
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
@@ -765,124 +763,122 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let state_retry = state_clone.clone();
                 let config_retry = config_clone.clone();
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
-                spawn_ui_task(async move {
-                    let mut retry_attempt: u32 = 0;
-                    let mut should_show_login = false;
-                    loop {
-                        retry_attempt += 1;
-                        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                let mut retry_attempt: u32 = 0;
+                let mut should_show_login = false;
+                loop {
+                    retry_attempt += 1;
+                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
-                        let (saved_user_id, saved_token) = {
-                            let cfg = config_retry.read().await;
-                            (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
-                        };
+                    let (saved_user_id, saved_token) = {
+                        let cfg = config_retry.read().await;
+                        (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
+                    };
 
-                        let (Some(user_id), Some(token)) = (saved_user_id, saved_token) else {
-                            warn!(
-                                "Saved-token background recovery stopped because cached credentials are no longer available; showing login screen"
+                    let (Some(user_id), Some(token)) = (saved_user_id, saved_token) else {
+                        warn!(
+                            "Saved-token background recovery stopped because cached credentials are no longer available; showing login screen"
+                        );
+                        should_show_login = true;
+                        break;
+                    };
+
+                    {
+                        let mut c = client_retry.write().await;
+                        c.access_token = Some(token);
+                        c.user_id = Some(user_id);
+                    }
+
+                    match with_loading_timeout(
+                        "Home load (saved token background recovery)",
+                        load_home_data(
+                            ui_retry.clone(),
+                            client_retry.clone(),
+                            image_retry.clone(),
+                            state_retry.clone(),
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            info!(
+                                "Saved-token auto-login recovered in background after startup retry exhaustion (attempt {})",
+                                retry_attempt
                             );
-                            should_show_login = true;
-                            break;
-                        };
-
-                        {
-                            let mut c = client_retry.write().await;
-                            c.access_token = Some(token);
-                            c.user_id = Some(user_id);
-                        }
-
-                        match with_loading_timeout(
-                            "Home load (saved token background recovery)",
-                            load_home_data(
-                                ui_retry.clone(),
+                            daemon_mgr_retry.lock().await.start(
                                 client_retry.clone(),
-                                image_retry.clone(),
+                                config_retry.clone(),
                                 state_retry.clone(),
-                            ),
-                        )
-                        .await
-                        {
-                            Ok(()) => {
-                                info!(
-                                    "Saved-token auto-login recovered in background after startup retry exhaustion (attempt {})",
-                                    retry_attempt
+                            );
+                            state_retry.navigate_replace(Screen::Home).await;
+                            let _ = ui_retry.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_error_message("".into());
+                                ui.global::<AppBridge>().set_current_screen("home".into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                            break;
+                        }
+                        Err(retry_err) => {
+                            let retry_text = retry_err.to_string();
+                            let retry_lower = retry_text.to_ascii_lowercase();
+                            let retry_auth_failure = retry_lower.contains("auth error")
+                                || retry_lower.contains("unauthorized")
+                                || retry_lower.contains("not authenticated");
+                            let retry_transient_startup_failure = retry_lower.contains("503")
+                                || retry_lower.contains("server is starting")
+                                || retry_lower.contains("service unavailable")
+                                || retry_lower.contains("network error")
+                                || retry_lower.contains("timed out")
+                                || retry_lower.contains("connection");
+
+                            if retry_auth_failure {
+                                warn!(
+                                    "Saved token became invalid during background recovery; clearing cached token"
                                 );
-                                daemon_mgr_retry.lock().await.start(
-                                    client_retry.clone(),
-                                    config_retry.clone(),
-                                    state_retry.clone(),
-                                );
-                                state_retry.navigate_replace(Screen::Home).await;
-                                let _ = ui_retry.upgrade_in_event_loop(|ui| {
-                                    ui.global::<AppBridge>().set_error_message("".into());
-                                    ui.global::<AppBridge>().set_current_screen("home".into());
-                                    ui.global::<AppBridge>().set_is_loading(false);
-                                });
+                                {
+                                    let mut cfg = config_retry.write().await;
+                                    cfg.clear_auth();
+                                }
+                                {
+                                    let mut c = client_retry.write().await;
+                                    c.access_token = None;
+                                    c.user_id = None;
+                                }
+                                should_show_login = true;
                                 break;
                             }
-                            Err(retry_err) => {
-                                let retry_text = retry_err.to_string();
-                                let retry_lower = retry_text.to_ascii_lowercase();
-                                let retry_auth_failure = retry_lower.contains("auth error")
-                                    || retry_lower.contains("unauthorized")
-                                    || retry_lower.contains("not authenticated");
-                                let retry_transient_startup_failure = retry_lower.contains("503")
-                                    || retry_lower.contains("server is starting")
-                                    || retry_lower.contains("service unavailable")
-                                    || retry_lower.contains("network error")
-                                    || retry_lower.contains("timed out")
-                                    || retry_lower.contains("connection");
 
-                                if retry_auth_failure {
-                                    warn!(
-                                        "Saved token became invalid during background recovery; clearing cached token"
-                                    );
-                                    {
-                                        let mut cfg = config_retry.write().await;
-                                        cfg.clear_auth();
-                                    }
-                                    {
-                                        let mut c = client_retry.write().await;
-                                        c.access_token = None;
-                                        c.user_id = None;
-                                    }
-                                    should_show_login = true;
-                                    break;
-                                }
+                            if !retry_transient_startup_failure {
+                                warn!(
+                                    "Stopping saved-token background recovery due to non-transient error: {}",
+                                    retry_text
+                                );
+                                should_show_login = true;
+                                break;
+                            }
 
-                                if !retry_transient_startup_failure {
-                                    warn!(
-                                        "Stopping saved-token background recovery due to non-transient error: {}",
-                                        retry_text
-                                    );
-                                    should_show_login = true;
-                                    break;
-                                }
+                            if detect_incomplete_jellyfin_setup(&client_retry).await {
+                                warn!(
+                                    "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
+                                );
+                                show_incomplete_jellyfin_setup_message(&ui_retry);
+                                should_show_login = false;
+                                break;
+                            }
 
-                                if detect_incomplete_jellyfin_setup(&client_retry).await {
-                                    warn!(
-                                        "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
-                                    );
-                                    show_incomplete_jellyfin_setup_message(&ui_retry);
-                                    should_show_login = false;
-                                    break;
-                                }
-
-                                if retry_attempt % 6 == 0 {
-                                    warn!(
-                                        "Still waiting for Jellyfin while recovering saved-token auto-login (background attempt {}): {}",
-                                        retry_attempt,
-                                        retry_text
-                                    );
-                                }
+                            if retry_attempt % 6 == 0 {
+                                warn!(
+                                    "Still waiting for Jellyfin while recovering saved-token auto-login (background attempt {}): {}",
+                                    retry_attempt,
+                                    retry_text
+                                );
                             }
                         }
                     }
+                }
 
-                    if should_show_login {
-                        load_public_users(ui_retry, client_retry, image_retry).await;
-                    }
-                });
+                if should_show_login {
+                    load_public_users(ui_retry, client_retry, image_retry).await;
+                }
             }
 
             if !authenticated && !schedule_saved_token_background_recovery {
@@ -2703,6 +2699,63 @@ fn setup_user_action_callbacks(
 // =============================================================================
 // Data Loading Functions
 // =============================================================================
+
+/// Fetch public users once without entering the long-running background retry loop.
+/// Used when saved-token recovery is already retrying in the background.
+async fn load_public_users_foreground_once(
+    ui_weak: slint::Weak<AppWindow>,
+    client: Arc<RwLock<JellyfinClient>>,
+    image_cache: Arc<ImageCache>,
+) {
+    let server_url = {
+        let c = client.read().await;
+        c.server_url.clone()
+    };
+
+    let result = with_loading_timeout("Load public users", async {
+        let c = client.read().await;
+        c.get_public_users()
+            .await
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+    })
+    .await;
+
+    match result {
+        Ok(users) => {
+            apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+        }
+        Err(e) => {
+            let transient = {
+                let lower = e.to_ascii_lowercase();
+                lower.contains("503")
+                    || lower.contains("server is starting")
+                    || lower.contains("service unavailable")
+                    || lower.contains("network error")
+                    || lower.contains("timed out")
+                    || lower.contains("connection")
+            };
+            warn!("Failed to load public users (foreground pass): {}", e);
+
+            if detect_incomplete_jellyfin_setup(&client).await {
+                warn!(
+                    "Public-user loading stopped because Jellyfin setup wizard is not completed"
+                );
+                show_incomplete_jellyfin_setup_message(&ui_weak);
+                return;
+            }
+
+            let message = if transient {
+                "Cannot connect to Jellyfin (retrying in background)...".to_string()
+            } else {
+                format!("Cannot connect to server: {}", e)
+            };
+            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                ui.global::<AppBridge>().set_error_message(message.into());
+                ui.global::<AppBridge>().set_is_loading(false);
+            });
+        }
+    }
+}
 
 /// Fetch and display public users on the login screen.
 async fn load_public_users(
