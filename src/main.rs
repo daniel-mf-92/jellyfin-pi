@@ -1423,11 +1423,15 @@ async fn detect_incomplete_jellyfin_setup(
             let has_identity_fields = !info.server_name.trim().is_empty()
                 || !info.version.trim().is_empty()
                 || !info.id.trim().is_empty();
-            let setup_incomplete = setup_incomplete_flag;
+            // During Jellyfin startup, `/System/Info/Public` can temporarily return
+            // minimal metadata with `StartupWizardCompleted=false` even when setup is
+            // already complete. Only treat setup as incomplete when identity fields are
+            // present so transient startup states keep retrying instead of hard-stopping.
+            let setup_incomplete = setup_incomplete_flag && has_identity_fields;
 
             if setup_incomplete_flag && !has_identity_fields {
                 warn!(
-                    "Jellyfin reports startup wizard incomplete with minimal metadata; treating setup as incomplete"
+                    "Jellyfin reports startup wizard incomplete with minimal metadata; treating as transient startup state"
                 );
             }
 
