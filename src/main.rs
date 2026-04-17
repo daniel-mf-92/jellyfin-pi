@@ -228,14 +228,27 @@ fn map_filter_label(label: &str) -> &str {
         _ => "",
     }
 }
+
+fn append_api_key(url: String, access_token: Option<&str>) -> String {
+    match access_token {
+        Some(token) if !token.is_empty() => {
+            let separator = if url.contains('?') { '&' } else { '?' };
+            format!("{url}{separator}api_key={token}")
+        }
+        _ => url,
+    }
+}
+
 /// Load a poster image for an item through the image cache.
 async fn load_poster_image(
     item: &BaseItemDto,
     server_url: &str,
+    access_token: Option<&str>,
     image_cache: &ImageCache,
     max_height: i32,
 ) -> SlintImage {
     if let Some(url) = item.primary_image_url(server_url, max_height) {
+        let url = append_api_key(url, access_token);
         image_cache
             .load_image(&url)
             .await
@@ -249,10 +262,12 @@ async fn load_poster_image(
 async fn load_backdrop_image(
     item: &BaseItemDto,
     server_url: &str,
+    access_token: Option<&str>,
     image_cache: &ImageCache,
     max_width: i32,
 ) -> SlintImage {
     if let Some(url) = item.backdrop_image_url(server_url, max_width) {
+        let url = append_api_key(url, access_token);
         image_cache
             .load_image(&url)
             .await
@@ -266,6 +281,7 @@ async fn load_backdrop_image(
 async fn load_user_avatar(
     user: &UserDto,
     server_url: &str,
+    access_token: Option<&str>,
     image_cache: &ImageCache,
 ) -> SlintImage {
     if let Some(tag) = &user.primary_image_tag {
@@ -273,6 +289,7 @@ async fn load_user_avatar(
             "{}/Users/{}/Images/Primary?maxHeight=96&quality=90&tag={}",
             server_url, user.id, tag
         );
+        let url = append_api_key(url, access_token);
         image_cache
             .load_image(&url)
             .await
@@ -286,6 +303,7 @@ async fn load_user_avatar(
 async fn items_to_media_items(
     items: &[BaseItemDto],
     server_url: &str,
+    access_token: Option<&str>,
     image_cache: &ImageCache,
 ) -> Vec<MediaItem> {
     // Load poster images concurrently in batches of 20 (no backdrops for grid view)
@@ -295,8 +313,16 @@ async fn items_to_media_items(
             .iter()
             .map(|item| {
                 let server_url = server_url.to_string();
+                let access_token = access_token.map(str::to_owned);
                 async move {
-                    let poster = load_poster_image(item, &server_url, image_cache, 225).await;
+                    let poster = load_poster_image(
+                        item,
+                        &server_url,
+                        access_token.as_deref(),
+                        image_cache,
+                        225,
+                    )
+                    .await;
                     let backdrop = SlintImage::default(); // defer backdrop until detail page
                     base_item_to_media_item(item, &server_url, poster, backdrop)
                 }
@@ -681,8 +707,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let c = client_clone.read().await;
                                 c.server_url.clone()
                             };
-                            let avatar =
-                                load_user_avatar(&result.user, &server_url, &image_clone).await;
+                            let avatar = load_user_avatar(
+                                &result.user,
+                                &server_url,
+                                Some(result.access_token.as_str()),
+                                &image_clone,
+                            )
+                            .await;
                             let user_info =
                                 user_dto_to_user_info(&result.user, &server_url, avatar);
                             if let Some(ui) = ui_handle.upgrade() {
@@ -1432,8 +1463,13 @@ fn setup_auth_callbacks(
                         let c = client.read().await;
                         c.server_url.clone()
                     };
-                    let avatar =
-                        load_user_avatar(&result.user, &server_url, &image_cache).await;
+                    let avatar = load_user_avatar(
+                        &result.user,
+                        &server_url,
+                        Some(result.access_token.as_str()),
+                        &image_cache,
+                    )
+                    .await;
                     let user_info = user_dto_to_user_info(&result.user, &server_url, avatar);
                     if let Some(ui) = ui_weak.upgrade() {
                         ui.global::<AppBridge>().set_current_user(user_info);
@@ -2720,9 +2756,9 @@ async fn load_public_users_foreground_once(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
 ) -> bool {
-    let server_url = {
+    let (server_url, access_token) = {
         let c = client.read().await;
-        c.server_url.clone()
+        (c.server_url.clone(), c.access_token.clone())
     };
 
     let result = with_loading_timeout("Load public users", async {
@@ -2735,7 +2771,14 @@ async fn load_public_users_foreground_once(
 
     match result {
         Ok(users) => {
-            apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+            apply_loaded_public_users(
+                &ui_weak,
+                &server_url,
+                access_token.as_deref(),
+                &image_cache,
+                users,
+            )
+            .await;
             true
         }
         Err(e) => {
@@ -2778,9 +2821,9 @@ async fn load_public_users(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
 ) {
-    let server_url = {
+    let (server_url, access_token) = {
         let c = client.read().await;
-        c.server_url.clone()
+        (c.server_url.clone(), c.access_token.clone())
     };
 
     // Keep foreground loading under ~10s (spec) before switching to background retry.
@@ -2805,7 +2848,14 @@ async fn load_public_users(
 
         match result {
             Ok(users) => {
-                apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+                apply_loaded_public_users(
+                    &ui_weak,
+                    &server_url,
+                    access_token.as_deref(),
+                    &image_cache,
+                    users,
+                )
+                .await;
                 return;
             }
             Err(e) => {
@@ -2868,7 +2918,14 @@ async fn load_public_users(
                     "Recovered public users after background retry attempt {}",
                     retry_attempt
                 );
-                apply_loaded_public_users(&ui_weak, &server_url, &image_cache, users).await;
+                apply_loaded_public_users(
+                    &ui_weak,
+                    &server_url,
+                    access_token.as_deref(),
+                    &image_cache,
+                    users,
+                )
+                .await;
                 return;
             }
             Err(e) => {
@@ -2906,13 +2963,14 @@ async fn load_public_users(
 async fn apply_loaded_public_users(
     ui_weak: &slint::Weak<AppWindow>,
     server_url: &str,
+    access_token: Option<&str>,
     image_cache: &Arc<ImageCache>,
     users: Vec<UserDto>,
 ) {
     info!("Loaded {} public users", users.len());
     let mut user_infos = Vec::with_capacity(users.len());
     for user in &users {
-        let avatar = load_user_avatar(user, server_url, image_cache).await;
+        let avatar = load_user_avatar(user, server_url, access_token, image_cache).await;
         user_infos.push(user_dto_to_user_info(user, server_url, avatar));
     }
 
@@ -2933,6 +2991,7 @@ async fn load_home_data(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
 
     // Fetch all data concurrently
     let (views_result, resume_result, next_up_result) = tokio::join!(
@@ -2951,7 +3010,9 @@ async fn load_home_data(
 
     // "Continue Watching" row
     if !resume_items.is_empty() {
-        let media_items = items_to_media_items(&resume_items, &server_url, &image_cache).await;
+        let media_items =
+            items_to_media_items(&resume_items, &server_url, access_token.as_deref(), &image_cache)
+                .await;
         rows.push(ContentRowData {
             title: SharedString::from("Continue Watching"),
             items: ModelRc::new(VecModel::from(media_items)),
@@ -2961,7 +3022,9 @@ async fn load_home_data(
 
     // "Next Up" row
     if !next_up_items.is_empty() {
-        let media_items = items_to_media_items(&next_up_items, &server_url, &image_cache).await;
+        let media_items =
+            items_to_media_items(&next_up_items, &server_url, access_token.as_deref(), &image_cache)
+                .await;
         rows.push(ContentRowData {
             title: SharedString::from("Next Up"),
             items: ModelRc::new(VecModel::from(media_items)),
@@ -2976,8 +3039,13 @@ async fn load_home_data(
         match c.get_latest_media(&view.id, 8).await {
             Ok(latest) if !latest.is_empty() => {
                 drop(c);
-                let media_items =
-                    items_to_media_items(&latest, &server_url, &image_cache).await;
+                let media_items = items_to_media_items(
+                    &latest,
+                    &server_url,
+                    access_token.as_deref(),
+                    &image_cache,
+                )
+                .await;
                 let row_type = match view.collection_type.as_deref() {
                     Some("movies") => "poster",
                     Some("tvshows") => "poster",
@@ -3025,6 +3093,7 @@ async fn load_home_data(
                 if !img_tag.is_empty() {
                     let url = format!("{}/Items/{}/Images/Primary?maxHeight=300&quality=80&tag={}",
                         server_url, view.id, img_tag);
+                    let url = append_api_key(url, access_token.as_deref());
                     image_cache.load_image(&url).await.unwrap_or_default()
                 } else {
                     slint::Image::default()
@@ -3068,6 +3137,7 @@ async fn load_item_detail(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
 
     // Fetch the primary item first so we can render the detail screen quickly.
     // Related/cast data is loaded after the initial detail payload is displayed.
@@ -3079,7 +3149,14 @@ async fn load_item_detail(
 
     // Load the poster first for quick first paint; backdrop is loaded lazily after
     // the detail content is shown so we don't block on large image downloads.
-    let poster = load_poster_image(&item, &server_url, &image_cache, 300).await;
+    let poster = load_poster_image(
+        &item,
+        &server_url,
+        access_token.as_deref(),
+        &image_cache,
+        300,
+    )
+    .await;
     let detail_item = base_item_to_media_item(&item, &server_url, poster, SlintImage::default());
 
     // If this is a series, auto-load seasons
@@ -3121,7 +3198,13 @@ async fn load_item_detail(
     // default backdrop and continue.
     let backdrop = tokio::time::timeout(
         tokio::time::Duration::from_secs(3),
-        load_backdrop_image(&item, &server_url, &image_cache, 800),
+        load_backdrop_image(
+            &item,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            800,
+        ),
     )
     .await
     .unwrap_or_default();
@@ -3203,6 +3286,7 @@ async fn load_seasons(
 
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
     let seasons = c
         .get_seasons(series_id)
         .await
@@ -3230,7 +3314,13 @@ async fn load_seasons(
         );
         items_to_media_items_no_images(&filtered_seasons, &server_url)
     } else {
-        items_to_media_items(&filtered_seasons, &server_url, &image_cache).await
+        items_to_media_items(
+            &filtered_seasons,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+        )
+        .await
     };
 
     if let Some(ui) = ui_weak.upgrade() {
@@ -3252,13 +3342,15 @@ async fn load_episodes(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
     let episodes = c
         .get_episodes(series_id, season_id)
         .await
         .map_err(|e| format!("Failed to get episodes: {}", e))?;
     drop(c);
 
-    let episode_items = items_to_media_items(&episodes, &server_url, &image_cache).await;
+    let episode_items =
+        items_to_media_items(&episodes, &server_url, access_token.as_deref(), &image_cache).await;
 
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
@@ -3285,6 +3377,7 @@ async fn load_library(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
 
     // First get the library's name
     let library_name = match c.get_item(library_id).await {
@@ -3306,7 +3399,13 @@ async fn load_library(
         .map_err(|e| format!("Failed to get library items: {}", e))?;
     drop(c);
 
-    let media_items = items_to_media_items(&result.items, &server_url, &image_cache).await;
+    let media_items = items_to_media_items(
+        &result.items,
+        &server_url,
+        access_token.as_deref(),
+        &image_cache,
+    )
+    .await;
 
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
@@ -3333,6 +3432,7 @@ async fn perform_search(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
 
     let hints = c
         .search(query, 30)
@@ -3347,6 +3447,7 @@ async fn perform_search(
                 "{}/Items/{}/Images/Primary?maxHeight=225&quality=90&tag={}",
                 server_url, hint.item_id, tag
             );
+            let url = append_api_key(url, access_token.as_deref());
             image_cache.load_image(&url).await.unwrap_or_default()
         } else {
             SlintImage::default()
