@@ -82,6 +82,9 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token startup retries bounded so login remains usable quickly;
 // longer recovery continues in the background loop below.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
+// Allow enough time for in-flight API reads to complete before declaring
+// saved-token background recovery lock contention.
+const SAVED_TOKEN_CLIENT_WRITE_LOCK_TIMEOUT_MS: u64 = 12_000;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
@@ -873,7 +876,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // blocking forever behind a long-lived read lock from other
                     // background requests (which stalls recovery loops entirely).
                     let apply_auth = tokio::time::timeout(
-                        tokio::time::Duration::from_millis(250),
+                        tokio::time::Duration::from_millis(
+                            SAVED_TOKEN_CLIENT_WRITE_LOCK_TIMEOUT_MS,
+                        ),
                         client_retry.write(),
                     )
                     .await;
