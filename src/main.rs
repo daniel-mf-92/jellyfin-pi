@@ -868,10 +868,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    {
-                        // Refresh credentials each retry so recovery always uses
-                        // the latest saved auth state.
-                        let mut c = client_retry.write().await;
+                    // Keep retries non-blocking here: awaiting a write lock can stall
+                    // both background retry loops if another request is stuck while
+                    // holding a read lock. Best-effort refresh auth state without
+                    // blocking this recovery loop.
+                    if let Ok(mut c) = client_retry.try_write() {
                         c.access_token = Some(token);
                         c.user_id = Some(user_id);
                     }
