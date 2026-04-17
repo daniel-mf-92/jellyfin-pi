@@ -505,6 +505,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         if !auth_failure && transient_startup_failure {
+                            let mut setup_incomplete = false;
                             let _ = ui_handle.upgrade_in_event_loop(|ui| {
                                 ui.global::<AppBridge>().set_error_message(
                                     "Jellyfin is starting… retrying connection.".into(),
@@ -587,11 +588,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             );
                                             break;
                                         }
+
+                                        if detect_incomplete_jellyfin_setup(&client_clone).await {
+                                            warn!(
+                                                "Saved-token auto-login retries stopped because Jellyfin setup wizard is not completed"
+                                            );
+                                            setup_incomplete = true;
+                                            show_incomplete_jellyfin_setup_message(&ui_handle);
+                                            break;
+                                        }
                                     }
                                 }
                             }
 
-                            if !authenticated && !should_clear_saved_auth {
+                            if !authenticated && !should_clear_saved_auth && !setup_incomplete {
                                 warn!(
                                     "Saved-token transient retry window exhausted after {:.1}s; continuing background recovery while keeping login available",
                                     retry_started_at.elapsed().as_secs_f32()
@@ -846,6 +856,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         retry_text
                                     );
                                     should_show_login = true;
+                                    break;
+                                }
+
+                                if detect_incomplete_jellyfin_setup(&client_retry).await {
+                                    warn!(
+                                        "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
+                                    );
+                                    show_incomplete_jellyfin_setup_message(&ui_retry);
+                                    should_show_login = false;
                                     break;
                                 }
 
@@ -1285,6 +1304,26 @@ async fn with_loading_timeout<T>(
             operation, LOADING_TIMEOUT_SECS
         )),
     }
+}
+
+async fn detect_incomplete_jellyfin_setup(
+    client: &Arc<RwLock<JellyfinClient>>,
+) -> bool {
+    let c = client.read().await;
+    match c.get_public_system_info().await {
+        Ok(info) if info.startup_wizard_completed == Some(false) => true,
+        Ok(_) => false,
+        Err(_) => false,
+    }
+}
+
+fn show_incomplete_jellyfin_setup_message(ui_weak: &slint::Weak<AppWindow>) {
+    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+        ui.global::<AppBridge>().set_error_message(
+            "Jellyfin setup is incomplete. Finish setup in Jellyfin Web, then retry.".into(),
+        );
+        ui.global::<AppBridge>().set_is_loading(false);
+    });
 }
 
 fn setup_auth_callbacks(
@@ -2710,6 +2749,14 @@ async fn load_public_users(
                     return;
                 }
 
+                if detect_incomplete_jellyfin_setup(&client).await {
+                    warn!(
+                        "Public-user loading stopped because Jellyfin setup wizard is not completed"
+                    );
+                    show_incomplete_jellyfin_setup_message(&ui_weak);
+                    return;
+                }
+
                 if attempt < max_attempts_before_background_retry {
                     tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 }
@@ -2758,6 +2805,14 @@ async fn load_public_users(
                             .set_error_message(format!("Cannot connect to server: {}", e).into());
                         ui.global::<AppBridge>().set_is_loading(false);
                     });
+                    return;
+                }
+
+                if detect_incomplete_jellyfin_setup(&client).await {
+                    warn!(
+                        "Public-user background retry stopped because Jellyfin setup wizard is not completed"
+                    );
+                    show_incomplete_jellyfin_setup_message(&ui_weak);
                     return;
                 }
 
