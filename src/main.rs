@@ -869,10 +869,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    // Ensure saved auth is definitely applied before each retry.
-                    // A best-effort try_write() can silently fail and then the retry
-                    // runs with empty auth, which prematurely stops recovery.
-                    let mut client_guard = client_retry.write().await;
+                    // Ensure saved auth is applied before each retry, but avoid
+                    // blocking forever behind a long-lived read lock from other
+                    // background requests (which stalls recovery loops entirely).
+                    let apply_auth = tokio::time::timeout(
+                        tokio::time::Duration::from_millis(250),
+                        client_retry.write(),
+                    )
+                    .await;
+                    let Ok(mut client_guard) = apply_auth else {
+                        if retry_attempt % 6 == 0 {
+                            warn!(
+                                "Saved-token background recovery is waiting for client lock (attempt {}); retrying",
+                                retry_attempt
+                            );
+                        }
+                        continue;
+                    };
                     client_guard.access_token = Some(token);
                     client_guard.user_id = Some(user_id);
                     drop(client_guard);
