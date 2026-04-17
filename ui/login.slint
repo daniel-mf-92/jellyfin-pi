@@ -205,7 +205,7 @@ export component LoginScreen inherits Rectangle {
         }
 
         // User avatar grid
-        HorizontalLayout {
+        if root.users.length > 0: HorizontalLayout {
             alignment: center;
             spacing: Theme.spacing-lg;
 
@@ -214,6 +214,38 @@ export component LoginScreen inherits Rectangle {
                 avatar: user.avatar;
                 has-password: user.has-password;
                 is-focused: idx == root.focused-user;
+            }
+        }
+
+        if root.users.length == 0: Rectangle {
+            width: 920px;
+            height: 230px;
+            border-radius: Theme.card-radius;
+            background: Theme.surface.brighter(16%);
+            border-width: 1px;
+            border-color: Theme.surface-variant.brighter(18%);
+
+            VerticalLayout {
+                alignment: center;
+                spacing: Theme.spacing-md;
+                padding-left: Theme.spacing-xl;
+                padding-right: Theme.spacing-xl;
+
+                Text {
+                    text: root.error != "" ? root.error : "Connecting to Jellyfin...";
+                    font-size: Theme.font-title-medium;
+                    font-weight: 600;
+                    color: Theme.text-primary;
+                    horizontal-alignment: center;
+                    wrap: word-wrap;
+                }
+
+                Text {
+                    text: "Press A / Enter to retry connection";
+                    font-size: Theme.font-body-large;
+                    color: Theme.text-secondary;
+                    horizontal-alignment: center;
+                }
             }
         }
 
@@ -243,7 +275,7 @@ export component LoginScreen inherits Rectangle {
         }
 
         // Error message
-        if root.error != "": Text {
+        if root.error != "" && root.users.length > 0: Text {
             text: root.error;
             font-size: Theme.font-body-medium;
             color: Theme.error;
