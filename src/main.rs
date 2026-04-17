@@ -811,6 +811,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     ui_handle.clone(),
                     client_clone.clone(),
                     image_clone.clone(),
+                    true,
                 )
                 .await;
 
@@ -1443,13 +1444,14 @@ fn setup_auth_callbacks(
 
         spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
-                ui.global::<AppBridge>().set_error_message("".into());
+                ui.global::<AppBridge>()
+                    .set_error_message("Retrying connection...".into());
             });
             // Retry should be a single foreground attempt only.
             // The startup flow already maintains background retry loops when needed;
             // spawning another load_public_users() here would create duplicate
             // infinite retry tasks on each button press.
-            let _ = load_public_users_foreground_once(ui_weak, client, image_cache).await;
+            let _ = load_public_users_foreground_once(ui_weak, client, image_cache, false).await;
         });
     });
 
@@ -2809,6 +2811,7 @@ async fn load_public_users_foreground_once(
     ui_weak: slint::Weak<AppWindow>,
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
+    background_retry_active: bool,
 ) -> bool {
     let (server_url, access_token) = {
         let c = client.read().await;
@@ -2856,7 +2859,12 @@ async fn load_public_users_foreground_once(
             }
 
             let message = if transient {
-                "Cannot connect to Jellyfin (retrying in background)...".to_string()
+                if background_retry_active {
+                    "Cannot connect to Jellyfin (retrying in background)...".to_string()
+                } else {
+                    "Cannot connect to Jellyfin. Press A / Enter to retry connection."
+                        .to_string()
+                }
             } else {
                 format!("Cannot connect to server: {}", e)
             };
