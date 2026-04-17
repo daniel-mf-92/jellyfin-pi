@@ -1445,7 +1445,11 @@ fn setup_auth_callbacks(
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_error_message("".into());
             });
-            load_public_users(ui_weak, client, image_cache).await;
+            // Retry should be a single foreground attempt only.
+            // The startup flow already maintains background retry loops when needed;
+            // spawning another load_public_users() here would create duplicate
+            // infinite retry tasks on each button press.
+            let _ = load_public_users_foreground_once(ui_weak, client, image_cache).await;
         });
     });
 
