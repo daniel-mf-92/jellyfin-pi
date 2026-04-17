@@ -76,7 +76,8 @@ const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
-const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = 3;
+// Match global loading timeout contract: allow up to 10s before fallback.
+const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Give saved-token startup a short foreground recovery window before falling
 // back to login + background retry, reducing false login-screen flashes while
