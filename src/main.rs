@@ -696,7 +696,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             authenticated = true;
                         }
                         Err(e) => {
-                            warn!("Auto-login failed: {}. Showing login screen.", e);
+                            let err_text = e.to_string();
+                            let lower = err_text.to_ascii_lowercase();
+                            let transient_startup_failure = lower.contains("503")
+                                || lower.contains("server is starting")
+                                || lower.contains("service unavailable")
+                                || lower.contains("network error")
+                                || lower.contains("timed out")
+                                || lower.contains("connection");
+
+                            // If Jellyfin is still booting and we still have saved auth,
+                            // keep trying saved-token recovery in background instead of
+                            // stopping on the login screen forever.
+                            let has_saved_auth = {
+                                let cfg = config_clone.read().await;
+                                cfg.server.saved_user_id.is_some()
+                                    && cfg.server.saved_token.is_some()
+                            };
+
+                            if transient_startup_failure && has_saved_auth {
+                                schedule_saved_token_background_recovery = true;
+                                warn!(
+                                    "Auto-login failed due to transient server/network issue: {}. Continuing saved-token background recovery.",
+                                    err_text
+                                );
+                            } else {
+                                warn!("Auto-login failed: {}. Showing login screen.", err_text);
+                            }
                         }
                     }
                 }
