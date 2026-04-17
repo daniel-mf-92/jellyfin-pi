@@ -2,6 +2,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use std::fmt;
 use std::time::Duration;
+use tokio::time::timeout;
 
 use crate::api::models::*;
 use crate::config::AppConfig;
@@ -11,6 +12,7 @@ const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticR
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 8;
 const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
+const ERROR_BODY_READ_TIMEOUT_SECS: u64 = 1;
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -167,8 +169,17 @@ impl JellyfinClient {
         } else if status == reqwest::StatusCode::UNAUTHORIZED {
             Err(ApiError::Auth("Unauthorized".into()))
         } else {
-            let body = resp.text().await.unwrap_or_default();
-            let summary = Self::summarize_server_error_body(&body);
+            let summary = if status == reqwest::StatusCode::SERVICE_UNAVAILABLE {
+                // Jellyfin startup sometimes serves an HTML body that can stall;
+                // avoid blocking retry loops on full body reads.
+                "Jellyfin server is starting or unavailable".into()
+            } else {
+                match timeout(Duration::from_secs(ERROR_BODY_READ_TIMEOUT_SECS), resp.text()).await {
+                    Ok(Ok(body)) => Self::summarize_server_error_body(&body),
+                    Ok(Err(_)) => "unable to read error response body".into(),
+                    Err(_) => "error response body read timed out".into(),
+                }
+            };
             Err(ApiError::Server(format!("{status}: {summary}")))
         }
     }
