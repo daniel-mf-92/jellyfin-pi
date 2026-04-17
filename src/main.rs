@@ -1030,12 +1030,34 @@ fn setup_navigation_callbacks(
                         return;
                     }
 
+                    // Show loading immediately for detail navigation/preflight checks.
+                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                        ui.global::<AppBridge>().set_is_loading(true);
+                    });
+
                     // Check if this is a CollectionFolder (library) — redirect to library screen
-                    let is_collection_folder = {
-                        let c = client.read().await;
-                        match c.get_item(&item_id).await {
-                            Ok(item) => item.collection_type.is_some() || item.item_type == "CollectionFolder",
-                            Err(_) => false,
+                    let is_collection_folder = match with_loading_timeout(
+                        "Detail preflight",
+                        {
+                            let client = client.clone();
+                            let item_id = item_id.clone();
+                            async move {
+                                let c = client.read().await;
+                                c.get_item(&item_id)
+                                    .await
+                                    .map_err(|e| format!("Failed preflight item lookup: {}", e).into())
+                            }
+                        },
+                    )
+                    .await
+                    {
+                        Ok(item) => item.collection_type.is_some() || item.item_type == "CollectionFolder",
+                        Err(e) => {
+                            warn!(
+                                "Detail preflight failed for {} (continuing as media item): {}",
+                                item_id, e
+                            );
+                            false
                         }
                     };
 
