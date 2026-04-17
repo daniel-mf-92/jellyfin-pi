@@ -80,6 +80,7 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token foreground retries within the UI loading budget.
 // Longer recovery continues in background while login/home remains usable.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
+const SAVED_TOKEN_PUBLIC_USERS_FOREGROUND_TIMEOUT_SECS: u64 = 12;
 
 slint::include_modules!();
 
@@ -802,7 +803,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
                 let mut retry_attempt: u32 = 0;
                 let mut should_show_login = false;
-                let mut seeded_recovery_auth = false;
                 loop {
                     retry_attempt += 1;
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -820,11 +820,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    if !seeded_recovery_auth {
+                    {
+                        // Refresh credentials each retry so recovery always uses
+                        // the latest saved auth state.
                         let mut c = client_retry.write().await;
                         c.access_token = Some(token);
                         c.user_id = Some(user_id);
-                        seeded_recovery_auth = true;
                     }
 
                     match with_loading_timeout(
@@ -916,12 +917,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             // Some Jellyfin states return 503 for authenticated views
                             // but recover public-user listing sooner.
                             if retry_attempt % 3 == 0 {
-                                let _ = load_public_users_foreground_once(
-                                    ui_retry.clone(),
-                                    client_retry.clone(),
-                                    image_retry.clone(),
+                                let foreground_users_retry = tokio::time::timeout(
+                                    tokio::time::Duration::from_secs(
+                                        SAVED_TOKEN_PUBLIC_USERS_FOREGROUND_TIMEOUT_SECS,
+                                    ),
+                                    load_public_users_foreground_once(
+                                        ui_retry.clone(),
+                                        client_retry.clone(),
+                                        image_retry.clone(),
+                                    ),
                                 )
                                 .await;
+
+                                if foreground_users_retry.is_err() {
+                                    warn!(
+                                        "Public-user foreground refresh timed out during saved-token recovery (attempt {})",
+                                        retry_attempt
+                                    );
+                                }
                             }
                         }
                     }
