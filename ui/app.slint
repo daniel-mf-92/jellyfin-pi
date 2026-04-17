@@ -178,6 +178,17 @@ export component AppWindow inherits Window {
                 AppBridge.navigate("home", "");
                 return accept;
             }
+            // Ensure retry works from login when public users are unavailable,
+            // even if a child FocusScope did not capture Enter.
+            if (
+                event.text == Key.Return
+                && AppBridge.current-screen == "login"
+                && AppBridge.users.length == 0
+                && !AppBridge.is-loading
+            ) {
+                AppBridge.retry-connection();
+                return accept;
+            }
             return reject;
         }
 
