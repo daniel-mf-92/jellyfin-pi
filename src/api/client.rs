@@ -137,6 +137,20 @@ impl JellyfinClient {
         )
     }
 
+    /// Build the `X-Emby-Authorization` header value without a token.
+    ///
+    /// Public endpoints must remain reachable even when a cached token has
+    /// expired, otherwise login can get stuck on auth failures.
+    pub fn public_auth_header(&self) -> String {
+        format!(
+            "MediaBrowser Client=\"{}\", Device=\"{}\", DeviceId=\"{}\", Version=\"{}\"",
+            self.client_name,
+            self.device_name,
+            self.device_id,
+            self.client_version,
+        )
+    }
+
     // -----------------------------------------------------------------------
     // Helper: check response status and return body or error
     // -----------------------------------------------------------------------
@@ -193,7 +207,7 @@ impl JellyfinClient {
         let resp = self
             .http
             .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
+            .header("X-Emby-Authorization", self.public_auth_header())
             .send()
             .await?;
         let resp = self.check_response(resp).await?;
