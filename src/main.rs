@@ -80,7 +80,6 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token foreground retries within the UI loading budget.
 // Longer recovery continues in background while login/home remains usable.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
-const SAVED_TOKEN_PUBLIC_USERS_FOREGROUND_TIMEOUT_SECS: u64 = 12;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
@@ -946,29 +945,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
                             }
 
-                            // Keep login usable while saved-token recovery continues.
-                            // Some Jellyfin states return 503 for authenticated views
-                            // but recover public-user listing sooner.
-                            if retry_attempt % 3 == 0 {
-                                let foreground_users_retry = tokio::time::timeout(
-                                    tokio::time::Duration::from_secs(
-                                        SAVED_TOKEN_PUBLIC_USERS_FOREGROUND_TIMEOUT_SECS,
-                                    ),
-                                    load_public_users_foreground_once(
-                                        ui_retry.clone(),
-                                        client_retry.clone(),
-                                        image_retry.clone(),
-                                    ),
-                                )
-                                .await;
-
-                                if foreground_users_retry.is_err() {
-                                    warn!(
-                                        "Public-user foreground refresh timed out during saved-token recovery (attempt {})",
-                                        retry_attempt
-                                    );
-                                }
-                            }
+                            // Public-user loading is already handled by the dedicated
+                            // login retry loop started earlier in this flow.
+                            // Avoid duplicated retry requests/log churn here while
+                            // saved-token recovery keeps running in the background.
                         }
                     }
                 }
