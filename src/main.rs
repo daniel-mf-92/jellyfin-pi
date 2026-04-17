@@ -65,8 +65,7 @@ use state::{StateManager, Screen};
 use config::AppConfig;
 
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
@@ -85,21 +84,11 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
-const SETUP_INCOMPLETE_MIN_CONFIRMATION_SECS: u64 = 20;
 
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
-static SETUP_INCOMPLETE_FIRST_SEEN_UNIX_SECS: AtomicU64 = AtomicU64::new(0);
 
 fn reset_incomplete_setup_detection() {
     SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
-    SETUP_INCOMPLETE_FIRST_SEEN_UNIX_SECS.store(0, Ordering::Relaxed);
-}
-
-fn unix_now_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
 }
 
 slint::include_modules!();
@@ -1456,21 +1445,11 @@ async fn detect_incomplete_jellyfin_setup(
             }
 
             let streak = SETUP_INCOMPLETE_STREAK.fetch_add(1, Ordering::Relaxed) + 1;
-            let now_secs = unix_now_secs();
-            if streak == 1 {
-                SETUP_INCOMPLETE_FIRST_SEEN_UNIX_SECS.store(now_secs, Ordering::Relaxed);
-            }
-            let first_seen_secs = SETUP_INCOMPLETE_FIRST_SEEN_UNIX_SECS.load(Ordering::Relaxed);
-            let observed_for_secs = now_secs.saturating_sub(first_seen_secs);
-            if streak < SETUP_INCOMPLETE_CONFIRMATION_STREAK
-                || observed_for_secs < SETUP_INCOMPLETE_MIN_CONFIRMATION_SECS
-            {
+            if streak < SETUP_INCOMPLETE_CONFIRMATION_STREAK {
                 warn!(
-                    "Jellyfin setup appears incomplete (observation {}/{}, observed {}s/{}s); waiting for confirmation before stopping retries",
+                    "Jellyfin setup appears incomplete (observation {}/{}); waiting for confirmation before stopping retries",
                     streak,
                     SETUP_INCOMPLETE_CONFIRMATION_STREAK,
-                    observed_for_secs,
-                    SETUP_INCOMPLETE_MIN_CONFIRMATION_SECS,
                 );
                 return false;
             }
