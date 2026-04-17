@@ -843,9 +843,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
 
-            if !authenticated && !schedule_saved_token_background_recovery {
+            if !authenticated {
                 load_public_users(ui_handle, client_clone, image_clone).await;
-                }
+            }
         });
     }
 
