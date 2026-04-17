@@ -546,7 +546,9 @@ export component LoginScreen inherits Rectangle {
                     return accept;
                 }
                 if (event.text == Key.Return) {
-                    if (root.focused-user >= 0 && root.focused-user < root.users.length) {
+                    if (root.users.length == 0) {
+                        root.request-quick-connect();
+                    } else if (root.focused-user >= 0 && root.focused-user < root.users.length) {
                         root.selected-user-id = root.users[root.focused-user].id;
                         root.selected-user-name = root.users[root.focused-user].name;
                         if (root.users[root.focused-user].has-password) {
