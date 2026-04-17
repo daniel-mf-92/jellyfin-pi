@@ -79,10 +79,9 @@ const LOADING_TIMEOUT_SECS: u64 = 10;
 // Match global loading timeout contract: allow up to 10s before fallback.
 const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Give saved-token startup a short foreground recovery window before falling
-// back to login + background retry, reducing false login-screen flashes while
-// Jellyfin is still finishing startup.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 6;
+// Keep saved-token startup in the foreground long enough for a cold Jellyfin
+// boot to recover, avoiding premature fallback to the login screen.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 45;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
