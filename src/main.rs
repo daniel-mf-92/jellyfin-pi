@@ -76,10 +76,10 @@ const RSS_SOFT_LIMIT_MB: u64 = 4000;
 const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
+const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = 3;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Extra foreground retry budget after the initial saved-token home load.
-// Total foreground wait stays capped by LOADING_TIMEOUT_SECS.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 8;
+// Keep login responsive: recovery continues in background instead of blocking startup.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 0;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
@@ -514,8 +514,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     c.access_token = Some(token.clone());
                     c.user_id = Some(user_id.clone());
                 }
-                match with_loading_timeout(
+                match with_loading_timeout_secs(
                     "Home load (saved token)",
+                    SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS,
                     load_home_data(
                         ui_handle.clone(),
                         client_clone.clone(),
@@ -662,10 +663,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             if !authenticated && !should_clear_saved_auth && !setup_incomplete {
-                                warn!(
-                                    "Saved-token transient retry window exhausted after {:.1}s; continuing background recovery while keeping login available",
-                                    retry_started_at.elapsed().as_secs_f32()
-                                );
+                                if retry_window.is_zero() {
+                                    info!(
+                                        "Skipping foreground saved-token retries; continuing background recovery while keeping login available"
+                                    );
+                                } else {
+                                    warn!(
+                                        "Saved-token transient retry window exhausted after {:.1}s; continuing background recovery while keeping login available",
+                                        retry_started_at.elapsed().as_secs_f32()
+                                    );
+                                }
                                 schedule_saved_token_background_recovery = true;
                             }
                         }
@@ -1374,18 +1381,23 @@ fn setup_navigation_callbacks(
 }
 
 
+async fn with_loading_timeout_secs<T>(
+    operation: &str,
+    timeout_secs: u64,
+    future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), future).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err(format!("{} timed out after {}s", operation, timeout_secs)),
+    }
+}
+
 async fn with_loading_timeout<T>(
     operation: &str,
     future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 ) -> Result<T, String> {
-    match tokio::time::timeout(tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS), future).await {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err(format!(
-            "{} timed out after {}s",
-            operation, LOADING_TIMEOUT_SECS
-        )),
-    }
+    with_loading_timeout_secs(operation, LOADING_TIMEOUT_SECS, future).await
 }
 
 async fn detect_incomplete_jellyfin_setup(
