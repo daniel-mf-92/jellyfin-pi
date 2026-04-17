@@ -9,7 +9,7 @@ use crate::config::AppConfig;
 // Fields to request when fetching items
 const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
-const HTTP_REQUEST_TIMEOUT_SECS: u64 = 15;
+const HTTP_REQUEST_TIMEOUT_SECS: u64 = 8;
 const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
 
 // ---------------------------------------------------------------------------
