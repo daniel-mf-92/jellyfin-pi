@@ -815,16 +815,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     warn!(
-                        "Public users unavailable during saved-token recovery; will keep retrying users from the saved-token recovery loop"
+                        "Public users unavailable during saved-token recovery; avoiding duplicate login retries while saved-token recovery keeps running"
                     );
-
-                    let ui_users_retry = ui_handle.clone();
-                    let client_users_retry = client_clone.clone();
-                    let image_users_retry = image_clone.clone();
-                    spawn_ui_task(async move {
-                        load_public_users(ui_users_retry, client_users_retry, image_users_retry)
-                            .await;
-                    });
                 }
 
                 let ui_retry = ui_handle.clone();
