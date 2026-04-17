@@ -307,12 +307,15 @@ pub struct MediaSegment {
 // =============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "PascalCase", default)]
+#[serde(rename_all = "camelCase", default)]
 pub struct PublicSystemInfo {
+    #[serde(alias = "ServerName")]
     pub server_name: String,
+    #[serde(alias = "Version")]
     pub version: String,
+    #[serde(alias = "Id")]
     pub id: String,
-    #[serde(alias = "startupWizardCompleted")]
+    #[serde(alias = "StartupWizardCompleted")]
     pub startup_wizard_completed: Option<bool>,
 }
 
