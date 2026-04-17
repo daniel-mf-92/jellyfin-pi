@@ -328,11 +328,19 @@ impl BaseItemDto {
             .as_ref()
             .and_then(|tags| tags.get("Primary"))
             .map(|value| value.as_str())
-            .or(self.primary_image_tag.as_deref())?;
-        Some(format!(
-            "{}/Items/{}/Images/Primary?maxHeight={}&quality=90&tag={}",
-            server_url, self.id, max_height, tag
-        ))
+            .or(self.primary_image_tag.as_deref());
+
+        let mut url = format!(
+            "{}/Items/{}/Images/Primary?maxHeight={}&quality=90",
+            server_url, self.id, max_height
+        );
+
+        if let Some(tag) = tag {
+            url.push_str("&tag=");
+            url.push_str(tag);
+        }
+
+        Some(url)
     }
 
     /// Get backdrop image URL for this item (first backdrop).
