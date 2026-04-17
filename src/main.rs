@@ -81,6 +81,7 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Longer recovery continues in background while login/home remains usable.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
 const SAVED_TOKEN_PUBLIC_USERS_FOREGROUND_TIMEOUT_SECS: u64 = 12;
+const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
 
@@ -297,6 +298,30 @@ async fn load_user_avatar(
             .unwrap_or_default()
     } else {
         SlintImage::default()
+    }
+}
+
+async fn load_user_avatar_fast(
+    user: &UserDto,
+    server_url: &str,
+    access_token: Option<&str>,
+    image_cache: &ImageCache,
+) -> SlintImage {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_millis(USER_AVATAR_LOAD_TIMEOUT_MS),
+        load_user_avatar(user, server_url, access_token, image_cache),
+    )
+    .await
+    {
+        Ok(image) => image,
+        Err(_) => {
+            warn!(
+                "User avatar load timed out for user {} after {}ms; using placeholder",
+                user.id,
+                USER_AVATAR_LOAD_TIMEOUT_MS
+            );
+            SlintImage::default()
+        }
     }
 }
 
@@ -2989,7 +3014,7 @@ async fn apply_loaded_public_users(
     info!("Loaded {} public users", users.len());
     let mut user_infos = Vec::with_capacity(users.len());
     for user in &users {
-        let avatar = load_user_avatar(user, server_url, access_token, image_cache).await;
+        let avatar = load_user_avatar_fast(user, server_url, access_token, image_cache).await;
         user_infos.push(user_dto_to_user_info(user, server_url, avatar));
     }
 
