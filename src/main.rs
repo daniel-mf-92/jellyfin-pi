@@ -1444,7 +1444,6 @@ async fn detect_incomplete_jellyfin_setup(
             let setup_incomplete_candidate = setup_incomplete_flag && has_identity_fields;
 
             if setup_incomplete_flag && !has_identity_fields {
-                reset_incomplete_setup_detection();
                 warn!(
                     "Jellyfin reports startup wizard incomplete with minimal metadata; treating as transient startup state"
                 );
@@ -1483,7 +1482,6 @@ async fn detect_incomplete_jellyfin_setup(
             true
         }
         Err(err) => {
-            reset_incomplete_setup_detection();
             debug!(
                 "Could not read Jellyfin public system info while checking setup status: {}",
                 err
