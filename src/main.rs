@@ -510,7 +510,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
-                let saved_token_attempt_started_at = std::time::Instant::now();
                 {
                     let mut c = client_clone.write().await;
                     c.access_token = Some(token.clone());
@@ -570,14 +569,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
-                            let max_foreground_window = std::time::Duration::from_secs(
+                            let retry_window = std::time::Duration::from_secs(
                                 SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS,
-                            );
-                            let loading_budget = std::time::Duration::from_secs(LOADING_TIMEOUT_SECS);
-                            let retry_window = std::cmp::min(
-                                max_foreground_window,
-                                loading_budget
-                                    .saturating_sub(saved_token_attempt_started_at.elapsed()),
                             );
                             let retry_started_at = std::time::Instant::now();
                             let mut retry_attempt: u32 = 0;
