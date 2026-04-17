@@ -1394,6 +1394,18 @@ async fn with_loading_timeout<T>(
 async fn detect_incomplete_jellyfin_setup(
     client: &Arc<RwLock<JellyfinClient>>,
 ) -> bool {
+    let enforce_setup_gate = std::env::var("JELLYFIN_BLOCK_ON_INCOMPLETE_SETUP")
+        .ok()
+        .map(|value| {
+            let normalized = value.trim().to_ascii_lowercase();
+            matches!(normalized.as_str(), "1" | "true" | "yes" | "on")
+        })
+        .unwrap_or(false);
+
+    if !enforce_setup_gate {
+        return false;
+    }
+
     let c = client.read().await;
     let info_result = tokio::time::timeout(
         tokio::time::Duration::from_secs(3),
@@ -1402,7 +1414,12 @@ async fn detect_incomplete_jellyfin_setup(
     .await;
 
     match info_result {
-        Ok(Ok(info)) if info.startup_wizard_completed == Some(false) => true,
+        Ok(Ok(info)) if info.startup_wizard_completed == Some(false) => {
+            warn!(
+                "startupWizardCompleted=false reported by Jellyfin; ignoring setup gate and continuing retries"
+            );
+            false
+        }
         Ok(Ok(_)) => false,
         Ok(Err(_)) => false,
         Err(_) => false,
