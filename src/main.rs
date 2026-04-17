@@ -77,9 +77,10 @@ const RSS_CACHE_CLEAR_MB: u64 = 1800;
 const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Keep saved-token foreground retries within the UI loading budget.
-// Longer recovery continues in background while login/home remains usable.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
+// Keep saved-token retries in foreground long enough to ride out
+// typical Jellyfin warm-up without dropping users to the login screen.
+// This better matches the spec: when a saved token exists, skip login.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 30;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 
 slint::include_modules!();
