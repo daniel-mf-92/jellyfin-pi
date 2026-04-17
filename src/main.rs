@@ -1458,11 +1458,17 @@ fn setup_auth_callbacks(
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
+    let state_clone = state.clone();
+    let config_clone = config.clone();
+    let daemon_mgr_clone = daemon_mgr.clone();
     let retry_connection_in_flight = Arc::new(AtomicBool::new(false));
     ui.global::<AppBridge>().on_retry_connection(move || {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
+        let state = state_clone.clone();
+        let config = config_clone.clone();
+        let daemon_mgr = daemon_mgr_clone.clone();
         let retry_connection_in_flight = retry_connection_in_flight.clone();
 
         if retry_connection_in_flight.swap(true, Ordering::AcqRel) {
@@ -1474,12 +1480,65 @@ fn setup_auth_callbacks(
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>()
                     .set_error_message("Retrying connection...".into());
+                ui.global::<AppBridge>().set_is_loading(true);
             });
-            // Retry should be a single foreground attempt only.
-            // The startup flow already maintains background retry loops when needed;
-            // spawning another load_public_users() here would create duplicate
-            // infinite retry tasks on each button press.
-            let _ = load_public_users_foreground_once(ui_weak, client, image_cache, false).await;
+
+            let mut recovered_with_saved_token = false;
+            let (saved_user_id, saved_token) = {
+                let cfg = config.read().await;
+                (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
+            };
+
+            if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
+                {
+                    let mut c = client.write().await;
+                    c.user_id = Some(user_id);
+                    c.access_token = Some(token);
+                }
+
+                match with_loading_timeout(
+                    "Home load (manual retry with saved token)",
+                    load_home_data(
+                        ui_weak.clone(),
+                        client.clone(),
+                        image_cache.clone(),
+                        state.clone(),
+                    ),
+                )
+                .await
+                {
+                    Ok(()) => {
+                        info!("Manual retry recovered via saved token");
+                        daemon_mgr
+                            .lock()
+                            .await
+                            .start(client.clone(), config.clone(), state.clone());
+                        state.navigate_replace(Screen::Home).await;
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_error_message("".into());
+                            ui.global::<AppBridge>().set_current_screen("home".into());
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                        recovered_with_saved_token = true;
+                    }
+                    Err(e) => {
+                        warn!(
+                            "Manual retry saved-token attempt failed, falling back to public users: {}",
+                            e
+                        );
+                    }
+                }
+            }
+
+            if !recovered_with_saved_token {
+                // Retry should be a single foreground attempt only.
+                // The startup flow already maintains background retry loops when needed;
+                // spawning another load_public_users() here would create duplicate
+                // infinite retry tasks on each button press.
+                let _ =
+                    load_public_users_foreground_once(ui_weak, client, image_cache, false).await;
+            }
+
             retry_connection_in_flight.store(false, Ordering::Release);
         });
     });
