@@ -1744,11 +1744,24 @@ fn setup_playback_callbacks(
 
             info!("Play item requested: {}", item_id_str);
 
-            // Get playback info from Jellyfin
-            let playback_info = {
-                let c = client.read().await;
-                c.get_playback_info(&item_id_str).await
-            };
+            // Get playback info from Jellyfin with the global loading timeout
+            // contract so playback cannot remain in a permanent loading state.
+            let playback_info = with_loading_timeout(
+                "Playback info",
+                {
+                    let client = client.clone();
+                    let item_id = item_id_str.clone();
+                    async move {
+                        let c = client.read().await;
+                        c.get_playback_info(&item_id)
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                                Box::new(e)
+                            })
+                    }
+                },
+            )
+            .await;
 
             match playback_info {
                 Ok(info) => {
