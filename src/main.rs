@@ -610,7 +610,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             // --- Fallback: authenticate with hardcoded credentials ---
-            if !authenticated {
+            // Skip this while saved-token background recovery is active.
+            if !authenticated && !schedule_saved_token_background_recovery {
                 let username = std::env::var("JELLYFIN_USERNAME")
                     .ok()
                     .filter(|value| !value.is_empty())
@@ -710,6 +711,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
                 let _ = slint::spawn_local(async move {
                     let mut retry_attempt: u32 = 0;
+                    let mut should_show_login = false;
                     loop {
                         retry_attempt += 1;
                         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
@@ -784,6 +786,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         c.access_token = None;
                                         c.user_id = None;
                                     }
+                                    should_show_login = true;
                                     break;
                                 }
 
@@ -792,6 +795,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "Stopping saved-token background recovery due to non-transient error: {}",
                                         retry_text
                                     );
+                                    should_show_login = true;
                                     break;
                                 }
 
@@ -805,10 +809,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
                     }
+
+                    if should_show_login {
+                        load_public_users(ui_retry, client_retry, image_retry).await;
+                    }
                 });
             }
 
-            if !authenticated {
+            if !authenticated && !schedule_saved_token_background_recovery {
                 load_public_users(ui_handle, client_clone, image_clone).await;
                 }
         });
