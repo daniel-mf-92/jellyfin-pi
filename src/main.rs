@@ -790,7 +790,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     warn!(
-                        "Public users unavailable during saved-token recovery; waiting for saved-token recovery loop before starting login background retries"
+                        "Public users unavailable during saved-token recovery; will keep retrying users from the saved-token recovery loop"
                     );
                 }
 
@@ -910,6 +910,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     retry_attempt,
                                     retry_text
                                 );
+                            }
+
+                            // Keep login usable while saved-token recovery continues.
+                            // Some Jellyfin states return 503 for authenticated views
+                            // but recover public-user listing sooner.
+                            if retry_attempt % 3 == 0 {
+                                let _ = load_public_users_foreground_once(
+                                    ui_retry.clone(),
+                                    client_retry.clone(),
+                                    image_retry.clone(),
+                                )
+                                .await;
                             }
                         }
                     }
