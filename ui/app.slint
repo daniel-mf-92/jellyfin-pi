@@ -232,6 +232,9 @@ export component AppWindow inherits Window {
             navigate(screen, param) => {
                 AppBridge.navigate(screen, param);
             }
+            go-back() => {
+                AppBridge.go-back();
+            }
             toggle-favorite(item-id) => {
                 AppBridge.toggle-favorite(item-id);
             }

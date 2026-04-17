@@ -82,6 +82,7 @@ export component DetailScreen inherits Rectangle {
 
     callback play-item(/* item_id */ string);
     callback navigate(/* screen */ string, /* param */ string);
+    callback go-back();
     callback toggle-favorite(/* item_id */ string);
     callback mark-played(/* item_id */ string);
     callback mark-unplayed(/* item_id */ string);
@@ -145,7 +146,7 @@ export component DetailScreen inherits Rectangle {
         key-pressed(event) => {
             // Back / Escape
             if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
-                root.navigate("home", "");
+                root.go-back();
                 return accept;
             }
 
