@@ -63,6 +63,7 @@ pub struct BaseItemDto {
     pub run_time_ticks: Option<i64>,
     pub collection_type: Option<String>,
     pub media_type: Option<String>,
+    pub primary_image_tag: Option<String>,
     pub image_tags: Option<HashMap<String, String>>,
     pub backdrop_image_tags: Option<Vec<String>>,
     pub image_blur_hashes: Option<HashMap<String, HashMap<String, String>>>,
@@ -321,7 +322,12 @@ pub struct PublicSystemInfo {
 impl BaseItemDto {
     /// Get primary image URL for this item.
     pub fn primary_image_url(&self, server_url: &str, max_height: i32) -> Option<String> {
-        let tag = self.image_tags.as_ref()?.get("Primary")?;
+        let tag = self
+            .image_tags
+            .as_ref()
+            .and_then(|tags| tags.get("Primary"))
+            .map(|value| value.as_str())
+            .or(self.primary_image_tag.as_deref())?;
         Some(format!(
             "{}/Items/{}/Images/Primary?maxHeight={}&quality=90&tag={}",
             server_url, self.id, max_height, tag
