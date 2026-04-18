@@ -51,6 +51,7 @@ export component ContentRow inherits VerticalLayout {
 
     // Horizontal scrolling card strip
     row-flickable := Flickable {
+        width: 100%;
         height: root.is-landscape ? Theme.landscape-height + 120px : Theme.poster-height + 120px;
         viewport-width: root.content-width;
         private property <length> max-scroll: max(0px, root.content-width - self.width);
