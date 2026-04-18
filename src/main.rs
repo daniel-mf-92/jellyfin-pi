@@ -3533,36 +3533,39 @@ async fn load_home_data(
         // Also add a "My Libraries" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
         for view in &views {
-            let library_image_url = if view
-                .image_tags
-                .as_ref()
-                .and_then(|tags| tags.get("Primary"))
-                .is_some()
-                || view.primary_image_tag.is_some()
-            {
-                view.primary_image_url(&server_url, 300)
-            } else if view
-                .backdrop_image_tags
-                .as_ref()
-                .and_then(|tags| tags.first())
-                .is_some()
-            {
-                view.backdrop_image_url(&server_url, 560)
-            } else {
-                view.parent_thumb_item_id.as_ref().map(|parent_id| {
-                    format!(
-                        "{}/Items/{}/Images/Thumb?maxWidth=560&quality=85",
-                        server_url, parent_id
-                    )
-                })
-            };
+            let mut candidate_urls: Vec<String> = Vec::new();
+            candidate_urls.push(view.primary_image_url(&server_url, 300).unwrap_or_else(|| {
+                format!(
+                    "{}/Items/{}/Images/Primary?maxHeight=300&quality=90",
+                    server_url, view.id
+                )
+            }));
 
-            let poster = if let Some(url) = library_image_url {
+            candidate_urls.push(format!(
+                "{}/Items/{}/Images/Thumb?maxWidth=560&quality=85",
+                server_url, view.id
+            ));
+
+            if let Some(url) = view.backdrop_image_url(&server_url, 560) {
+                candidate_urls.push(url);
+            }
+
+            if let Some(parent_id) = view.parent_thumb_item_id.as_ref() {
+                candidate_urls.push(format!(
+                    "{}/Items/{}/Images/Thumb?maxWidth=560&quality=85",
+                    server_url, parent_id
+                ));
+            }
+
+            let mut poster = slint::Image::default();
+            for url in candidate_urls {
                 let url = append_api_key(url, access_token.as_deref());
-                image_cache.load_image(&url).await.unwrap_or_default()
-            } else {
-                slint::Image::default()
-            };
+                if let Some(image) = image_cache.load_image(&url).await {
+                    poster = image;
+                    break;
+                }
+            }
+
             library_cards.push(MediaItem {
                 id: SharedString::from(&view.id),
                 title: SharedString::from(&view.name),
