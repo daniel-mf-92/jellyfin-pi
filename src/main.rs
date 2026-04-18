@@ -130,6 +130,25 @@ fn trim_process_memory() {
 }
 
 async fn wait_for_display_backend() {
+    fn labwc_running() -> bool {
+        std::process::Command::new("pgrep")
+            .args(["-x", "labwc"])
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+    }
+
+    fn try_spawn_labwc(runtime_dir: &str) -> bool {
+        std::process::Command::new("labwc")
+            .env("XDG_RUNTIME_DIR", runtime_dir)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map(|_| true)
+            .unwrap_or(false)
+    }
+
     fn detect_wayland_display(runtime_dir: &std::path::Path) -> Option<String> {
         let mut candidates = std::fs::read_dir(runtime_dir)
             .ok()?
@@ -251,20 +270,29 @@ async fn wait_for_display_backend() {
         wayland_path.display()
     );
 
-    let slint_backend = std::env::var("SLINT_BACKEND").ok();
-    let prefers_winit = slint_backend
-        .as_deref()
-        .map(|backend| backend.eq_ignore_ascii_case("winit"))
-        .unwrap_or(true);
-
-    if prefers_winit {
-        warn!(
-            "Falling back to SLINT_BACKEND=linuxkms because no Wayland/X11 backend is available"
-        );
-        std::env::set_var("SLINT_BACKEND", "linuxkms");
-        std::env::remove_var("WINIT_UNIX_BACKEND");
-        std::env::remove_var("WAYLAND_DISPLAY");
-        std::env::remove_var("DISPLAY");
+    if !labwc_running() {
+        warn!("No active compositor detected; attempting to start labwc");
+        if try_spawn_labwc(&runtime_dir) {
+            let labwc_deadline = tokio::time::Instant::now()
+                + tokio::time::Duration::from_secs(DISPLAY_BACKEND_WAIT_TIMEOUT_SECS);
+            while tokio::time::Instant::now() < labwc_deadline {
+                if let Some(detected_display) = detect_wayland_display(runtime_dir_path) {
+                    std::env::set_var("WAYLAND_DISPLAY", &detected_display);
+                    info!(
+                        "labwc startup detected Wayland socket '{}'; continuing startup",
+                        detected_display
+                    );
+                    return;
+                }
+                tokio::time::sleep(tokio::time::Duration::from_millis(
+                    DISPLAY_BACKEND_WAIT_POLL_MS,
+                ))
+                .await;
+            }
+            warn!("labwc did not expose a Wayland socket within startup timeout");
+        } else {
+            warn!("Failed to spawn labwc automatically");
+        }
     }
 }
 
