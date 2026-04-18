@@ -19,6 +19,15 @@ export component HomeScreen inherits Rectangle {
     in-out property <int> focused-row: 0;
     in-out property <int> focused-col: 0;
 
+    private property <int> safe-focused-row:
+        root.rows.length > 0
+            ? max(0, min(root.focused-row, root.rows.length - 1))
+            : 0;
+    private property <int> safe-focused-col:
+        root.rows.length > 0 && root.rows[root.safe-focused-row].items.length > 0
+            ? max(0, min(root.focused-col, root.rows[root.safe-focused-row].items.length - 1))
+            : 0;
+
     callback item-selected(/* item_id */ string);
     callback item-play(/* item_id */ string);
     callback open-search();
@@ -250,7 +259,7 @@ export component HomeScreen inherits Rectangle {
     // Target scroll offset to keep focused row visible
     pure function target-scroll-y() -> length {
         let max-scroll = max(0px, root.rows-content-height() - root.rows-viewport-height());
-        let focused-row-index = max(0, min(root.focused-row, root.rows.length - 1));
+        let focused-row-index = root.safe-focused-row;
         let focused-row-height = root.row-block-height-for-index(focused-row-index);
         let focused-row-top = root.rows-height-through(focused-row-index);
         let focused-row-center = focused-row-top + (focused-row-height / 2);
@@ -266,6 +275,15 @@ export component HomeScreen inherits Rectangle {
         height: 100%;
 
         key-pressed(event) => {
+            if (root.rows.length > 0) {
+                if (root.focused-row != root.safe-focused-row) {
+                    root.focused-row = root.safe-focused-row;
+                }
+                if (root.focused-col != root.safe-focused-col) {
+                    root.focused-col = root.safe-focused-col;
+                }
+            }
+
             if (event.text == Key.UpArrow) {
                 if (root.focused-row > 0) {
                     root.focused-row -= 1;
@@ -422,8 +440,8 @@ export component HomeScreen inherits Rectangle {
                     is-landscape: row.row-type == "landscape";
                     is-square: row.row-type == "square";
                     include-horizontal-overscan: false;
-                    row-focused: index == root.focused-row;
-                    focused-index: root.focused-col;
+                    row-focused: index == root.safe-focused-row;
+                    focused-index: index == root.safe-focused-row ? root.safe-focused-col : 0;
 
                     item-selected(id, item-type) => {
                         if (item-type == "CollectionFolder") {
