@@ -130,6 +130,10 @@ fn trim_process_memory() {
 }
 
 async fn wait_for_display_backend() {
+    fn wayland_socket_ready(socket_path: &std::path::Path) -> bool {
+        std::os::unix::net::UnixStream::connect(socket_path).is_ok()
+    }
+
     fn labwc_running() -> bool {
         std::process::Command::new("pgrep")
             .args(["-x", "labwc"])
@@ -254,11 +258,16 @@ async fn wait_for_display_backend() {
         .as_ref()
         .is_some_and(|_| std::path::Path::new("/tmp/.X11-unix").exists());
 
-    if wayland_path.exists() {
+    if wayland_path.exists() && wayland_socket_ready(&wayland_path) {
         if wayland_display.is_none() {
             std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
         }
         return;
+    } else if wayland_path.exists() {
+        warn!(
+            "Wayland socket path exists but compositor is not accepting connections yet: {}",
+            wayland_path.display()
+        );
     }
 
     if x11_ready {
@@ -288,7 +297,7 @@ async fn wait_for_display_backend() {
             }
         }
 
-        let wayland_now = wayland_path.exists();
+        let wayland_now = wayland_path.exists() && wayland_socket_ready(&wayland_path);
         let x11_now = x_display
             .as_ref()
             .is_some_and(|_| std::path::Path::new("/tmp/.X11-unix").exists());
