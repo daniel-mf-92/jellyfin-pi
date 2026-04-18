@@ -250,6 +250,22 @@ async fn wait_for_display_backend() {
         DISPLAY_BACKEND_WAIT_TIMEOUT_SECS,
         wayland_path.display()
     );
+
+    let slint_backend = std::env::var("SLINT_BACKEND").ok();
+    let prefers_winit = slint_backend
+        .as_deref()
+        .map(|backend| backend.eq_ignore_ascii_case("winit"))
+        .unwrap_or(true);
+
+    if prefers_winit {
+        warn!(
+            "Falling back to SLINT_BACKEND=linuxkms because no Wayland/X11 backend is available"
+        );
+        std::env::set_var("SLINT_BACKEND", "linuxkms");
+        std::env::remove_var("WINIT_UNIX_BACKEND");
+        std::env::remove_var("WAYLAND_DISPLAY");
+        std::env::remove_var("DISPLAY");
+    }
 }
 
 // =============================================================================
