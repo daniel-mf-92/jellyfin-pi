@@ -23,16 +23,17 @@ export component ContentRow inherits VerticalLayout {
     // Keep row metrics based on the base card width so max-scroll reflects
     // real content width; apply focus overhang only to the currently focused card.
     private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
+    private property <length> card-span-width: root.card-width + (root.focus-overhang * 2);
     private property <length> row-padding:
-        (root.include-horizontal-overscan ? Theme.overscan-h : 0px) + root.focus-overhang;
-    private property <length> step-width: root.card-width + Theme.card-gap;
+        root.include-horizontal-overscan ? Theme.overscan-h : 0px;
+    private property <length> step-width: root.card-span-width + Theme.card-gap;
     private property <int> safe-focused-index:
         root.items.length > 0
             ? max(0, min(root.focused-index, root.items.length - 1))
             : 0;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
+            ? (root.items.length * root.card-span-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
             : root.row-padding * 2;
 
     spacing: 0px;
@@ -68,7 +69,7 @@ export component ContentRow inherits VerticalLayout {
         private property <length> focused-card-start:
             root.row-padding + (root.safe-focused-index * root.step-width);
         private property <length> focused-card-end:
-            self.focused-card-start + root.card-width;
+            self.focused-card-start + root.card-span-width;
         private property <length> raw-scroll-target:
             // Match Jellyfin TV behavior: only scroll once focus reaches the
             // visible right edge, instead of re-centering every move.
