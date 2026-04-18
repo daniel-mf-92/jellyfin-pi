@@ -876,6 +876,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     retry_attempt += 1;
                     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
+                    if retry_attempt == 1 || retry_attempt % 3 == 0 {
+                        info!(
+                            "Saved-token background recovery retry attempt {}",
+                            retry_attempt
+                        );
+                    }
+
                     let (saved_user_id, saved_token) = {
                         let cfg = config_retry.read().await;
                         (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
@@ -989,6 +996,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     retry_text
                                 );
                             }
+
+                            let retry_message = format!(
+                                "Cannot connect to Jellyfin (saved-session retry {} in background)...",
+                                retry_attempt
+                            );
+                            let _ = ui_retry.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>().set_error_message(retry_message.into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
 
                             // Public-user loading is already handled by the dedicated
                             // login retry loop started earlier in this flow.
@@ -3443,6 +3459,13 @@ async fn load_public_users(
         retry_attempt += 1;
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
+        if retry_attempt == 1 || retry_attempt % 3 == 0 {
+            info!(
+                "Public-user background retry attempt {}",
+                retry_attempt
+            );
+        }
+
         let result = with_loading_timeout("Load public users (background)", async {
             let c = client.read().await;
             c.get_public_users()
@@ -3493,6 +3516,15 @@ async fn load_public_users(
                         retry_attempt, e
                     );
                 }
+
+                let retry_message = format!(
+                    "Cannot connect to Jellyfin (login retry {} in background)...",
+                    retry_attempt
+                );
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_error_message(retry_message.into());
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
             }
         }
     }
