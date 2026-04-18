@@ -1395,10 +1395,20 @@ fn setup_navigation_callbacks(
                         return;
                     }
 
-                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    let detail_load_in_flight_for_ui = detail_load_in_flight.clone();
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        if !detail_load_in_flight_for_ui.load(Ordering::Acquire) {
+                            debug!("Detail navigation cancelled before detail screen render");
+                            return;
+                        }
                         ui.global::<AppBridge>().set_current_screen("detail".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
+
+                    if !detail_load_in_flight.load(Ordering::Acquire) {
+                        debug!("Detail navigation cancelled before detail payload load: {}", item_id);
+                        return;
+                    }
                     if let Err(e) = with_loading_timeout(
                         "Detail load",
                         load_item_detail(
