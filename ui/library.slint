@@ -199,7 +199,7 @@ export component LibraryScreen inherits Rectangle {
         height: 0;
 
         key-pressed(event) => {
-            if (event.text == Key.Escape) {
+            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
                 root.go-back();
                 return accept;
             }
@@ -225,7 +225,7 @@ export component LibraryScreen inherits Rectangle {
                     }
                     return accept;
                 }
-                if (event.text == Key.Return) {
+                if (event.text == Key.Return || event.text == " " || event.text == "a" || event.text == "A") {
                     if (root.toolbar-focus == 0) {
                         root.current-sort = root.current-sort + 1 - ((root.current-sort + 1) / root.sort-options.length) * root.sort-options.length;
                         root.sort-changed(root.sort-options[root.current-sort]);
@@ -271,7 +271,7 @@ export component LibraryScreen inherits Rectangle {
                     }
                     return accept;
                 }
-                if (event.text == Key.Return) {
+                if (event.text == Key.Return || event.text == " " || event.text == "a" || event.text == "A") {
                     if (root.focused-item >= 0 && root.focused-item < root.items.length) {
                         root.item-selected(root.items[root.focused-item].id);
                     }
