@@ -96,6 +96,8 @@ const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
 const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 60;
 const DISPLAY_BACKEND_WAIT_TIMEOUT_SECS: u64 = 15;
 const DISPLAY_BACKEND_WAIT_POLL_MS: u64 = 250;
+const JELLYFIN_CONNECTIVITY_ERROR_MESSAGE: &str =
+    "Cannot connect to Jellyfin. Press A / Enter to retry connection.";
 
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 static SETUP_INCOMPLETE_FIRST_SEEN_TS: AtomicU64 = AtomicU64::new(0);
@@ -1231,12 +1233,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
                             }
 
-                            let retry_message = format!(
-                                "Cannot connect to Jellyfin (saved-session retry {} in background)...",
-                                retry_attempt
-                            );
                             let _ = ui_retry.upgrade_in_event_loop(move |ui| {
-                                ui.global::<AppBridge>().set_error_message(retry_message.into());
+                                ui.global::<AppBridge>().set_error_message(
+                                    JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into(),
+                                );
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
@@ -1330,12 +1330,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
                             }
 
-                            let retry_message = format!(
-                                "Cannot connect to Jellyfin (saved-session retry {} in background)...",
-                                retry_attempt
-                            );
                             let _ = ui_retry.upgrade_in_event_loop(move |ui| {
-                                ui.global::<AppBridge>().set_error_message(retry_message.into());
+                                ui.global::<AppBridge>().set_error_message(
+                                    JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into(),
+                                );
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
@@ -3876,12 +3874,10 @@ async fn load_public_users(
                     );
                 }
 
-                let retry_message = format!(
-                    "Cannot connect to Jellyfin (login retry {} in background)...",
-                    retry_attempt
-                );
                 let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                    ui.global::<AppBridge>().set_error_message(retry_message.into());
+                    ui.global::<AppBridge>().set_error_message(
+                        JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into(),
+                    );
                     ui.global::<AppBridge>().set_is_loading(false);
                 });
             }
