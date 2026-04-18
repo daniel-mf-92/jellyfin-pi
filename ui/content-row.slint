@@ -21,6 +21,10 @@ export component ContentRow inherits VerticalLayout {
     private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
     private property <length> row-padding: Theme.overscan-h + root.focus-overhang;
     private property <length> step-width: root.card-footprint-width + Theme.card-gap;
+    private property <int> safe-focused-index:
+        root.items.length > 0
+            ? max(0, min(root.focused-index, root.items.length - 1))
+            : 0;
     private property <length> content-width:
         root.items.length > 0
             ? (root.items.length * root.card-footprint-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
@@ -52,10 +56,11 @@ export component ContentRow inherits VerticalLayout {
         viewport-width: root.content-width;
         private property <length> max-scroll: max(0px, root.content-width - self.width);
         private property <length> focused-card-right:
-            root.row-padding + ((root.focused-index + 1) * root.step-width) - Theme.card-gap + root.focus-overhang;
+            root.row-padding + ((root.safe-focused-index + 1) * root.step-width) - Theme.card-gap + root.focus-overhang;
         private property <length> raw-scroll-target:
             max(0px, self.focused-card-right - (self.width - root.row-padding));
-        private property <length> clamped-scroll-target: min(self.max-scroll, self.raw-scroll-target);
+        private property <length> clamped-scroll-target:
+            root.row-focused ? min(self.max-scroll, self.raw-scroll-target) : 0px;
 
         viewport-x: -self.clamped-scroll-target;
 
