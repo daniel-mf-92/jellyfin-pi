@@ -2875,11 +2875,28 @@ fn setup_content_callbacks(
         let series_id_str = series_id.to_string();
 
         spawn_ui_task(async move {
-            if let Err(e) =
-                load_seasons(ui_weak.clone(), client, image_cache, &series_id_str).await
+            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                ui.global::<AppBridge>().set_is_loading(true);
+            });
+
+            if let Err(e) = with_loading_timeout(
+                "Seasons load",
+                load_seasons(ui_weak.clone(), client, image_cache, &series_id_str),
+            )
+            .await
             {
                 error!("Failed to load seasons: {}", e);
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>()
+                        .set_error_message(format!("Failed to load seasons: {}", e).into());
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
+                return;
             }
+
+            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                ui.global::<AppBridge>().set_is_loading(false);
+            });
         });
     });
 
@@ -2896,17 +2913,34 @@ fn setup_content_callbacks(
             let season_id_str = season_id.to_string();
 
             spawn_ui_task(async move {
-                if let Err(e) = load_episodes(
-                    ui_weak.clone(),
-                    client,
-                    image_cache,
-                    &series_id_str,
-                    &season_id_str,
+                let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>().set_is_loading(true);
+                });
+
+                if let Err(e) = with_loading_timeout(
+                    "Episodes load",
+                    load_episodes(
+                        ui_weak.clone(),
+                        client,
+                        image_cache,
+                        &series_id_str,
+                        &season_id_str,
+                    ),
                 )
                 .await
                 {
                     error!("Failed to load episodes: {}", e);
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_error_message(format!("Failed to load episodes: {}", e).into());
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
+                    return;
                 }
+
+                let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
             });
         });
 }
