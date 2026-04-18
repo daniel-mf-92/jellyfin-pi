@@ -2732,6 +2732,18 @@ fn setup_content_callbacks(
                 } else {
                     library_id_str
                 };
+
+                if library_id_str.is_empty() {
+                    warn!(
+                        "Ignoring library refresh without a library id (sort='{}', filter='{}')",
+                        sort_str, filter_str
+                    );
+                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
+                    return;
+                }
+
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
