@@ -575,6 +575,15 @@ export component PlayerOverlay inherits Rectangle {
     // ---- Key handling ----
     fs := FocusScope {
         enabled: root.visible-overlay;
+        width: 100%;
+        height: 100%;
+        init => { self.focus(); }
+
+        changed enabled => {
+            if (self.enabled) {
+                self.focus();
+            }
+        }
 
         key-pressed(event) => {
             // C key: toggle chapter list
