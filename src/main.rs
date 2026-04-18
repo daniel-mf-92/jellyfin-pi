@@ -683,7 +683,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                         }
 
-                        if !authenticated {
+                        if !authenticated && !schedule_saved_token_background_recovery {
                             let mut c = client_clone.write().await;
                             c.access_token = None;
                             c.user_id = None;
