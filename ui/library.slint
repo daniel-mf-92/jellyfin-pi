@@ -31,9 +31,14 @@ export component LibraryScreen inherits Rectangle {
     private property <length> v-gap: Theme.spacing-lg;
     private property <length> grid-padding: Theme.overscan-h;
     private property <length> header-height: 60px;
-    private property <int> total-rows: items.length > 0 ? ((items.length - 1) / columns) + 1 : 0;
-    private property <int> focused-row: columns > 0 ? focused-item / columns : 0;
-    private property <int> focused-col: columns > 0 ? focused-item - (focused-item / columns) * columns : 0;
+    private property <int> effective-columns: max(1, columns);
+    private property <length> grid-content-width:
+        (root.effective-columns * root.card-w)
+        + ((root.effective-columns - 1) * root.h-gap)
+        + (root.grid-padding * 2);
+    private property <int> total-rows: items.length > 0 ? ((items.length - 1) / root.effective-columns) + 1 : 0;
+    private property <int> focused-row: focused-item / root.effective-columns;
+    private property <int> focused-col: focused-item - (focused-item / root.effective-columns) * root.effective-columns;
     // 0 = sort button focused in toolbar, 1 = filter button
     private property <int> toolbar-focus: 0;
 
@@ -152,7 +157,7 @@ export component LibraryScreen inherits Rectangle {
         y: root.header-height;
         width: parent.width;
         height: parent.height - root.header-height;
-        viewport-width: self.width;
+        viewport-width: max(self.width, root.grid-content-width);
         viewport-height: root.total-rows * (root.card-h + root.v-gap) + root.v-gap;
         interactive: false;   // scrolling driven by focus, not touch
 
@@ -167,8 +172,8 @@ export component LibraryScreen inherits Rectangle {
                 -max(0px, target-y - view-h / 2 + root.card-h / 2)));
 
         for item[index] in items : MediaCard {
-            x: (index - (index / root.columns) * root.columns) * (root.card-w + root.h-gap) + root.grid-padding;
-            y: (index / root.columns) * (root.card-h + root.v-gap) + root.v-gap;
+            x: (index - (index / root.effective-columns) * root.effective-columns) * (root.card-w + root.h-gap) + root.grid-padding;
+            y: (index / root.effective-columns) * (root.card-h + root.v-gap) + root.v-gap;
             item: item;
             is-landscape: false;
             show-title: true;
@@ -242,7 +247,7 @@ export component LibraryScreen inherits Rectangle {
                     return accept;
                 }
                 if (event.text == Key.RightArrow) {
-                    if (root.focused-col < root.columns - 1
+                    if (root.focused-col < root.effective-columns - 1
                         && root.focused-item + 1 < root.items.length) {
                         root.focused-item += 1;
                     }
@@ -253,13 +258,13 @@ export component LibraryScreen inherits Rectangle {
                         // Move back to toolbar
                         root.focused-section = 0;
                     } else {
-                        root.focused-item = max(0, root.focused-item - root.columns);
+                        root.focused-item = max(0, root.focused-item - root.effective-columns);
                     }
                     return accept;
                 }
                 if (event.text == Key.DownArrow) {
-                    if (root.focused-item + root.columns < root.items.length) {
-                        root.focused-item += root.columns;
+                    if (root.focused-item + root.effective-columns < root.items.length) {
+                        root.focused-item += root.effective-columns;
                     } else if (root.focused-row < root.total-rows - 1) {
                         // Last partial row: clamp to last item
                         root.focused-item = root.items.length - 1;
