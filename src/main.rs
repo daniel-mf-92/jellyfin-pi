@@ -1477,10 +1477,11 @@ async fn detect_incomplete_jellyfin_setup(
             }
 
             warn!(
-                "Jellyfin startup wizard is not completed (server='{}', version='{}')",
+                "Jellyfin startup wizard is not completed (server='{}', version='{}'); keeping retries active so the app can recover after setup completes",
                 info.server_name, info.version
             );
-            true
+            reset_incomplete_setup_detection();
+            false
         }
         Err(err) => {
             debug!(
