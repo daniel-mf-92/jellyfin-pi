@@ -30,11 +30,75 @@ export component HomeScreen inherits Rectangle {
 
     // Height of each content row (title + cards), excluding inter-row spacing.
     pure function row-block-height-for-index(index: int) -> length {
-        let is-landscape-row = index >= 0 && index < root.rows.length && root.rows[index].row-type == "landscape";
-        let cards-height = is-landscape-row
+        let row-type = index >= 0 && index < root.rows.length
+            ? root.rows[index].row-type
+            : "poster";
+        let cards-height = row-type == "landscape"
             ? (Theme.landscape-height + 120px)
-            : (Theme.poster-height + 120px);
+            : (row-type == "square"
+                ? (Theme.square-height + 120px)
+                : (Theme.poster-height + 120px));
         return Theme.font-title-medium + 8px + cards-height;
+    }
+
+    pure function rows-height-through(index: int) -> length {
+        let i = max(0, min(index, root.rows.length));
+        if (i == 0) {
+            return 0px;
+        }
+        if (i == 1) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg;
+        }
+        if (i == 2) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg;
+        }
+        if (i == 3) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg;
+        }
+        if (i == 4) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg
+                + root.row-block-height-for-index(3) + Theme.spacing-lg;
+        }
+        if (i == 5) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg
+                + root.row-block-height-for-index(3) + Theme.spacing-lg
+                + root.row-block-height-for-index(4) + Theme.spacing-lg;
+        }
+        if (i == 6) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg
+                + root.row-block-height-for-index(3) + Theme.spacing-lg
+                + root.row-block-height-for-index(4) + Theme.spacing-lg
+                + root.row-block-height-for-index(5) + Theme.spacing-lg;
+        }
+        if (i == 7) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg
+                + root.row-block-height-for-index(3) + Theme.spacing-lg
+                + root.row-block-height-for-index(4) + Theme.spacing-lg
+                + root.row-block-height-for-index(5) + Theme.spacing-lg
+                + root.row-block-height-for-index(6) + Theme.spacing-lg;
+        }
+        if (i == 8) {
+            return root.row-block-height-for-index(0) + Theme.spacing-lg
+                + root.row-block-height-for-index(1) + Theme.spacing-lg
+                + root.row-block-height-for-index(2) + Theme.spacing-lg
+                + root.row-block-height-for-index(3) + Theme.spacing-lg
+                + root.row-block-height-for-index(4) + Theme.spacing-lg
+                + root.row-block-height-for-index(5) + Theme.spacing-lg
+                + root.row-block-height-for-index(6) + Theme.spacing-lg
+                + root.row-block-height-for-index(7) + Theme.spacing-lg;
+        }
+        return i * (Theme.row-height + Theme.spacing-lg);
     }
 
     // Estimated viewport height for the rows region below the top bar.
@@ -45,7 +109,7 @@ export component HomeScreen inherits Rectangle {
     // Total vertical extent of all rows including inter-row spacing.
     pure function rows-content-height() -> length {
         return root.rows.length > 0
-            ? (root.rows.length * Theme.row-height) + ((root.rows.length - 1) * Theme.spacing-lg)
+            ? (root.rows-height-through(root.rows.length) - Theme.spacing-lg)
             : 0px;
     }
 
@@ -54,7 +118,7 @@ export component HomeScreen inherits Rectangle {
         let max-scroll = max(0px, root.rows-content-height() - root.rows-viewport-height());
         let focused-row-index = max(0, min(root.focused-row, root.rows.length - 1));
         let focused-row-height = root.row-block-height-for-index(focused-row-index);
-        let focused-row-top = focused-row-index * (Theme.row-height + Theme.spacing-lg);
+        let focused-row-top = root.rows-height-through(focused-row-index);
         let focused-row-center = focused-row-top + (focused-row-height / 2);
         let raw-target = max(0px, focused-row-center - (root.rows-viewport-height() / 2));
         return -min(raw-target, max-scroll);
