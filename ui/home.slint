@@ -214,7 +214,25 @@ export component HomeScreen inherits Rectangle {
                 + root.row-block-height-for-index(14) + Theme.spacing-lg
                 + root.row-block-height-for-index(15) + Theme.spacing-lg;
         }
-        return i * (Theme.row-height + Theme.spacing-lg);
+        let first-16-height = root.row-block-height-for-index(0) + Theme.spacing-lg
+            + root.row-block-height-for-index(1) + Theme.spacing-lg
+            + root.row-block-height-for-index(2) + Theme.spacing-lg
+            + root.row-block-height-for-index(3) + Theme.spacing-lg
+            + root.row-block-height-for-index(4) + Theme.spacing-lg
+            + root.row-block-height-for-index(5) + Theme.spacing-lg
+            + root.row-block-height-for-index(6) + Theme.spacing-lg
+            + root.row-block-height-for-index(7) + Theme.spacing-lg
+            + root.row-block-height-for-index(8) + Theme.spacing-lg
+            + root.row-block-height-for-index(9) + Theme.spacing-lg
+            + root.row-block-height-for-index(10) + Theme.spacing-lg
+            + root.row-block-height-for-index(11) + Theme.spacing-lg
+            + root.row-block-height-for-index(12) + Theme.spacing-lg
+            + root.row-block-height-for-index(13) + Theme.spacing-lg
+            + root.row-block-height-for-index(14) + Theme.spacing-lg
+            + root.row-block-height-for-index(15) + Theme.spacing-lg;
+        let extra-rows = i - 16;
+        let fallback-row-height = root.row-block-height-for-index(15) + Theme.spacing-lg;
+        return first-16-height + (extra-rows * fallback-row-height);
     }
 
     // Estimated viewport height for the rows region below the top bar.
