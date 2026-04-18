@@ -749,10 +749,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !username.is_empty() && !password.is_empty() {
                     info!("Auto-login with credentials for user: {}", username);
 
-                    let auth_result = {
-                        let c = client_clone.read().await;
-                        c.authenticate(&username, &password).await
-                    };
+                    let auth_result = with_loading_timeout(
+                        "Credentials auto-login authenticate",
+                        async {
+                            let c = client_clone.read().await;
+                            c.authenticate(&username, &password)
+                                .await
+                                .map_err(
+                                    |e| -> Box<dyn std::error::Error + Send + Sync> {
+                                        Box::new(e)
+                                    },
+                                )
+                        },
+                    )
+                    .await;
 
                     match auth_result {
                         Ok(result) => {
@@ -1883,10 +1893,13 @@ fn setup_auth_callbacks(
                 }
             };
 
-            let auth_result = {
+            let auth_result = with_loading_timeout("User login authenticate", async {
                 let c = client.read().await;
-                c.authenticate(&username, &password_str).await
-            };
+                c.authenticate(&username, &password_str)
+                    .await
+                    .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+            })
+            .await;
 
             match auth_result {
                 Ok(result) => {
