@@ -1132,6 +1132,22 @@ fn setup_navigation_callbacks(
 ) {
     let detail_load_in_flight = Arc::new(AtomicBool::new(false));
 
+    struct DetailLoadInFlightGuard {
+        flag: Arc<AtomicBool>,
+    }
+
+    impl DetailLoadInFlightGuard {
+        fn new(flag: Arc<AtomicBool>) -> Self {
+            Self { flag }
+        }
+    }
+
+    impl Drop for DetailLoadInFlightGuard {
+        fn drop(&mut self) {
+            self.flag.store(false, Ordering::Release);
+        }
+    }
+
     // navigate(screen, param)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
@@ -1189,6 +1205,8 @@ fn setup_navigation_callbacks(
                         debug!("Ignoring duplicate detail navigation while load is in flight: {}", item_id);
                         return;
                     }
+                    let _detail_load_guard =
+                        DetailLoadInFlightGuard::new(detail_load_in_flight.clone());
 
                     // Show loading immediately for detail navigation/preflight checks.
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
@@ -1270,7 +1288,6 @@ fn setup_navigation_callbacks(
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
                         }
-                        detail_load_in_flight.store(false, Ordering::Release);
                         return;
                     }
 
@@ -1307,7 +1324,6 @@ fn setup_navigation_callbacks(
                         });
                     }
 
-                    detail_load_in_flight.store(false, Ordering::Release);
                 }
                 "library" => {
                     let library_id = param_str.clone();
