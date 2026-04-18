@@ -90,7 +90,7 @@ export component ContentRow inherits VerticalLayout {
                 item: item;
                 is-landscape: root.is-landscape;
                 is-square: root.is-square;
-                focused: root.row-focused && index == root.focused-index;
+                focused: root.row-focused && index == root.safe-focused-index;
 
                 selected(id) => {
                     root.item-selected(id, item.item-type);
@@ -119,10 +119,11 @@ export component ContentRow inherits VerticalLayout {
                 return accept;
             }
             if (event.text == Key.Return || event.text == " ") {
-                if (root.focused-index >= 0 && root.focused-index < root.items.length) {
+                if (root.items.length > 0) {
+                    let selected-index = root.safe-focused-index;
                     root.item-selected(
-                        root.items[root.focused-index].id,
-                        root.items[root.focused-index].item-type,
+                        root.items[selected-index].id,
+                        root.items[selected-index].item-type,
                     );
                 }
                 return accept;
