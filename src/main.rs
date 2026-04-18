@@ -86,6 +86,9 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token startup retries bounded while still covering typical
 // Jellyfin startup warm-up on the Mac Mini before we fall back to login.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 45;
+// Repeated full-home recovery loads can explode RSS on low-memory Pi startup paths.
+// Keep login usable instead of running indefinite saved-token background recovery.
+const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = false;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -673,7 +676,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
 
-                            if !authenticated && !should_clear_saved_auth && !setup_incomplete {
+                            if !authenticated
+                                && !should_clear_saved_auth
+                                && !setup_incomplete
+                                && ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY
+                            {
                                 if retry_window.is_zero() {
                                     info!(
                                         "Skipping foreground saved-token retries; continuing background recovery while keeping login available"
@@ -685,6 +692,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     );
                                 }
                                 schedule_saved_token_background_recovery = true;
+                            } else if !authenticated
+                                && !should_clear_saved_auth
+                                && !setup_incomplete
+                                && !ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY
+                            {
+                                warn!(
+                                    "Saved-token retry window exhausted; background recovery disabled to avoid memory blowups. Falling back to login UI."
+                                );
                             }
                         }
 
@@ -817,7 +832,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     && cfg.server.saved_token.is_some()
                             };
 
-                            if transient_startup_failure && has_saved_auth {
+                            if transient_startup_failure
+                                && has_saved_auth
+                                && ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY
+                            {
                                 schedule_saved_token_background_recovery = true;
                                 warn!(
                                     "Auto-login failed due to transient server/network issue: {}. Continuing saved-token background recovery.",
