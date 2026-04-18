@@ -334,12 +334,16 @@ async fn wait_for_display_backend() {
                 + tokio::time::Duration::from_secs(DISPLAY_BACKEND_WAIT_TIMEOUT_SECS);
             while tokio::time::Instant::now() < labwc_deadline {
                 if let Some(detected_display) = detect_wayland_display(runtime_dir_path) {
-                    std::env::set_var("WAYLAND_DISPLAY", &detected_display);
-                    info!(
-                        "labwc startup detected Wayland socket '{}'; continuing startup",
-                        detected_display
-                    );
-                    return;
+                    let detected_path = runtime_dir_path.join(&detected_display);
+                    if wayland_socket_ready(&detected_path) {
+                        std::env::set_var("WAYLAND_DISPLAY", &detected_display);
+                        tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                        info!(
+                            "labwc startup detected connectable Wayland socket '{}'; continuing startup",
+                            detected_display
+                        );
+                        return;
+                    }
                 }
                 tokio::time::sleep(tokio::time::Duration::from_millis(
                     DISPLAY_BACKEND_WAIT_POLL_MS,
