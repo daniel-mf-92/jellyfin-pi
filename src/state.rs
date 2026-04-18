@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::collections::HashSet;
 use tokio::sync::RwLock;
 use log::{info, debug};
 use crate::api::models::{UserDto, BaseItemDto};
@@ -36,6 +37,7 @@ pub struct AppState {
     pub access_token: Option<String>,
     pub server_url: String,
     pub server_name: String,
+    pub known_library_ids: HashSet<String>,
     // Playback session
     pub play_session_id: Option<String>,
     pub playing_item_id: Option<String>,
@@ -60,6 +62,7 @@ impl StateManager {
             access_token: None,
             server_url,
             server_name: String::new(),
+            known_library_ids: HashSet::new(),
             play_session_id: None,
             playing_item_id: None,
             playing_media_source_id: None,
@@ -220,6 +223,16 @@ impl StateManager {
     pub async fn set_tracking_session(&self, session_id: Option<i64>) {
         let mut state = self.state.write().await;
         state.tracking_session_id = session_id;
+    }
+
+    pub async fn set_known_library_ids(&self, library_ids: Vec<String>) {
+        let mut state = self.state.write().await;
+        state.known_library_ids = library_ids.into_iter().collect();
+    }
+
+    pub async fn is_known_library_id(&self, item_id: &str) -> bool {
+        let state = self.state.read().await;
+        state.known_library_ids.contains(item_id)
     }
 
     pub async fn get_tracking_session(&self) -> Option<i64> {

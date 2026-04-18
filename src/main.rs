@@ -1239,6 +1239,47 @@ fn setup_navigation_callbacks(
                     {
                         Ok(item) => Some(item),
                         Err(e) => {
+                            if state.is_known_library_id(&item_id).await {
+                                warn!(
+                                    "Detail preflight failed for known library {} (routing directly to library): {}",
+                                    item_id, e
+                                );
+                                state
+                                    .navigate_to(Screen::Library {
+                                        library_id: item_id.clone(),
+                                        title: String::new(),
+                                    })
+                                    .await;
+                                let library_id_for_ui = item_id.clone();
+                                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                    ui.global::<AppBridge>()
+                                        .set_library_id(library_id_for_ui.into());
+                                    ui.global::<AppBridge>().set_current_screen("library".into());
+                                    ui.global::<AppBridge>().set_is_loading(true);
+                                });
+                                if let Err(e) = with_loading_timeout(
+                                    "Library load",
+                                    load_library(
+                                        ui_weak.clone(),
+                                        client.clone(),
+                                        image_cache.clone(),
+                                        &item_id,
+                                        None,
+                                        None,
+                                    ),
+                                )
+                                .await
+                                {
+                                    error!("Failed to load library {}: {}", item_id, e);
+                                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                        ui.global::<AppBridge>().set_error_message(
+                                            format!("Failed to load library: {}", e).into(),
+                                        );
+                                        ui.global::<AppBridge>().set_is_loading(false);
+                                    });
+                                }
+                                return;
+                            }
                             warn!(
                                 "Detail preflight failed for {} (continuing as media item): {}",
                                 item_id, e
@@ -3566,6 +3607,10 @@ async fn load_home_data(
             }
         }
     }
+
+    state
+        .set_known_library_ids(views.iter().map(|v| v.id.clone()).collect())
+        .await;
 
     // Update UI
     if let Some(ui) = ui_weak.upgrade() {
