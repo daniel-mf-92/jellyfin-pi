@@ -1265,7 +1265,10 @@ fn setup_navigation_callbacks(
                                 title: String::new(),
                             })
                             .await;
-                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                        let library_id_for_ui = item_id.clone();
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>()
+                                .set_library_id(library_id_for_ui.into());
                             ui.global::<AppBridge>().set_current_screen("library".into());
                             ui.global::<AppBridge>().set_is_loading(true);
                         });
@@ -1334,7 +1337,10 @@ fn setup_navigation_callbacks(
                             title: String::new(),
                         })
                         .await;
-                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    let library_id_for_ui = library_id.clone();
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_library_id(library_id_for_ui.into());
                         ui.global::<AppBridge>().set_current_screen("library".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
@@ -1850,6 +1856,7 @@ fn setup_auth_callbacks(
                 ui.global::<AppBridge>().set_home_rows(ModelRc::default());
                 ui.global::<AppBridge>().set_search_results(ModelRc::default());
                 ui.global::<AppBridge>().set_library_items(ModelRc::default());
+                ui.global::<AppBridge>().set_library_id("".into());
                 ui.global::<AppBridge>().set_error_message("".into());
             });
 
@@ -3866,6 +3873,8 @@ async fn load_library(
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_library_items(ModelRc::new(VecModel::from(media_items)));
+        ui.global::<AppBridge>()
+            .set_library_id(SharedString::from(library_id));
         ui.global::<AppBridge>()
             .set_library_title(SharedString::from(&library_name));
         ui.global::<AppBridge>().set_is_loading(false);

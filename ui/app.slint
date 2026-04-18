@@ -97,6 +97,7 @@ export global AppBridge {
     in-out property <[MediaItem]> detail-seasons: [];
     in-out property <[MediaItem]> detail-episodes: [];
     in-out property <[MediaItem]> library-items: [];
+    in-out property <string> library-id: "";
     in-out property <string> library-title: "";
     in-out property <[SearchResult]> search-results: [];
     in-out property <PlayerState> player-state;
@@ -297,10 +298,10 @@ export component AppWindow inherits Window {
                 AppBridge.navigate("detail", id);
             }
             sort-changed(sort) => {
-                AppBridge.request-library("", sort, "");
+                AppBridge.request-library(AppBridge.library-id, sort, "");
             }
             filter-changed(filter) => {
-                AppBridge.request-library("", "", filter);
+                AppBridge.request-library(AppBridge.library-id, "", filter);
             }
             go-back() => {
                 AppBridge.go-back();
