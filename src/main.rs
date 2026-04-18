@@ -3527,17 +3527,15 @@ async fn load_item_detail(
         .map_err(|e| format!("Failed to get item: {}", e))?;
     drop(c);
 
-    // Load the poster first for quick first paint; backdrop is loaded lazily after
-    // the detail content is shown so we don't block on large image downloads.
-    let poster = load_poster_image(
+    // Render detail content immediately with image placeholders.
+    // Poster/backdrop are loaded lazily so slow artwork fetches never block
+    // navigation or keep the loading overlay visible.
+    let detail_item = base_item_to_media_item(
         &item,
         &server_url,
-        access_token.as_deref(),
-        &image_cache,
-        300,
-    )
-    .await;
-    let detail_item = base_item_to_media_item(&item, &server_url, poster, SlintImage::default());
+        SlintImage::default(),
+        SlintImage::default(),
+    );
 
     // If this is a series, auto-load seasons
     let is_series = item.item_type == "Series";
@@ -3574,8 +3572,31 @@ async fn load_item_detail(
         ui.global::<AppBridge>().set_is_loading(false);
     }
 
+    // Load poster after initial render. If it times out or fails, keep the
+    // placeholder and continue.
+    let poster = tokio::time::timeout(
+        tokio::time::Duration::from_secs(2),
+        load_poster_image(
+            &item,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            300,
+        ),
+    )
+    .await
+    .unwrap_or_default();
+
+    if let Some(ui) = ui_weak.upgrade() {
+        let mut current_detail = ui.global::<AppBridge>().get_detail_item();
+        if current_detail.id.as_str() == item_id_owned.as_str() {
+            current_detail.image_source = poster;
+            ui.global::<AppBridge>().set_detail_item(current_detail);
+        }
+    }
+
     // Load backdrop after initial render. If it times out or fails, keep the
-    // default backdrop and continue.
+    // placeholder and continue.
     let backdrop = tokio::time::timeout(
         tokio::time::Duration::from_secs(3),
         load_backdrop_image(
