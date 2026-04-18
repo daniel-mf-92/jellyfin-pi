@@ -1251,6 +1251,15 @@ class UnifiedController:
             self.y_press_time = 0
             return
 
+        # ── Jellyfin Pi foreground overrides (spec contract) ──
+        if self._jmp_foreground and code == ecodes.BTN_WEST:  # Y -> F2 (settings)
+            self.vinput.key_tap(ecodes.KEY_F2)
+            return
+
+        if self._jmp_foreground and code == ecodes.BTN_NORTH:  # X -> F3 (search)
+            self.vinput.key_tap(ecodes.KEY_F3)
+            return
+
         # ── Y button: always go home/launchpad ──
         if code == ecodes.BTN_WEST:
             log("Y pressed — force go home")
