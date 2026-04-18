@@ -91,6 +91,8 @@ const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = LOADING_TIMEOUT_SECS;
 const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = true;
 const SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS: u64 = 5;
 const FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS: u64 = 5;
+const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
+const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 60;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -114,6 +116,12 @@ fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
     if let Err(e) = slint::spawn_local(async_compat::Compat::new(future)) {
         error!("Failed to spawn UI task: {}", e);
     }
+}
+
+fn background_retry_delay_secs(attempt: usize) -> u64 {
+    let exponent = attempt.saturating_sub(1).min(6) as u32;
+    let multiplier = 1u64 << exponent;
+    (BACKGROUND_RETRY_BASE_DELAY_SECS.saturating_mul(multiplier)).min(BACKGROUND_RETRY_MAX_DELAY_SECS)
 }
 
 fn read_rss_mb() -> Option<u64> {
@@ -1132,12 +1140,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut should_show_login = false;
                 loop {
                     retry_attempt += 1;
-                    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+                    let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
+                    tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
 
                     if retry_attempt == 1 || retry_attempt % 3 == 0 {
                         info!(
-                            "Saved-token background recovery retry attempt {}",
-                            retry_attempt
+                            "Saved-token background recovery retry attempt {} (next delay {}s)",
+                            retry_attempt,
+                            retry_delay_secs,
                         );
                     }
 
@@ -3820,12 +3830,14 @@ async fn load_public_users(
     let mut retry_attempt: usize = 0;
     loop {
         retry_attempt += 1;
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        let retry_delay_secs = background_retry_delay_secs(retry_attempt);
+        tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
 
         if retry_attempt == 1 || retry_attempt % 3 == 0 {
             info!(
-                "Public-user background retry attempt {}",
-                retry_attempt
+                "Public-user background retry attempt {} (next delay {}s)",
+                retry_attempt,
+                retry_delay_secs,
             );
         }
 
