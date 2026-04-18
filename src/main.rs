@@ -1899,13 +1899,68 @@ fn setup_playback_callbacks(
 
             info!("Play item requested: {}", item_id_str);
 
+            // Resolve series items to a concrete playable episode before
+            // requesting PlaybackInfo. Jellyfin often returns 404/NotFound when
+            // PlaybackInfo is requested for a series container ID.
+            let playback_item_id = {
+                let c = client.read().await;
+                match c.get_item(&item_id_str).await {
+                    Ok(item) if item.item_type == "Series" => {
+                        match c
+                            .get_items(
+                                Some(&item_id_str),
+                                Some("Episode"),
+                                Some("SortName"),
+                                Some("Ascending"),
+                                0,
+                                1,
+                                None,
+                            )
+                            .await
+                        {
+                            Ok(result) => {
+                                if let Some(first_episode) = result.items.first() {
+                                    info!(
+                                        "Resolved series {} to first episode {} for playback",
+                                        item_id_str,
+                                        first_episode.id
+                                    );
+                                    first_episode.id.clone()
+                                } else {
+                                    warn!(
+                                        "Series {} has no playable episodes; using original ID",
+                                        item_id_str
+                                    );
+                                    item_id_str.clone()
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to resolve playable episode for series {}: {}",
+                                    item_id_str, e
+                                );
+                                item_id_str.clone()
+                            }
+                        }
+                    }
+                    Ok(_) => item_id_str.clone(),
+                    Err(e) => {
+                        warn!(
+                            "Failed to inspect item {} before playback: {}",
+                            item_id_str, e
+                        );
+                        item_id_str.clone()
+                    }
+                }
+            };
+
             // Get playback info from Jellyfin with the global loading timeout
             // contract so playback cannot remain in a permanent loading state.
             let playback_info = with_loading_timeout(
                 "Playback info",
                 {
                     let client = client.clone();
-                    let item_id = item_id_str.clone();
+                    let item_id = playback_item_id.clone();
                     async move {
                         let c = client.read().await;
                         c.get_playback_info(&item_id)
@@ -1957,7 +2012,7 @@ fn setup_playback_callbacks(
                         // Direct play
                         format!(
                             "{}/Videos/{}/stream?Static=true&MediaSourceId={}&api_key={}",
-                            server_url, item_id_str, media_source_id, access_token
+                            server_url, playback_item_id, media_source_id, access_token
                         )
                     } else if let Some(ref transcode_url) = media_source.transcoding_url {
                         // Transcoding
@@ -1969,7 +2024,7 @@ fn setup_playback_callbacks(
                         // Direct stream
                         format!(
                             "{}/Videos/{}/stream?Static=true&MediaSourceId={}&api_key={}",
-                            server_url, item_id_str, media_source_id, access_token
+                            server_url, playback_item_id, media_source_id, access_token
                         )
                     } else {
                         error!("No playable source found for item {}", item_id_str);
@@ -1995,7 +2050,7 @@ fn setup_playback_callbacks(
                     // Get the item details for title display
                     let item_detail = {
                         let c = client.read().await;
-                        c.get_item(&item_id_str).await.ok()
+                        c.get_item(&playback_item_id).await.ok()
                     };
 
                     // Get resume position
@@ -2008,7 +2063,7 @@ fn setup_playback_callbacks(
                     // Update state
                     state
                         .start_playback(
-                            item_id_str.clone(),
+                            playback_item_id.clone(),
                             session_id.clone(),
                             media_source_id.clone(),
                         )
@@ -2080,7 +2135,7 @@ fn setup_playback_callbacks(
                     {
                         let c = client.read().await;
                         let start_info = PlaybackStartInfo {
-                            item_id: item_id_str.clone(),
+                            item_id: playback_item_id.clone(),
                             media_source_id: Some(media_source_id.clone()),
                             play_session_id: Some(session_id.clone()),
                             play_method: play_method.to_string(),
@@ -2136,7 +2191,7 @@ fn setup_playback_callbacks(
                     // Load media segments for intro/credits skip
                     {
                         let c = client.read().await;
-                        if let Ok(segs) = c.get_media_segments(&item_id_str).await {
+                        if let Ok(segs) = c.get_media_segments(&playback_item_id).await {
                             let mut sm = segments.lock().await;
                             sm.set_segments(segs);
                         }
