@@ -82,6 +82,7 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token startup retries bounded while still covering typical
 // Jellyfin startup warm-up on the Mac Mini before we fall back to login.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 20;
+const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
 const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 60;
@@ -656,7 +657,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             break;
                                         }
 
-                                        if detect_incomplete_jellyfin_setup(&client_clone).await {
+                                        if detect_incomplete_jellyfin_setup_with_timeout(&client_clone).await {
                                             warn!(
                                                 "Saved-token auto-login retries stopped because Jellyfin setup wizard is not completed"
                                             );
@@ -962,7 +963,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 break;
                             }
 
-                            if detect_incomplete_jellyfin_setup(&client_retry).await {
+                            if detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await {
                                 warn!(
                                     "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
                                 );
@@ -1510,6 +1511,26 @@ async fn detect_incomplete_jellyfin_setup(
             debug!(
                 "Could not read Jellyfin public system info while checking setup status: {}",
                 err
+            );
+            false
+        }
+    }
+}
+
+async fn detect_incomplete_jellyfin_setup_with_timeout(
+    client: &Arc<RwLock<JellyfinClient>>,
+) -> bool {
+    match tokio::time::timeout(
+        tokio::time::Duration::from_secs(SETUP_STATUS_CHECK_TIMEOUT_SECS),
+        detect_incomplete_jellyfin_setup(client),
+    )
+    .await
+    {
+        Ok(value) => value,
+        Err(_) => {
+            debug!(
+                "Setup status probe timed out after {}s; treating as transient startup state",
+                SETUP_STATUS_CHECK_TIMEOUT_SECS
             );
             false
         }
@@ -3030,7 +3051,7 @@ async fn load_public_users_foreground_once(
             };
             warn!("Failed to load public users (foreground pass): {}", e);
 
-            if detect_incomplete_jellyfin_setup(&client).await {
+            if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
                 warn!(
                     "Public-user loading stopped because Jellyfin setup wizard is not completed"
                 );
@@ -3116,7 +3137,7 @@ async fn load_public_users(
                     return;
                 }
 
-                if detect_incomplete_jellyfin_setup(&client).await {
+                if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
                     warn!(
                         "Public-user loading stopped because Jellyfin setup wizard is not completed"
                     );
@@ -3182,7 +3203,7 @@ async fn load_public_users(
                     return;
                 }
 
-                if detect_incomplete_jellyfin_setup(&client).await {
+                if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
                     warn!(
                         "Public-user background retry stopped because Jellyfin setup wizard is not completed"
                     );
