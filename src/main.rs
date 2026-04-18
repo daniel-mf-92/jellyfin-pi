@@ -130,9 +130,34 @@ fn trim_process_memory() {
 }
 
 async fn wait_for_display_backend() {
-    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
-        .unwrap_or_else(|_| "/run/user/1000".to_string());
-    let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
+    fn detect_wayland_display(runtime_dir: &std::path::Path) -> Option<String> {
+        let mut candidates = std::fs::read_dir(runtime_dir)
+            .ok()?
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if !name.starts_with("wayland-") {
+                    return None;
+                }
+
+                if entry.path().exists() {
+                    Some(name)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+
+        candidates.sort();
+        candidates.into_iter().next()
+    }
+
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR").unwrap_or_else(|_| {
+        let uid = unsafe { libc::geteuid() };
+        format!("/run/user/{uid}")
+    });
+    let runtime_dir_path = std::path::Path::new(&runtime_dir);
+    let mut wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
     let wayland_socket = std::env::var("WAYLAND_SOCKET").ok();
     let x_display = std::env::var("DISPLAY").ok();
 
@@ -140,11 +165,23 @@ async fn wait_for_display_backend() {
         return;
     }
 
-    let wayland_path = if let Some(display) = wayland_display.clone() {
-        std::path::Path::new(&runtime_dir).join(display)
-    } else {
-        std::path::Path::new(&runtime_dir).join("wayland-0")
-    };
+    let mut wayland_path = wayland_display
+        .as_ref()
+        .map(|display| runtime_dir_path.join(display))
+        .unwrap_or_else(|| runtime_dir_path.join("wayland-0"));
+
+    if !wayland_path.exists() {
+        if let Some(detected_display) = detect_wayland_display(runtime_dir_path) {
+            wayland_path = runtime_dir_path.join(&detected_display);
+            wayland_display = Some(detected_display.clone());
+            std::env::set_var("WAYLAND_DISPLAY", &detected_display);
+            info!(
+                "Using detected Wayland display '{}' from {}",
+                detected_display,
+                runtime_dir
+            );
+        }
+    }
 
     let x11_ready = x_display
         .as_ref()
@@ -172,6 +209,18 @@ async fn wait_for_display_backend() {
         + tokio::time::Duration::from_secs(DISPLAY_BACKEND_WAIT_TIMEOUT_SECS);
 
     while tokio::time::Instant::now() < deadline {
+        if !wayland_path.exists() {
+            if let Some(detected_display) = detect_wayland_display(runtime_dir_path) {
+                wayland_path = runtime_dir_path.join(&detected_display);
+                wayland_display = Some(detected_display.clone());
+                std::env::set_var("WAYLAND_DISPLAY", &detected_display);
+                info!(
+                    "Detected Wayland socket '{}' while waiting for display backend",
+                    detected_display
+                );
+            }
+        }
+
         let wayland_now = wayland_path.exists();
         let x11_now = x_display
             .as_ref()
