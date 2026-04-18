@@ -1529,6 +1529,22 @@ async fn with_loading_timeout<T>(
 async fn detect_incomplete_jellyfin_setup(
     client: &Arc<RwLock<JellyfinClient>>,
 ) -> bool {
+    // A saved token implies the server has been set up before. During server
+    // startup/recovery we can briefly observe inconsistent setup metadata, so
+    // do not hard-stop retries on the setup-incomplete path in this state.
+    let has_saved_token = {
+        let c = client.read().await;
+        c.access_token
+            .as_ref()
+            .map(|token| !token.trim().is_empty())
+            .unwrap_or(false)
+    };
+
+    if has_saved_token {
+        reset_incomplete_setup_detection();
+        return false;
+    }
+
     let public_info = {
         let c = client.read().await;
         c.get_public_system_info().await
