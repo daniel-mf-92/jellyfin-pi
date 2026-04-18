@@ -1374,12 +1374,14 @@ fn setup_navigation_callbacks(
                     state.navigate_to(Screen::Search).await;
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
                         ui.global::<AppBridge>().set_current_screen("search".into());
+                        ui.global::<AppBridge>().set_is_loading(false);
                     });
                 }
                 "settings" => {
                     state.navigate_to(Screen::Settings).await;
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
                         ui.global::<AppBridge>().set_current_screen("settings".into());
+                        ui.global::<AppBridge>().set_is_loading(false);
                     });
                 }
                 "player" => {
@@ -1387,7 +1389,8 @@ fn setup_navigation_callbacks(
                     // but if navigated directly, treat param as item_id
                     if !param_str.is_empty() {
                         let _ = ui_weak.upgrade_in_event_loop(|ui| {
-                            ui.global::<AppBridge>().set_is_loading(true);
+                            ui.global::<AppBridge>().set_current_screen("player".into());
+                            ui.global::<AppBridge>().set_is_loading(false);
                         });
                         // Playback is initiated by play-item callback
                     }
