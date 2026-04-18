@@ -79,6 +79,9 @@ export component DetailScreen inherits Rectangle {
 
     in-out property <int> focused-section: 0;   // 0=buttons, 1=seasons, 2=episodes, 3=similar
     in-out property <int> focused-button: 0;
+    in-out property <int> focused-season-index: 0;
+    in-out property <int> focused-episode-index: 0;
+    in-out property <int> focused-related-index: 0;
 
     callback play-item(/* item_id */ string);
     callback navigate(/* screen */ string, /* param */ string);
@@ -112,6 +115,9 @@ export component DetailScreen inherits Rectangle {
             return 4;
         }
         if (root.is-series && root.has-seasons && root.has-episodes) {
+            return 3;
+        }
+        if (root.is-series && root.has-seasons && root.has-related) {
             return 3;
         }
         if (root.is-series && root.has-seasons) {
@@ -212,6 +218,79 @@ export component DetailScreen inherits Rectangle {
                         }
                     }
                     return accept;
+                }
+            }
+
+            // Left/Right/Enter in content rows
+            if (root.focused-section > 0) {
+                if (event.text == Key.LeftArrow) {
+                    if (root.is-series && root.has-seasons && root.focused-section == 1) {
+                        if (root.focused-season-index > 0) {
+                            root.focused-season-index -= 1;
+                        }
+                    } else if (
+                        root.is-series
+                        && root.has-seasons
+                        && root.has-episodes
+                        && root.focused-section == 2
+                    ) {
+                        if (root.focused-episode-index > 0) {
+                            root.focused-episode-index -= 1;
+                        }
+                    } else if (root.focused-related-index > 0) {
+                        root.focused-related-index -= 1;
+                    }
+                    return accept;
+                }
+
+                if (event.text == Key.RightArrow) {
+                    if (root.is-series && root.has-seasons && root.focused-section == 1) {
+                        if (root.focused-season-index < root.seasons.length - 1) {
+                            root.focused-season-index += 1;
+                        }
+                    } else if (
+                        root.is-series
+                        && root.has-seasons
+                        && root.has-episodes
+                        && root.focused-section == 2
+                    ) {
+                        if (root.focused-episode-index < root.episodes.length - 1) {
+                            root.focused-episode-index += 1;
+                        }
+                    } else if (root.focused-related-index < root.related-items.length - 1) {
+                        root.focused-related-index += 1;
+                    }
+                    return accept;
+                }
+
+                if (event.text == Key.Return || event.text == " ") {
+                    if (
+                        root.is-series
+                        && root.has-seasons
+                        && root.focused-section == 1
+                        && root.focused-season-index >= 0
+                        && root.focused-season-index < root.seasons.length
+                    ) {
+                        root.request-episodes(root.item.id, root.seasons[root.focused-season-index].id);
+                        return accept;
+                    }
+
+                    if (
+                        root.is-series
+                        && root.has-seasons
+                        && root.has-episodes
+                        && root.focused-section == 2
+                        && root.focused-episode-index >= 0
+                        && root.focused-episode-index < root.episodes.length
+                    ) {
+                        root.navigate("detail", root.episodes[root.focused-episode-index].id);
+                        return accept;
+                    }
+
+                    if (root.focused-related-index >= 0 && root.focused-related-index < root.related-items.length) {
+                        root.navigate("detail", root.related-items[root.focused-related-index].id);
+                        return accept;
+                    }
                 }
             }
 
@@ -494,6 +573,7 @@ export component DetailScreen inherits Rectangle {
                     title: "Seasons";
                     items: root.seasons;
                     row-focused: root.focused-section == 1;
+                    focused-index: root.focused-season-index;
 
                     item-selected(id) => {
                         root.request-episodes(root.item.id, id);
@@ -511,6 +591,7 @@ export component DetailScreen inherits Rectangle {
                     title: "Episodes";
                     items: root.episodes;
                     is-landscape: true;
+                    focused-index: root.focused-episode-index;
                     row-focused: root.is-series && root.has-seasons
                         ? root.focused-section == 2
                         : root.focused-section == 1;
@@ -530,6 +611,7 @@ export component DetailScreen inherits Rectangle {
                 ContentRow {
                     title: "Similar";
                     items: root.related-items;
+                    focused-index: root.focused-related-index;
                     row-focused: {
                         if (root.is-series && root.has-seasons && root.has-episodes) {
                             root.focused-section == 3
