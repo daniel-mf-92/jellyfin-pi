@@ -3433,7 +3433,31 @@ async fn load_home_data(
         // Also add a "My Libraries" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
         for view in &views {
-            let poster = if let Some(url) = view.primary_image_url(&server_url, 300) {
+            let library_image_url = if view
+                .image_tags
+                .as_ref()
+                .and_then(|tags| tags.get("Primary"))
+                .is_some()
+                || view.primary_image_tag.is_some()
+            {
+                view.primary_image_url(&server_url, 300)
+            } else if view
+                .backdrop_image_tags
+                .as_ref()
+                .and_then(|tags| tags.first())
+                .is_some()
+            {
+                view.backdrop_image_url(&server_url, 560)
+            } else {
+                view.parent_thumb_item_id.as_ref().map(|parent_id| {
+                    format!(
+                        "{}/Items/{}/Images/Thumb?maxWidth=560&quality=85",
+                        server_url, parent_id
+                    )
+                })
+            };
+
+            let poster = if let Some(url) = library_image_url {
                 let url = append_api_key(url, access_token.as_deref());
                 image_cache.load_image(&url).await.unwrap_or_default()
             } else {
