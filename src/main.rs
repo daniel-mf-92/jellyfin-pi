@@ -3996,9 +3996,29 @@ async fn load_item_detail(
         }
     });
 
-    // Auto-load seasons for series
+    // Auto-load seasons for series in the background so secondary data fetches
+    // never keep detail navigation inside the global loading timeout window.
     if is_series {
-        let _ = load_seasons(ui_weak, client, image_cache, &series_id).await;
+        let ui_for_seasons = ui_weak.clone();
+        let client_for_seasons = client.clone();
+        let image_cache_for_seasons = image_cache.clone();
+        let series_id_for_seasons = series_id.clone();
+        spawn_ui_task(async move {
+            if let Err(e) = load_seasons(
+                ui_for_seasons,
+                client_for_seasons,
+                image_cache_for_seasons,
+                &series_id_for_seasons,
+            )
+            .await
+            {
+                warn!(
+                    "Failed to load seasons for series {} after detail render: {}",
+                    series_id_for_seasons,
+                    e
+                );
+            }
+        });
     }
 
     info!("Item detail loaded: {}", item.name);
