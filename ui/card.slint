@@ -81,6 +81,13 @@ export component MediaCard inherits Rectangle {
                 animate background { duration: Theme.focus-duration; easing: ease-out; }
 
                 // Poster / thumbnail image
+                fallback-poster := Image {
+                    width: parent.width;
+                    height: parent.height;
+                    source: @image-url("../assets/jellyfin-banner.png");
+                    image-fit: cover;
+                }
+
                 poster := Image {
                     width: parent.width;
                     height: parent.height;
