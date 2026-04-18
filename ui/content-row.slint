@@ -11,7 +11,7 @@ export component ContentRow inherits VerticalLayout {
     in-out property <bool> row-focused: false;
     in-out property <int> focused-index: 0;
 
-    callback item-selected(string);
+    callback item-selected(string, string);
     callback item-play-requested(string);
 
     private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
@@ -79,7 +79,7 @@ export component ContentRow inherits VerticalLayout {
                 focused: root.row-focused && index == root.focused-index;
 
                 selected(id) => {
-                    root.item-selected(id);
+                    root.item-selected(id, item.item-type);
                 }
             }
         }
@@ -106,7 +106,10 @@ export component ContentRow inherits VerticalLayout {
             }
             if (event.text == Key.Return || event.text == " ") {
                 if (root.focused-index >= 0 && root.focused-index < root.items.length) {
-                    root.item-selected(root.items[root.focused-index].id);
+                    root.item-selected(
+                        root.items[root.focused-index].id,
+                        root.items[root.focused-index].item-type,
+                    );
                 }
                 return accept;
             }

@@ -221,8 +221,8 @@ export component HomeScreen inherits Rectangle {
                     row-focused: index == root.focused-row;
                     focused-index: root.focused-col;
 
-                    item-selected(id) => {
-                        if (row.title == "My Libraries") {
+                    item-selected(id, item-type) => {
+                        if (item-type == "CollectionFolder") {
                             root.open-library(id);
                         } else {
                             root.item-selected(id);
