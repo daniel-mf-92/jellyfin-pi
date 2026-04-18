@@ -222,7 +222,11 @@ export component HomeScreen inherits Rectangle {
                     focused-index: root.focused-col;
 
                     item-selected(id) => {
-                        root.item-selected(id);
+                        if (row.title == "My Libraries") {
+                            root.open-library(id);
+                        } else {
+                            root.item-selected(id);
+                        }
                     }
                     item-play-requested(id) => {
                         root.item-play(id);
