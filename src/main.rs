@@ -1517,8 +1517,10 @@ fn setup_navigation_callbacks(
             // Clear error message on back
             let detail_load_in_flight_for_ui = detail_load_in_flight.clone();
             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                let current_screen = ui.global::<AppBridge>().get_current_screen();
                 if detail_load_in_flight_for_ui.load(Ordering::Acquire)
-                    && ui.global::<AppBridge>().get_current_screen().as_str() != "detail"
+                    && current_screen.as_str() != "detail"
+                    && current_screen.as_str() != "library"
                 {
                     cancel_pending_detail_only_flag.store(true, Ordering::Release);
                 }
