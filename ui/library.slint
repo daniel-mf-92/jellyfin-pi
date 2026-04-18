@@ -36,9 +36,13 @@ export component LibraryScreen inherits Rectangle {
         (root.effective-columns * root.card-w)
         + ((root.effective-columns - 1) * root.h-gap)
         + (root.grid-padding * 2);
+    private property <int> safe-focused-item:
+        root.items.length > 0
+            ? max(0, min(root.focused-item, root.items.length - 1))
+            : 0;
     private property <int> total-rows: items.length > 0 ? ((items.length - 1) / root.effective-columns) + 1 : 0;
-    private property <int> focused-row: focused-item / root.effective-columns;
-    private property <int> focused-col: focused-item - (focused-item / root.effective-columns) * root.effective-columns;
+    private property <int> focused-row: root.safe-focused-item / root.effective-columns;
+    private property <int> focused-col: root.safe-focused-item - (root.safe-focused-item / root.effective-columns) * root.effective-columns;
     // 0 = sort button focused in toolbar, 1 = filter button
     private property <int> toolbar-focus: 0;
 
@@ -199,6 +203,10 @@ export component LibraryScreen inherits Rectangle {
         height: 0;
 
         key-pressed(event) => {
+            if (root.items.length > 0 && root.focused-item != root.safe-focused-item) {
+                root.focused-item = root.safe-focused-item;
+            }
+
             if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
                 root.go-back();
                 return accept;
