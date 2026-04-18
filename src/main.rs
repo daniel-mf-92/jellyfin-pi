@@ -731,12 +731,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     info!("Auto-login with credentials for user: {}", username);
 
                     let auth_result = {
-                        let mut c = client_clone.write().await;
+                        let c = client_clone.read().await;
                         c.authenticate(&username, &password).await
                     };
 
                     match auth_result {
                         Ok(result) => {
+                            {
+                                let mut c = client_clone.write().await;
+                                c.user_id = Some(result.user.id.clone());
+                                c.access_token = Some(result.access_token.clone());
+                            }
                             info!("Auto-login succeeded for user: {}", username);
                             state_clone
                                 .set_user(result.user.clone(), result.access_token.clone())
@@ -1683,12 +1688,17 @@ fn setup_auth_callbacks(
             };
 
             let auth_result = {
-                let mut c = client.write().await;
+                let c = client.read().await;
                 c.authenticate(&username, &password_str).await
             };
 
             match auth_result {
                 Ok(result) => {
+                    {
+                        let mut c = client.write().await;
+                        c.user_id = Some(result.user.id.clone());
+                        c.access_token = Some(result.access_token.clone());
+                    }
                     info!("Login successful for user: {}", username);
 
                     // Update state with authenticated user

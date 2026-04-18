@@ -227,9 +227,9 @@ impl JellyfinClient {
 
     /// POST /Users/AuthenticateByName
     ///
-    /// On success the access token and user ID are stored on the client.
+    /// Returns authentication result; caller updates client auth state.
     pub async fn authenticate(
-        &mut self,
+        &self,
         username: &str,
         password: &str,
     ) -> ApiResult<AuthenticationResult> {
@@ -255,12 +255,7 @@ impl JellyfinClient {
             .await?;
 
         let resp = self.check_response(resp).await?;
-        let result: AuthenticationResult = resp.json().await?;
-
-        self.access_token = Some(result.access_token.clone());
-        self.user_id = Some(result.user.id.clone());
-
-        Ok(result)
+        resp.json().await.map_err(ApiError::Network)
     }
 
     /// GET /System/Info/Public
