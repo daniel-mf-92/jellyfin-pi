@@ -1221,7 +1221,7 @@ fn setup_navigation_callbacks(
                     }
 
                     // Check if this is a CollectionFolder (library) — redirect to library screen
-                    let is_collection_folder = match with_loading_timeout_secs(
+                    let preflight_item = match with_loading_timeout_secs(
                         "Detail preflight",
                         2,
                         {
@@ -1237,15 +1237,20 @@ fn setup_navigation_callbacks(
                     )
                     .await
                     {
-                        Ok(item) => item.collection_type.is_some() || item.item_type == "CollectionFolder",
+                        Ok(item) => Some(item),
                         Err(e) => {
                             warn!(
                                 "Detail preflight failed for {} (continuing as media item): {}",
                                 item_id, e
                             );
-                            false
+                            None
                         }
                     };
+
+                    let is_collection_folder = preflight_item
+                        .as_ref()
+                        .map(|item| item.collection_type.is_some() || item.item_type == "CollectionFolder")
+                        .unwrap_or(false);
 
                     if !detail_load_in_flight.load(Ordering::Acquire) {
                         debug!("Detail navigation cancelled after preflight: {}", item_id);
@@ -1316,6 +1321,7 @@ fn setup_navigation_callbacks(
                             client,
                             image_cache,
                             &item_id,
+                            preflight_item,
                         ),
                     ).await
                     {
@@ -2914,6 +2920,7 @@ fn setup_content_callbacks(
                         client,
                         image_cache,
                         &item_id_str,
+                        None,
                     ),
                 ).await
                 {
@@ -3576,18 +3583,26 @@ async fn load_item_detail(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
     item_id: &str,
+    preloaded_item: Option<BaseItemDto>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
-
-    // Fetch the primary item first so we can render the detail screen quickly.
-    // Related/cast data is loaded after the initial detail payload is displayed.
-    let item = c
-        .get_item(item_id)
-        .await
-        .map_err(|e| format!("Failed to get item: {}", e))?;
     drop(c);
+
+    // Reuse preflight item data when available so detail navigation does not
+    // issue a second round-trip to the server before rendering.
+    let item = if let Some(item) = preloaded_item {
+        item
+    } else {
+        let c = client.read().await;
+        let item = c
+            .get_item(item_id)
+            .await
+            .map_err(|e| format!("Failed to get item: {}", e))?;
+        drop(c);
+        item
+    };
 
     // Render detail content immediately with image placeholders.
     // Poster/backdrop are loaded lazily so slow artwork fetches never block
