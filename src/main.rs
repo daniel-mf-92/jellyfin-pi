@@ -90,6 +90,7 @@ const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = LOADING_TIMEOUT_SECS;
 // auto-return users to Home without requiring manual login interaction.
 const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = true;
 const SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS: u64 = 5;
+const FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS: u64 = 5;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -2129,8 +2130,9 @@ fn setup_auth_callbacks(
                     c.access_token = Some(token);
                 }
 
-                match with_loading_timeout(
+                match with_loading_timeout_secs(
                     "Home load (manual retry with saved token)",
+                    FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS,
                     load_home_data(
                         ui_weak.clone(),
                         client.clone(),
@@ -3668,12 +3670,16 @@ async fn load_public_users_foreground_once(
         (c.server_url.clone(), c.access_token.clone())
     };
 
-    let result = with_loading_timeout("Load public users", async {
+    let result = with_loading_timeout_secs(
+        "Load public users",
+        FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS,
+        async {
         let c = client.read().await;
         c.get_public_users()
             .await
             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
-    })
+    },
+    )
     .await;
 
     match result {
