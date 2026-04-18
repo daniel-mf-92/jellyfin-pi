@@ -23,8 +23,10 @@ export component LibraryScreen inherits Rectangle {
     callback go-back();
 
     // -- Derived layout metrics -----------------------------------------------
-    private property <length> card-w: Theme.poster-width + Theme.poster-width * (Theme.focus-scale - 1.0);
-    private property <length> card-h: Theme.poster-height + Theme.poster-height * (Theme.focus-scale - 1.0) + 40px;
+    // Use the base poster footprint for grid layout math; focus scaling should
+    // only affect the focused card visual, not every cell's spacing/position.
+    private property <length> card-w: Theme.poster-width;
+    private property <length> card-h: Theme.poster-height + 40px;
     private property <length> h-gap: Theme.card-gap;
     private property <length> v-gap: Theme.spacing-lg;
     private property <length> grid-padding: Theme.overscan-h;
