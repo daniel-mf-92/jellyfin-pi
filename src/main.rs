@@ -1195,6 +1195,13 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
 
+                    // If Escape/back cancelled this in-flight detail request,
+                    // stop before any additional navigation/UI mutations.
+                    if !detail_load_in_flight.load(Ordering::Acquire) {
+                        debug!("Detail navigation cancelled before preflight: {}", item_id);
+                        return;
+                    }
+
                     // Check if this is a CollectionFolder (library) — redirect to library screen
                     let is_collection_folder = match with_loading_timeout_secs(
                         "Detail preflight",
@@ -1222,7 +1229,17 @@ fn setup_navigation_callbacks(
                         }
                     };
 
+                    if !detail_load_in_flight.load(Ordering::Acquire) {
+                        debug!("Detail navigation cancelled after preflight: {}", item_id);
+                        return;
+                    }
+
                     if is_collection_folder {
+                        if !detail_load_in_flight.load(Ordering::Acquire) {
+                            debug!("Library redirect cancelled before navigation: {}", item_id);
+                            return;
+                        }
+
                         // Navigate to library screen instead
                         state
                             .navigate_to(Screen::Library {
@@ -1262,6 +1279,12 @@ fn setup_navigation_callbacks(
                             item_id: item_id.clone(),
                         })
                         .await;
+
+                    if !detail_load_in_flight.load(Ordering::Acquire) {
+                        debug!("Detail navigation cancelled before UI switch: {}", item_id);
+                        return;
+                    }
+
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
                         ui.global::<AppBridge>().set_current_screen("detail".into());
                         ui.global::<AppBridge>().set_is_loading(true);
