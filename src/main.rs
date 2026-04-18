@@ -93,6 +93,8 @@ const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
 const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 60;
+const DISPLAY_BACKEND_WAIT_TIMEOUT_SECS: u64 = 15;
+const DISPLAY_BACKEND_WAIT_POLL_MS: u64 = 250;
 
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 static SETUP_INCOMPLETE_FIRST_SEEN_TS: AtomicU64 = AtomicU64::new(0);
@@ -125,6 +127,80 @@ fn trim_process_memory() {
     unsafe {
         libc::malloc_trim(0);
     }
+}
+
+async fn wait_for_display_backend() {
+    let runtime_dir = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| "/run/user/1000".to_string());
+    let wayland_display = std::env::var("WAYLAND_DISPLAY").ok();
+    let wayland_socket = std::env::var("WAYLAND_SOCKET").ok();
+    let x_display = std::env::var("DISPLAY").ok();
+
+    if wayland_socket.is_some() {
+        return;
+    }
+
+    let wayland_path = if let Some(display) = wayland_display.clone() {
+        std::path::Path::new(&runtime_dir).join(display)
+    } else {
+        std::path::Path::new(&runtime_dir).join("wayland-0")
+    };
+
+    let x11_ready = x_display
+        .as_ref()
+        .is_some_and(|_| std::path::Path::new("/tmp/.X11-unix").exists());
+
+    if wayland_path.exists() {
+        if wayland_display.is_none() {
+            std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+        }
+        return;
+    }
+
+    if x11_ready {
+        return;
+    }
+
+    warn!(
+        "No display backend detected at startup (WAYLAND_DISPLAY={:?}, DISPLAY={:?}); waiting up to {}s",
+        wayland_display,
+        x_display,
+        DISPLAY_BACKEND_WAIT_TIMEOUT_SECS
+    );
+
+    let deadline = tokio::time::Instant::now()
+        + tokio::time::Duration::from_secs(DISPLAY_BACKEND_WAIT_TIMEOUT_SECS);
+
+    while tokio::time::Instant::now() < deadline {
+        let wayland_now = wayland_path.exists();
+        let x11_now = x_display
+            .as_ref()
+            .is_some_and(|_| std::path::Path::new("/tmp/.X11-unix").exists());
+
+        if wayland_now {
+            if wayland_display.is_none() {
+                std::env::set_var("WAYLAND_DISPLAY", "wayland-0");
+            }
+            info!("Display backend became ready via Wayland socket");
+            return;
+        }
+
+        if x11_now {
+            info!("Display backend became ready via X11 display");
+            return;
+        }
+
+        tokio::time::sleep(tokio::time::Duration::from_millis(
+            DISPLAY_BACKEND_WAIT_POLL_MS,
+        ))
+        .await;
+    }
+
+    warn!(
+        "Display backend still unavailable after {}s (expected Wayland socket at {})",
+        DISPLAY_BACKEND_WAIT_TIMEOUT_SECS,
+        wayland_path.display()
+    );
 }
 
 // =============================================================================
@@ -463,6 +539,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // DEFERRED: daemon tasks start AFTER login, not at startup (saves ~100s of MB)
     let daemon_mgr = Arc::new(Mutex::new(daemon_mgr));
 
+    wait_for_display_backend().await;
 
     // 4. Create Slint UI
     let ui = AppWindow::new()?;
