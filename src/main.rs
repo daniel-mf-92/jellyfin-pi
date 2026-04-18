@@ -879,14 +879,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         break;
                     };
 
-                    // Ensure saved auth is applied before each retry.
-                    // Use a blocking write-lock instead of try_write(): a busy
-                    // read-heavy loop can otherwise starve this path and prevent
-                    // saved-token recovery from ever executing.
-                    let mut client_guard = client_retry.write().await;
-                    client_guard.access_token = Some(token);
-                    client_guard.user_id = Some(user_id);
-                    drop(client_guard);
+                    // Best-effort auth refresh before each retry.
+                    // Do not block on a write-lock here: while recovery is active,
+                    // other read paths (public-user retries, setup probes) can hold
+                    // read guards around network I/O. Waiting for a writer can stall
+                    // both loops indefinitely due writer-pref lock fairness.
+                    if let Ok(mut client_guard) = client_retry.try_write() {
+                        client_guard.access_token = Some(token);
+                        client_guard.user_id = Some(user_id);
+                    } else if retry_attempt % 6 == 0 {
+                        warn!(
+                            "Saved-token background recovery could not refresh auth state immediately (attempt {}); retrying with current client auth",
+                            retry_attempt
+                        );
+                    }
 
                     match with_loading_timeout(
                         "Home load (saved token background recovery)",
