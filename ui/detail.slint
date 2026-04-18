@@ -303,7 +303,7 @@ export component DetailScreen inherits Rectangle {
     Flickable {
         width: 100%;
         height: 100%;
-        viewport-height: self.height + 800px;
+        viewport-height: max(self.height, content-layout.preferred-height);
         viewport-y: root.target-scroll-y();
 
         animate viewport-y {
@@ -311,7 +311,7 @@ export component DetailScreen inherits Rectangle {
             easing: ease-in-out;
         }
 
-        VerticalLayout {
+        content-layout := VerticalLayout {
             spacing: 0px;
 
             // ================================================================
