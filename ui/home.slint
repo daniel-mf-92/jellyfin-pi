@@ -421,6 +421,7 @@ export component HomeScreen inherits Rectangle {
                     items: row.items;
                     is-landscape: row.row-type == "landscape";
                     is-square: row.row-type == "square";
+                    include-horizontal-overscan: false;
                     row-focused: index == root.focused-row;
                     focused-index: root.focused-col;
 

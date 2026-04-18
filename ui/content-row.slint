@@ -9,6 +9,7 @@ export component ContentRow inherits VerticalLayout {
     in property <[MediaItem]> items: [];
     in property <bool> is-landscape: false;
     in property <bool> is-square: false;
+    in property <bool> include-horizontal-overscan: true;
     in-out property <bool> row-focused: false;
     in-out property <int> focused-index: 0;
 
@@ -22,7 +23,8 @@ export component ContentRow inherits VerticalLayout {
     // Keep row metrics based on the base card width so max-scroll reflects
     // real content width; apply focus overhang only to the currently focused card.
     private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
-    private property <length> row-padding: Theme.overscan-h + root.focus-overhang;
+    private property <length> row-padding:
+        (root.include-horizontal-overscan ? Theme.overscan-h : 0px) + root.focus-overhang;
     private property <length> step-width: root.card-width + Theme.card-gap;
     private property <int> safe-focused-index:
         root.items.length > 0
