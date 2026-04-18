@@ -2172,7 +2172,7 @@ fn setup_playback_callbacks(
                         match tracker.start_session(
                             &user_name,
                             &user_id,
-                            &item_id_str,
+                            &playback_item_id,
                             title_str,
                             series,
                             se.as_deref(),
