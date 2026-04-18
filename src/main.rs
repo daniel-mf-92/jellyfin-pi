@@ -138,15 +138,63 @@ async fn wait_for_display_backend() {
             .unwrap_or(false)
     }
 
+    fn ensure_headless_labwc_config(runtime_dir: &str) -> Option<std::path::PathBuf> {
+        let uid = unsafe { libc::geteuid() };
+        let config_dir = std::path::PathBuf::from(format!(
+            "/tmp/jellyfin-pi-labwc-{uid}"
+        ));
+        if std::fs::create_dir_all(&config_dir).is_err() {
+            return None;
+        }
+
+        let rc_xml = config_dir.join("rc.xml");
+        let autostart = config_dir.join("autostart");
+
+        if std::fs::write(
+            &rc_xml,
+            "<?xml version=\"1.0\"?>\n<labwc_config></labwc_config>\n",
+        )
+        .is_err()
+        {
+            return None;
+        }
+
+        if std::fs::write(&autostart, "#!/bin/sh\n").is_err() {
+            return None;
+        }
+
+        let _ = std::fs::set_permissions(
+            &autostart,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        );
+
+        let _ = std::fs::set_permissions(
+            &config_dir,
+            std::os::unix::fs::PermissionsExt::from_mode(0o700),
+        );
+
+        let _ = runtime_dir;
+        Some(config_dir)
+    }
+
     fn try_spawn_labwc(runtime_dir: &str) -> bool {
-        std::process::Command::new("labwc")
+        let mut command = std::process::Command::new("labwc");
+        command
             .env("XDG_RUNTIME_DIR", runtime_dir)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map(|_| true)
-            .unwrap_or(false)
+            .stderr(std::process::Stdio::null());
+
+        if let Some(config_dir) = ensure_headless_labwc_config(runtime_dir) {
+            command
+                .arg("-C")
+                .arg(config_dir)
+                .env("WLR_BACKENDS", "headless")
+                .env("WLR_LIBINPUT_NO_DEVICES", "1")
+                .env("WLR_HEADLESS_OUTPUTS", "1");
+        }
+
+        command.spawn().map(|_| true).unwrap_or(false)
     }
 
     fn detect_wayland_display(runtime_dir: &std::path::Path) -> Option<String> {
@@ -294,6 +342,15 @@ async fn wait_for_display_backend() {
             warn!("Failed to spawn labwc automatically");
         }
     }
+
+    warn!(
+        "Falling back to SLINT_BACKEND=linuxkms due to missing Wayland/X11 compositor"
+    );
+    std::env::set_var("SLINT_BACKEND", "linuxkms");
+    std::env::remove_var("WINIT_UNIX_BACKEND");
+    std::env::remove_var("WAYLAND_DISPLAY");
+    std::env::remove_var("WAYLAND_SOCKET");
+    std::env::remove_var("DISPLAY");
 }
 
 // =============================================================================
