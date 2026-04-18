@@ -1413,14 +1413,29 @@ fn setup_navigation_callbacks(
         let detail_load_in_flight = detail_flag_clone.clone();
 
         spawn_ui_task(async move {
+            let cancel_pending_detail_only = Arc::new(AtomicBool::new(false));
+            let cancel_pending_detail_only_flag = cancel_pending_detail_only.clone();
+
             // Clear error message on back
-            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+            let detail_load_in_flight_for_ui = detail_load_in_flight.clone();
+            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                if detail_load_in_flight_for_ui.load(Ordering::Acquire)
+                    && ui.global::<AppBridge>().get_current_screen().as_str() != "detail"
+                {
+                    cancel_pending_detail_only_flag.store(true, Ordering::Release);
+                }
                 ui.global::<AppBridge>().set_error_message("".into());
                 ui.global::<AppBridge>().set_is_loading(false);
             });
 
             // Allow navigating to detail again immediately after a cancellation/back action.
             detail_load_in_flight.store(false, Ordering::Release);
+
+            // Escape while a detail navigation preflight is running should
+            // cancel that pending navigation, not pop the current screen.
+            if cancel_pending_detail_only.load(Ordering::Acquire) {
+                return;
+            }
 
             // Dismiss screensaver if active
             {
