@@ -33,10 +33,27 @@ export component HomeScreen inherits Rectangle {
         return Theme.row-height + Theme.font-body-large + Theme.spacing-sm + Theme.spacing-lg;
     }
 
+    // Estimated viewport height for the rows region below the top bar.
+    pure function rows-viewport-height() -> length {
+        return max(0px, root.height - (Theme.overscan-v * 2) - 48px - Theme.spacing-sm);
+    }
+
+    // Total vertical extent of all rows including inter-row spacing.
+    pure function rows-content-height() -> length {
+        return root.rows.length > 0
+            ? (root.rows.length * root.row-block-height())
+            : 0px;
+    }
+
     // Target scroll offset to keep focused row visible
     pure function target-scroll-y() -> length {
-        // Scroll so focused row is near the top with some margin
-        return root.focused-row <= 0 ? 0px : -max(0px, root.focused-row * root.row-block-height() - root.row-block-height() / 2);
+        // Scroll so focused row is near the top with some margin, while
+        // clamping to the actual content bounds to avoid overscrolling.
+        let max-scroll = max(0px, root.rows-content-height() - root.rows-viewport-height());
+        let raw-target = root.focused-row <= 0
+            ? 0px
+            : max(0px, root.focused-row * root.row-block-height() - root.row-block-height() / 2);
+        return -min(raw-target, max-scroll);
     }
 
     // -- Focus handling -------------------------------------------------------
