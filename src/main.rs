@@ -3841,65 +3841,85 @@ async fn load_item_detail(
         ui.global::<AppBridge>().set_is_loading(false);
     }
 
-    // Load poster after initial render. If it times out or fails, keep the
-    // placeholder and continue.
-    let poster = tokio::time::timeout(
-        tokio::time::Duration::from_secs(2),
-        load_poster_image(
-            &item,
-            &server_url,
-            access_token.as_deref(),
-            &image_cache,
-            300,
-        ),
-    )
-    .await
-    .unwrap_or_default();
+    // Hydrate poster/backdrop/similar in background so detail load completes
+    // quickly and never times out on secondary network/image fetches.
+    let ui_for_poster = ui_weak.clone();
+    let item_for_poster = item.clone();
+    let server_url_for_poster = server_url.clone();
+    let access_token_for_poster = access_token.clone();
+    let image_cache_for_poster = image_cache.clone();
+    let detail_item_id_for_poster = item_id_owned.clone();
+    spawn_ui_task(async move {
+        let poster = tokio::time::timeout(
+            tokio::time::Duration::from_secs(2),
+            load_poster_image(
+                &item_for_poster,
+                &server_url_for_poster,
+                access_token_for_poster.as_deref(),
+                &image_cache_for_poster,
+                300,
+            ),
+        )
+        .await
+        .unwrap_or_default();
 
-    if let Some(ui) = ui_weak.upgrade() {
-        let mut current_detail = ui.global::<AppBridge>().get_detail_item();
-        if current_detail.id.as_str() == item_id_owned.as_str() {
-            current_detail.image_source = poster;
-            ui.global::<AppBridge>().set_detail_item(current_detail);
+        if let Some(ui) = ui_for_poster.upgrade() {
+            let mut current_detail = ui.global::<AppBridge>().get_detail_item();
+            if current_detail.id.as_str() == detail_item_id_for_poster.as_str() {
+                current_detail.image_source = poster;
+                ui.global::<AppBridge>().set_detail_item(current_detail);
+            }
         }
-    }
+    });
 
-    // Load backdrop after initial render. If it times out or fails, keep the
-    // placeholder and continue.
-    let backdrop = tokio::time::timeout(
-        tokio::time::Duration::from_secs(3),
-        load_backdrop_image(
-            &item,
-            &server_url,
-            access_token.as_deref(),
-            &image_cache,
-            800,
-        ),
-    )
-    .await
-    .unwrap_or_default();
+    let ui_for_backdrop = ui_weak.clone();
+    let item_for_backdrop = item.clone();
+    let server_url_for_backdrop = server_url.clone();
+    let access_token_for_backdrop = access_token.clone();
+    let image_cache_for_backdrop = image_cache.clone();
+    let detail_item_id_for_backdrop = item_id_owned.clone();
+    spawn_ui_task(async move {
+        let backdrop = tokio::time::timeout(
+            tokio::time::Duration::from_secs(3),
+            load_backdrop_image(
+                &item_for_backdrop,
+                &server_url_for_backdrop,
+                access_token_for_backdrop.as_deref(),
+                &image_cache_for_backdrop,
+                800,
+            ),
+        )
+        .await
+        .unwrap_or_default();
 
-    if let Some(ui) = ui_weak.upgrade() {
-        let mut current_detail = ui.global::<AppBridge>().get_detail_item();
-        if current_detail.id.as_str() == item_id_owned.as_str() {
-            current_detail.backdrop_source = backdrop;
-            ui.global::<AppBridge>().set_detail_item(current_detail);
+        if let Some(ui) = ui_for_backdrop.upgrade() {
+            let mut current_detail = ui.global::<AppBridge>().get_detail_item();
+            if current_detail.id.as_str() == detail_item_id_for_backdrop.as_str() {
+                current_detail.backdrop_source = backdrop;
+                ui.global::<AppBridge>().set_detail_item(current_detail);
+            }
         }
-    }
+    });
 
-    // Load similar items after initial render.
-    let similar = {
-        let c = client.read().await;
-        c.get_similar(item_id, 12).await.unwrap_or_default()
-    };
-    let related_items = items_to_media_items_no_images(&similar, &server_url);
-    if let Some(ui) = ui_weak.upgrade() {
-        let current_id = ui.global::<AppBridge>().get_detail_item().id;
-        if current_id.as_str() == item_id_owned.as_str() {
-            ui.global::<AppBridge>()
-                .set_detail_related(ModelRc::new(VecModel::from(related_items)));
+    let ui_for_similar = ui_weak.clone();
+    let client_for_similar = client.clone();
+    let server_url_for_similar = server_url.clone();
+    let detail_item_id_for_similar = item_id_owned.clone();
+    let item_id_for_similar = item_id.to_string();
+    spawn_ui_task(async move {
+        let similar = {
+            let c = client_for_similar.read().await;
+            c.get_similar(&item_id_for_similar, 12).await.unwrap_or_default()
+        };
+        let related_items = items_to_media_items_no_images(&similar, &server_url_for_similar);
+        if let Some(ui) = ui_for_similar.upgrade() {
+            let current_id = ui.global::<AppBridge>().get_detail_item().id;
+            if current_id.as_str() == detail_item_id_for_similar.as_str() {
+                ui.global::<AppBridge>()
+                    .set_detail_related(ModelRc::new(VecModel::from(related_items)));
+            }
         }
-    }
+    });
 
     // Build cast & crew placeholders after initial render, then hydrate
     // headshots asynchronously so detail navigation remains instant.
