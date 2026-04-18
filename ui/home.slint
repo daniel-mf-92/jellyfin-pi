@@ -28,9 +28,13 @@ export component HomeScreen inherits Rectangle {
 
     // -- Internal state -------------------------------------------------------
 
-    // Height of each content row (title + cards + spacing)
-    pure function row-block-height() -> length {
-        return Theme.row-height + Theme.font-body-large + Theme.spacing-sm + Theme.spacing-lg;
+    // Height of each content row (title + cards), excluding inter-row spacing.
+    pure function row-block-height-for-index(index: int) -> length {
+        let is-landscape-row = index >= 0 && index < root.rows.length && root.rows[index].row-type == "landscape";
+        let cards-height = is-landscape-row
+            ? (Theme.landscape-height + 120px)
+            : (Theme.poster-height + 120px);
+        return Theme.font-title-medium + 8px + cards-height;
     }
 
     // Estimated viewport height for the rows region below the top bar.
@@ -41,18 +45,18 @@ export component HomeScreen inherits Rectangle {
     // Total vertical extent of all rows including inter-row spacing.
     pure function rows-content-height() -> length {
         return root.rows.length > 0
-            ? (root.rows.length * root.row-block-height())
+            ? (root.rows.length * Theme.row-height) + ((root.rows.length - 1) * Theme.spacing-lg)
             : 0px;
     }
 
     // Target scroll offset to keep focused row visible
     pure function target-scroll-y() -> length {
-        // Scroll so focused row is near the top with some margin, while
-        // clamping to the actual content bounds to avoid overscrolling.
         let max-scroll = max(0px, root.rows-content-height() - root.rows-viewport-height());
-        let raw-target = root.focused-row <= 0
-            ? 0px
-            : max(0px, root.focused-row * root.row-block-height() - root.row-block-height() / 2);
+        let focused-row-index = max(0, min(root.focused-row, root.rows.length - 1));
+        let focused-row-height = root.row-block-height-for-index(focused-row-index);
+        let focused-row-top = focused-row-index * (Theme.row-height + Theme.spacing-lg);
+        let focused-row-center = focused-row-top + (focused-row-height / 2);
+        let raw-target = max(0px, focused-row-center - (root.rows-viewport-height() / 2));
         return -min(raw-target, max-scroll);
     }
 
