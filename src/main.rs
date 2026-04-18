@@ -3112,6 +3112,10 @@ fn setup_content_callbacks(
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>()
                         .set_search_results(ModelRc::default());
+                    // Clearing the search box should also clear transient loading
+                    // state from any previous query attempt.
+                    ui.global::<AppBridge>().set_error_message("".into());
+                    ui.global::<AppBridge>().set_is_loading(false);
                 });
                 return;
             }
