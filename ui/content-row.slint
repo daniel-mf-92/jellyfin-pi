@@ -18,11 +18,13 @@ export component ContentRow inherits VerticalLayout {
     // MediaCard includes focus-scale padding in its component width.
     // Use the scaled footprint for scroll calculations to keep focused cards in view.
     private property <length> card-footprint-width: root.card-width * Theme.focus-scale;
+    private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
+    private property <length> row-padding: Theme.overscan-h + root.focus-overhang;
     private property <length> step-width: root.card-footprint-width + Theme.card-gap;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-footprint-width) + ((root.items.length - 1) * Theme.card-gap) + (Theme.overscan-h * 2)
-            : Theme.overscan-h * 2;
+            ? (root.items.length * root.card-footprint-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
+            : root.row-padding * 2;
 
     spacing: 0px;
 
@@ -50,9 +52,9 @@ export component ContentRow inherits VerticalLayout {
         viewport-width: root.content-width;
         private property <length> max-scroll: max(0px, root.content-width - self.width);
         private property <length> focused-card-right:
-            Theme.overscan-h + ((root.focused-index + 1) * root.step-width) - Theme.card-gap;
+            root.row-padding + ((root.focused-index + 1) * root.step-width) - Theme.card-gap + root.focus-overhang;
         private property <length> raw-scroll-target:
-            max(0px, self.focused-card-right - (self.width - Theme.overscan-h));
+            max(0px, self.focused-card-right - (self.width - root.row-padding));
         private property <length> clamped-scroll-target: min(self.max-scroll, self.raw-scroll-target);
 
         viewport-x: -self.clamped-scroll-target;
@@ -64,8 +66,8 @@ export component ContentRow inherits VerticalLayout {
 
         HorizontalLayout {
             spacing: Theme.card-gap;
-            padding-left: Theme.overscan-h;
-            padding-right: Theme.overscan-h;
+            padding-left: root.row-padding;
+            padding-right: root.row-padding;
 
             for item[index] in root.items : MediaCard {
                 item: item;
