@@ -61,10 +61,10 @@ export component ContentRow inherits VerticalLayout {
             : (root.is-square ? Theme.square-height + 120px : Theme.poster-height + 120px);
         viewport-width: root.content-width;
         private property <length> max-scroll: max(0px, root.content-width - self.width);
-        private property <length> focused-card-right:
-            root.row-padding + ((root.safe-focused-index + 1) * root.step-width) - Theme.card-gap + root.focus-overhang;
+        private property <length> focused-card-center:
+            root.row-padding + (root.safe-focused-index * root.step-width) + (root.card-width / 2);
         private property <length> raw-scroll-target:
-            max(0px, self.focused-card-right - (self.width - root.row-padding));
+            max(0px, self.focused-card-center - (self.width / 2));
         private property <length> clamped-scroll-target:
             root.row-focused ? min(self.max-scroll, self.raw-scroll-target) : 0px;
 
