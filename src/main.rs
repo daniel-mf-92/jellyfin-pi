@@ -1495,6 +1495,7 @@ fn setup_navigation_callbacks(
     daemon_screen_tx: tokio::sync::watch::Sender<String>,
 ) {
     let detail_load_in_flight = Arc::new(AtomicBool::new(false));
+    let navigation_epoch = Arc::new(AtomicU64::new(0));
 
     struct DetailLoadInFlightGuard {
         flag: Arc<AtomicBool>,
@@ -1518,14 +1519,17 @@ fn setup_navigation_callbacks(
     let image_clone = image_cache.clone();
     let state_clone = state.clone();
     let detail_flag_clone = detail_load_in_flight.clone();
+    let navigation_epoch_clone = navigation_epoch.clone();
     ui.global::<AppBridge>().on_navigate(move |screen, param| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
         let state = state_clone.clone();
         let detail_load_in_flight = detail_flag_clone.clone();
+        let navigation_epoch = navigation_epoch_clone.clone();
         let screen_str = screen.to_string();
         let param_str = param.to_string();
+        let request_epoch = navigation_epoch.fetch_add(1, Ordering::AcqRel) + 1;
 
         // Notify daemon of screen change (for foreground-app tracking)
         let _ = daemon_screen_tx.send(screen_str.clone());
@@ -1536,9 +1540,15 @@ fn setup_navigation_callbacks(
             // Reset idle timer on navigation
             state.reset_idle().await;
 
+            let is_stale_navigation = || navigation_epoch.load(Ordering::Acquire) != request_epoch;
+
             match screen_str.as_str() {
                 "home" => {
                     state.navigate_to(Screen::Home).await;
+                    if is_stale_navigation() {
+                        debug!("Ignoring stale home navigation request");
+                        return;
+                    }
                     let _ = ui_weak.upgrade_in_event_loop(|ui| {
                         ui.global::<AppBridge>().set_current_screen("home".into());
                         ui.global::<AppBridge>().set_is_loading(true);
@@ -1553,6 +1563,10 @@ fn setup_navigation_callbacks(
                         ),
                     ).await
                     {
+                        if is_stale_navigation() {
+                            debug!("Ignoring stale home load error after navigation cancel");
+                            return;
+                        }
                         error!("Failed to load home data: {}", e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AppBridge>()
@@ -1563,6 +1577,11 @@ fn setup_navigation_callbacks(
                 }
                 "detail" => {
                     let item_id = param_str.clone();
+
+                    if is_stale_navigation() {
+                        debug!("Ignoring stale detail navigation request: {}", item_id);
+                        return;
+                    }
 
                     // Prevent duplicate detail loads from repeated A/Enter presses.
                     if detail_load_in_flight.swap(true, Ordering::AcqRel) {
@@ -1581,6 +1600,10 @@ fn setup_navigation_callbacks(
                     // stop before any additional navigation/UI mutations.
                     if !detail_load_in_flight.load(Ordering::Acquire) {
                         debug!("Detail navigation cancelled before preflight: {}", item_id);
+                        return;
+                    }
+                    if is_stale_navigation() {
+                        debug!("Detail navigation superseded before preflight: {}", item_id);
                         return;
                     }
 
@@ -1603,6 +1626,10 @@ fn setup_navigation_callbacks(
                     {
                         Ok(item) => Some(item),
                         Err(e) => {
+                            if is_stale_navigation() {
+                                debug!("Detail preflight result ignored for stale navigation: {}", item_id);
+                                return;
+                            }
                             if state.is_known_library_id(&item_id).await {
                                 warn!(
                                     "Detail preflight failed for known library {} (routing directly to library): {}",
@@ -1634,6 +1661,10 @@ fn setup_navigation_callbacks(
                                 )
                                 .await
                                 {
+                                    if is_stale_navigation() {
+                                        debug!("Library preflight redirect error ignored for stale navigation: {}", item_id);
+                                        return;
+                                    }
                                     error!("Failed to load library {}: {}", item_id, e);
                                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                                         ui.global::<AppBridge>().set_error_message(
@@ -1661,10 +1692,18 @@ fn setup_navigation_callbacks(
                         debug!("Detail navigation cancelled after preflight: {}", item_id);
                         return;
                     }
+                    if is_stale_navigation() {
+                        debug!("Detail navigation superseded after preflight: {}", item_id);
+                        return;
+                    }
 
                     if is_collection_folder {
                         if !detail_load_in_flight.load(Ordering::Acquire) {
                             debug!("Library redirect cancelled before navigation: {}", item_id);
+                            return;
+                        }
+                        if is_stale_navigation() {
+                            debug!("Library redirect ignored for stale navigation: {}", item_id);
                             return;
                         }
 
@@ -1694,6 +1733,10 @@ fn setup_navigation_callbacks(
                             ),
                         ).await
                         {
+                            if is_stale_navigation() {
+                                debug!("Library load error ignored for stale navigation: {}", item_id);
+                                return;
+                            }
                             error!("Failed to load library {}: {}", item_id, e);
                             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                                 ui.global::<AppBridge>()
@@ -1714,6 +1757,10 @@ fn setup_navigation_callbacks(
                         debug!("Detail navigation cancelled before UI switch: {}", item_id);
                         return;
                     }
+                    if is_stale_navigation() {
+                        debug!("Detail navigation superseded before UI switch: {}", item_id);
+                        return;
+                    }
 
                     let detail_load_in_flight_for_ui = detail_load_in_flight.clone();
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
@@ -1729,6 +1776,10 @@ fn setup_navigation_callbacks(
                         debug!("Detail navigation cancelled before detail payload load: {}", item_id);
                         return;
                     }
+                    if is_stale_navigation() {
+                        debug!("Detail navigation superseded before detail payload load: {}", item_id);
+                        return;
+                    }
                     if let Err(e) = with_loading_timeout(
                         "Detail load",
                         load_item_detail(
@@ -1740,6 +1791,10 @@ fn setup_navigation_callbacks(
                         ),
                     ).await
                     {
+                        if is_stale_navigation() {
+                            debug!("Detail load error ignored for stale navigation: {}", item_id);
+                            return;
+                        }
                         error!("Failed to load detail for {}: {}", item_id, e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AppBridge>()
@@ -1751,6 +1806,10 @@ fn setup_navigation_callbacks(
                 }
                 "library" => {
                     let library_id = param_str.clone();
+                    if is_stale_navigation() {
+                        debug!("Ignoring stale library navigation request: {}", library_id);
+                        return;
+                    }
                     // We get the title later from the API
                     state
                         .navigate_to(Screen::Library {
@@ -1777,6 +1836,10 @@ fn setup_navigation_callbacks(
                         ),
                     ).await
                     {
+                        if is_stale_navigation() {
+                            debug!("Library load error ignored for stale navigation: {}", library_id);
+                            return;
+                        }
                         error!("Failed to load library {}: {}", library_id, e);
                         let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                             ui.global::<AppBridge>()
@@ -1823,14 +1886,17 @@ fn setup_navigation_callbacks(
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
     let detail_flag_clone = detail_load_in_flight.clone();
+    let navigation_epoch_clone = navigation_epoch.clone();
     ui.global::<AppBridge>().on_go_back(move || {
         let ui_weak = ui_weak.clone();
         let state = state_clone.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
         let detail_load_in_flight = detail_flag_clone.clone();
+        let navigation_epoch = navigation_epoch_clone.clone();
 
         spawn_ui_task(async move {
+            navigation_epoch.fetch_add(1, Ordering::AcqRel);
             let cancel_pending_detail_only = Arc::new(AtomicBool::new(false));
             let cancel_pending_detail_only_flag = cancel_pending_detail_only.clone();
 
