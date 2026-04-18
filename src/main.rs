@@ -79,9 +79,9 @@ const LOADING_TIMEOUT_SECS: u64 = 10;
 // Match global loading timeout contract: allow up to 10s before fallback.
 const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Keep saved-token startup retries bounded so login remains usable quickly;
-// longer recovery continues in the background loop below.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 10;
+// Keep saved-token startup retries bounded while still covering typical
+// Jellyfin startup warm-up on the Mac Mini before we fall back to login.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 20;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
 const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 60;
