@@ -160,17 +160,19 @@ export component DetailScreen inherits Rectangle {
             + ((root.is-series && root.has-episodes) ? 1 : 0);
     }
 
-    // Map section index to which content row (skipping buttons at 0)
-    // Section 0 = buttons
-    // Section 1 = seasons (if series) or similar
-    // Section 2 = episodes (if series+seasons) or similar
-    // Section 3 = similar (if series+seasons+episodes)
-
-    // Scroll offset for focused section
+    // Scroll offset for focused section.
+    // Keep the hero visible while in the action-button section, then shift
+    // down enough to bring each focused row into view.
     pure function target-scroll-y() -> length {
-        if (root.focused-section <= 0) { return 0px; }
-        // Scroll past the hero area when focus moves to content rows
-        return -(root.focused-section - 1) * 320px - 80px;
+        if (root.focused-section <= 0) {
+            return 0px;
+        }
+
+        // First focused content section should clear most of the hero/action
+        // area so rows are actually visible; subsequent sections step down.
+        let base-scroll = 380px + (root.item.overview != "" ? 110px : 0px);
+        let section-step = 250px;
+        return -(base-scroll + (root.focused-section - 1) * section-step);
     }
 
     // -- Focus handling -------------------------------------------------------
