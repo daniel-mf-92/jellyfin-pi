@@ -30,13 +30,17 @@ export component CastCrewRow inherits VerticalLayout {
     callback person-selected(string);
 
     private property <length> card-width: 100px;
+    private property <int> safe-focused-index:
+        root.model.length > 0
+            ? max(0, min(root.focused-index, root.model.length - 1))
+            : 0;
     private property <length> content-width:
         root.model.length > 0
             ? Theme.overscan-h * 2 + root.model.length * root.card-width + (root.model.length - 1) * Theme.card-gap
             : 0px;
     private property <length> max-scroll-x: max(0px, root.content-width - self.width);
     private property <length> desired-scroll-x:
-        root.focused-index * (root.card-width + Theme.card-gap)
+        root.safe-focused-index * (root.card-width + Theme.card-gap)
         + root.card-width / 2
         - self.width / 2
         + Theme.overscan-h;
@@ -95,8 +99,8 @@ export component CastCrewRow inherits VerticalLayout {
                         border-radius: 40px;
                         background: Theme.surface-variant;
                         clip: true;
-                        border-width: root.row-focused && index == root.focused-index ? 2px : 0px;
-                        border-color: root.row-focused && index == root.focused-index ? Theme.accent : transparent;
+                        border-width: root.row-focused && index == root.safe-focused-index ? 2px : 0px;
+                        border-color: root.row-focused && index == root.safe-focused-index ? Theme.accent : transparent;
                         horizontal-stretch: 0;
 
                         animate border-color { duration: Theme.focus-duration; easing: ease-out; }
@@ -173,8 +177,8 @@ export component CastCrewRow inherits VerticalLayout {
                 return accept;
             }
             if (event.text == Key.Return || event.text == " ") {
-                if (root.focused-index >= 0 && root.focused-index < root.model.length) {
-                    root.person-selected(root.model[root.focused-index].id);
+                if (root.model.length > 0) {
+                    root.person-selected(root.model[root.safe-focused-index].id);
                 }
                 return accept;
             }
@@ -197,13 +201,17 @@ export component GenreRow inherits VerticalLayout {
     private property <length> pill-height: 32px;
     private property <length> pill-spacing: Theme.spacing-sm;
     private property <length> pill-estimated-width: 120px;
+    private property <int> safe-focused-index:
+        root.model.length > 0
+            ? max(0, min(root.focused-index, root.model.length - 1))
+            : 0;
     private property <length> content-width:
         root.model.length > 0
             ? Theme.overscan-h * 2 + root.model.length * root.pill-estimated-width + (root.model.length - 1) * root.pill-spacing
             : 0px;
     private property <length> max-scroll-x: max(0px, root.content-width - self.width);
     private property <length> desired-scroll-x:
-        root.focused-index * (root.pill-estimated-width + root.pill-spacing)
+        root.safe-focused-index * (root.pill-estimated-width + root.pill-spacing)
         + root.pill-estimated-width / 2
         - self.width / 2
         + Theme.overscan-h;
@@ -248,7 +256,7 @@ export component GenreRow inherits VerticalLayout {
             for genre[index] in root.model : Rectangle {
                 height: root.pill-height;
                 border-radius: 16px;
-                background: root.row-focused && index == root.focused-index ? Theme.accent : Theme.surface;
+                background: root.row-focused && index == root.safe-focused-index ? Theme.accent : Theme.surface;
                 horizontal-stretch: 0;
 
                 animate background { duration: Theme.focus-duration; easing: ease-out; }
@@ -261,7 +269,7 @@ export component GenreRow inherits VerticalLayout {
                     Text {
                         text: genre.name;
                         font-size: Theme.font-body-small;
-                        color: root.row-focused && index == root.focused-index ? white : Theme.text-primary;
+                        color: root.row-focused && index == root.safe-focused-index ? white : Theme.text-primary;
                         vertical-alignment: center;
                         horizontal-alignment: center;
 
@@ -298,8 +306,8 @@ export component GenreRow inherits VerticalLayout {
                 return accept;
             }
             if (event.text == Key.Return || event.text == " ") {
-                if (root.focused-index >= 0 && root.focused-index < root.model.length) {
-                    root.genre-selected(root.model[root.focused-index].name);
+                if (root.model.length > 0) {
+                    root.genre-selected(root.model[root.safe-focused-index].name);
                 }
                 return accept;
             }
