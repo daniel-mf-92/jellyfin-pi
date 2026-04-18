@@ -402,6 +402,7 @@ export component HomeScreen inherits Rectangle {
                     title: row.title;
                     items: row.items;
                     is-landscape: row.row-type == "landscape";
+                    is-square: row.row-type == "square";
                     row-focused: index == root.focused-row;
                     focused-index: root.focused-col;
 

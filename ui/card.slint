@@ -7,6 +7,7 @@ import { Theme, MediaItem } from "theme.slint";
 export component MediaCard inherits Rectangle {
     in property <MediaItem> item;
     in property <bool> is-landscape: false;
+    in property <bool> is-square: false;
     in property <bool> show-title: true;
     in-out property <bool> focused: false;
 
@@ -14,8 +15,14 @@ export component MediaCard inherits Rectangle {
     callback play-requested(string);
 
     // Outer container: sized to accommodate the scaled-up card
-    private property <length> card-w: is-landscape ? Theme.landscape-width : Theme.poster-width;
-    private property <length> card-h: is-landscape ? Theme.landscape-height : Theme.poster-height;
+    private property <length> card-w:
+        is-landscape
+            ? Theme.landscape-width
+            : (is-square ? Theme.square-width : Theme.poster-width);
+    private property <length> card-h:
+        is-landscape
+            ? Theme.landscape-height
+            : (is-square ? Theme.square-height : Theme.poster-height);
     private property <length> title-block-h: show-title ? 80px : 0px;
     private property <length> scale-pad-w: card-w * (Theme.focus-scale - 1.0) / 2.0;
     private property <length> scale-pad-h: card-h * (Theme.focus-scale - 1.0) / 2.0;

@@ -8,13 +8,17 @@ export component ContentRow inherits VerticalLayout {
     in property <string> title: "";
     in property <[MediaItem]> items: [];
     in property <bool> is-landscape: false;
+    in property <bool> is-square: false;
     in-out property <bool> row-focused: false;
     in-out property <int> focused-index: 0;
 
     callback item-selected(string, string);
     callback item-play-requested(string);
 
-    private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
+    private property <length> card-width:
+        root.is-landscape
+            ? Theme.landscape-width
+            : (root.is-square ? Theme.square-width : Theme.poster-width);
     // Keep row metrics based on the base card width so max-scroll reflects
     // real content width; apply focus overhang only to the currently focused card.
     private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
@@ -52,7 +56,9 @@ export component ContentRow inherits VerticalLayout {
     // Horizontal scrolling card strip
     row-flickable := Flickable {
         width: 100%;
-        height: root.is-landscape ? Theme.landscape-height + 120px : Theme.poster-height + 120px;
+        height: root.is-landscape
+            ? Theme.landscape-height + 120px
+            : (root.is-square ? Theme.square-height + 120px : Theme.poster-height + 120px);
         viewport-width: root.content-width;
         private property <length> max-scroll: max(0px, root.content-width - self.width);
         private property <length> focused-card-right:
@@ -77,6 +83,7 @@ export component ContentRow inherits VerticalLayout {
             for item[index] in root.items : MediaCard {
                 item: item;
                 is-landscape: root.is-landscape;
+                is-square: root.is-square;
                 focused: root.row-focused && index == root.focused-index;
 
                 selected(id) => {
