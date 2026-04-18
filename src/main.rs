@@ -83,9 +83,9 @@ const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
 // when the server has just recovered and image cache is cold.
 const SAVED_TOKEN_BACKGROUND_LOAD_TIMEOUT_SECS: u64 = 30;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
-// Keep saved-token startup retries bounded while still covering typical
-// Jellyfin startup warm-up on the Mac Mini before we fall back to login.
-const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = 45;
+// Keep saved-token startup retries within the global loading contract so we
+// can fall back to login/error state promptly when the server is unreachable.
+const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = LOADING_TIMEOUT_SECS;
 // Repeated full-home recovery loads can explode RSS on low-memory Pi startup paths.
 // Keep login usable instead of running indefinite saved-token background recovery.
 const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = false;
