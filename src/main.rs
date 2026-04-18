@@ -1196,8 +1196,9 @@ fn setup_navigation_callbacks(
                     });
 
                     // Check if this is a CollectionFolder (library) — redirect to library screen
-                    let is_collection_folder = match with_loading_timeout(
+                    let is_collection_folder = match with_loading_timeout_secs(
                         "Detail preflight",
+                        2,
                         {
                             let client = client.clone();
                             let item_id = item_id.clone();
