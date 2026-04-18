@@ -3777,7 +3777,8 @@ async fn load_item_detail(
         }
     }
 
-    // Build cast & crew with images after initial render.
+    // Build cast & crew placeholders after initial render, then hydrate
+    // headshots asynchronously so detail navigation remains instant.
     let filtered_people: Vec<_> = item
         .people
         .as_ref()
@@ -3811,6 +3812,65 @@ async fn load_item_detail(
                 .set_cast_members(ModelRc::new(VecModel::from(cast_members)));
         }
     }
+
+    let ui_for_cast_images = ui_weak.clone();
+    let image_cache_for_cast_images = image_cache.clone();
+    let server_url_for_cast_images = server_url.clone();
+    let access_token_for_cast_images = access_token.clone();
+    let detail_item_id_for_cast_images = item_id_owned.clone();
+    let people_for_cast_images = filtered_people.clone();
+
+    spawn_ui_task(async move {
+        let mut cast_with_images: Vec<CastMember> = Vec::with_capacity(people_for_cast_images.len());
+
+        for p in people_for_cast_images {
+            let person_id = p.id.clone().unwrap_or_default();
+            let mut headshot = SlintImage::default();
+
+            if !person_id.is_empty() {
+                let mut image_urls: Vec<String> = Vec::new();
+                if let Some(tag) = p.primary_image_tag.as_ref() {
+                    image_urls.push(format!(
+                        "{}/Items/{}/Images/Primary?maxHeight=160&quality=90&tag={}",
+                        server_url_for_cast_images, person_id, tag
+                    ));
+                }
+                image_urls.push(format!(
+                    "{}/Items/{}/Images/Primary?maxHeight=160&quality=90",
+                    server_url_for_cast_images, person_id
+                ));
+
+                for url in image_urls {
+                    let url = append_api_key(url, access_token_for_cast_images.as_deref());
+                    let image_result = tokio::time::timeout(
+                        tokio::time::Duration::from_millis(600),
+                        image_cache_for_cast_images.load_image(&url),
+                    )
+                    .await;
+
+                    if let Ok(Some(image)) = image_result {
+                        headshot = image;
+                        break;
+                    }
+                }
+            }
+
+            cast_with_images.push(CastMember {
+                id: SharedString::from(person_id.as_str()),
+                name: SharedString::from(p.name.as_str()),
+                role: SharedString::from(p.role.as_deref().unwrap_or("")),
+                image: headshot,
+            });
+        }
+
+        if let Some(ui) = ui_for_cast_images.upgrade() {
+            let current_id = ui.global::<AppBridge>().get_detail_item().id;
+            if current_id.as_str() == detail_item_id_for_cast_images.as_str() {
+                ui.global::<AppBridge>()
+                    .set_cast_members(ModelRc::new(VecModel::from(cast_with_images)));
+            }
+        }
+    });
 
     // Auto-load seasons for series
     if is_series {
