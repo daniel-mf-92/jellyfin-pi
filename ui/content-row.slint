@@ -15,19 +15,18 @@ export component ContentRow inherits VerticalLayout {
     callback item-play-requested(string);
 
     private property <length> card-width: root.is-landscape ? Theme.landscape-width : Theme.poster-width;
-    // MediaCard includes focus-scale padding in its component width.
-    // Use the scaled footprint for scroll calculations to keep focused cards in view.
-    private property <length> card-footprint-width: root.card-width * Theme.focus-scale;
+    // Keep row metrics based on the base card width so max-scroll reflects
+    // real content width; apply focus overhang only to the currently focused card.
     private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
     private property <length> row-padding: Theme.overscan-h + root.focus-overhang;
-    private property <length> step-width: root.card-footprint-width + Theme.card-gap;
+    private property <length> step-width: root.card-width + Theme.card-gap;
     private property <int> safe-focused-index:
         root.items.length > 0
             ? max(0, min(root.focused-index, root.items.length - 1))
             : 0;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-footprint-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
+            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
             : root.row-padding * 2;
 
     spacing: 0px;
