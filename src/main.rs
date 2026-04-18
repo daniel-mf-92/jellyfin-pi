@@ -1450,14 +1450,44 @@ fn setup_navigation_callbacks(
             state.reset_idle().await;
 
             if let Some(screen) = state.go_back().await {
-                let screen_name = screen.name().to_string();
-                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                    ui.global::<AppBridge>()
-                        .set_current_screen(SharedString::from(&screen_name));
-                });
+                match screen {
+                    Screen::Detail { item_id } => {
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_current_screen("detail".into());
+                            ui.global::<AppBridge>().set_is_loading(true);
+                        });
 
-                // Keep back-navigation immediate. Home content is already cached in
-                // the UI model, so avoid forcing a synchronous reload here.
+                        if let Err(e) = with_loading_timeout(
+                            "Detail load (back)",
+                            load_item_detail(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &item_id,
+                                None,
+                            ),
+                        )
+                        .await
+                        {
+                            error!("Failed to restore detail {} on back: {}", item_id, e);
+                            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>().set_error_message(
+                                    format!("Failed to load details: {}", e).into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                        }
+                    }
+                    other => {
+                        let screen_name = other.name().to_string();
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>()
+                                .set_current_screen(SharedString::from(&screen_name));
+                        });
+                    }
+                }
+
+                // Keep back-navigation immediate for cached list screens.
             }
         });
     });
