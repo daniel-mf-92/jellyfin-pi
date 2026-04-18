@@ -86,9 +86,10 @@ const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep saved-token startup retries within the global loading contract so we
 // can fall back to login/error state promptly when the server is unreachable.
 const SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS: u64 = LOADING_TIMEOUT_SECS;
-// Repeated full-home recovery loads can explode RSS on low-memory Pi startup paths.
-// Keep login usable instead of running indefinite saved-token background recovery.
-const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = false;
+// Enable saved-token recovery so transient startup/network failures can still
+// auto-return users to Home without requiring manual login interaction.
+const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = true;
+const SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS: u64 = 5;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -1179,6 +1180,84 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
+                    let probe_result = with_loading_timeout_secs(
+                        "Saved-token session probe",
+                        SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS,
+                        probe_saved_token_access(client_retry.clone()),
+                    )
+                    .await;
+
+                    match probe_result {
+                        Ok(()) => {}
+                        Err(retry_err) => {
+                            let retry_text = retry_err.to_string();
+                            let retry_lower = retry_text.to_ascii_lowercase();
+                            let retry_auth_failure = retry_lower.contains("auth error")
+                                || retry_lower.contains("unauthorized")
+                                || retry_lower.contains("not authenticated");
+                            let retry_transient_startup_failure = retry_lower.contains("503")
+                                || retry_lower.contains("server is starting")
+                                || retry_lower.contains("service unavailable")
+                                || retry_lower.contains("network error")
+                                || retry_lower.contains("timed out")
+                                || retry_lower.contains("connection");
+
+                            if retry_auth_failure {
+                                warn!(
+                                    "Saved token became invalid during background recovery; clearing cached token"
+                                );
+                                {
+                                    let mut cfg = config_retry.write().await;
+                                    cfg.clear_auth();
+                                }
+                                {
+                                    let mut c = client_retry.write().await;
+                                    c.access_token = None;
+                                    c.user_id = None;
+                                }
+                                should_show_login = true;
+                                break;
+                            }
+
+                            if !retry_transient_startup_failure {
+                                warn!(
+                                    "Stopping saved-token background recovery due to non-transient error: {}",
+                                    retry_text
+                                );
+                                should_show_login = true;
+                                break;
+                            }
+
+                            if detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await {
+                                warn!(
+                                    "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
+                                );
+                                show_incomplete_jellyfin_setup_message(&ui_retry);
+                                should_show_login = false;
+                                break;
+                            }
+
+                            if retry_attempt % 6 == 0 {
+                                warn!(
+                                    "Still waiting for Jellyfin while probing saved-token recovery (background attempt {}): {}",
+                                    retry_attempt,
+                                    retry_text
+                                );
+                            }
+
+                            let retry_message = format!(
+                                "Cannot connect to Jellyfin (saved-session retry {} in background)...",
+                                retry_attempt
+                            );
+                            let _ = ui_retry.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>().set_error_message(retry_message.into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+
+                            continue;
+                        }
+                    }
+
                     match with_loading_timeout_secs(
                         "Home load (saved token background recovery)",
                         SAVED_TOKEN_BACKGROUND_LOAD_TIMEOUT_SECS,
@@ -1864,6 +1943,13 @@ async fn with_loading_timeout<T>(
     future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 ) -> Result<T, String> {
     with_loading_timeout_secs(operation, LOADING_TIMEOUT_SECS, future).await
+}
+
+async fn probe_saved_token_access(
+    client: Arc<RwLock<JellyfinClient>>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let c = client.read().await;
+    c.get_user_views().await.map(|_| ()).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 }
 
 async fn detect_incomplete_jellyfin_setup(
