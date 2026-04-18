@@ -1447,6 +1447,30 @@ async fn detect_incomplete_jellyfin_setup(
                 return false;
             }
 
+            // Guard against false positives while Jellyfin is still booting:
+            // only treat setup as incomplete when the public-users endpoint is
+            // reachable and confirms no users yet.
+            let public_users = {
+                let c = client.read().await;
+                c.get_public_users().await
+            };
+
+            match public_users {
+                Ok(users) if !users.is_empty() => {
+                    reset_incomplete_setup_detection();
+                    return false;
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    debug!(
+                        "Could not verify public users while checking setup status: {}",
+                        err
+                    );
+                    reset_incomplete_setup_detection();
+                    return false;
+                }
+            }
+
             let now_ts = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
