@@ -916,7 +916,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             break;
                                         }
 
-                                        if detect_incomplete_jellyfin_setup_with_timeout(&client_clone).await {
+                                        if should_probe_incomplete_setup(&retry_text)
+                                            && detect_incomplete_jellyfin_setup_with_timeout(&client_clone).await
+                                        {
                                             warn!(
                                                 "Saved-token auto-login retries stopped because Jellyfin setup wizard is not completed"
                                             );
@@ -1227,7 +1229,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 break;
                             }
 
-                            if detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await {
+                            if should_probe_incomplete_setup(&retry_text)
+                                && detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await
+                            {
                                 warn!(
                                     "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
                                 );
@@ -1324,7 +1328,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 break;
                             }
 
-                            if detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await {
+                            if should_probe_incomplete_setup(&retry_text)
+                                && detect_incomplete_jellyfin_setup_with_timeout(&client_retry).await
+                            {
                                 warn!(
                                     "Stopping saved-token background recovery because Jellyfin setup wizard is not completed"
                                 );
@@ -1938,6 +1944,16 @@ async fn with_loading_timeout<T>(
     future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 ) -> Result<T, String> {
     with_loading_timeout_secs(operation, LOADING_TIMEOUT_SECS, future).await
+}
+
+fn should_probe_incomplete_setup(error_text: &str) -> bool {
+    let lower = error_text.to_ascii_lowercase();
+    (lower.contains("503")
+        || lower.contains("server is starting")
+        || lower.contains("service unavailable"))
+        && !lower.contains("network error")
+        && !lower.contains("timed out")
+        && !lower.contains("connection")
 }
 
 async fn probe_saved_token_access(
@@ -3716,7 +3732,9 @@ async fn load_public_users_foreground_once(
             };
             warn!("Failed to load public users (foreground pass): {}", e);
 
-            if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
+            if should_probe_incomplete_setup(&e)
+                && detect_incomplete_jellyfin_setup_with_timeout(&client).await
+            {
                 warn!(
                     "Public-user loading stopped because Jellyfin setup wizard is not completed"
                 );
@@ -3802,7 +3820,9 @@ async fn load_public_users(
                     return;
                 }
 
-                if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
+                if should_probe_incomplete_setup(&e.to_string())
+                    && detect_incomplete_jellyfin_setup_with_timeout(&client).await
+                {
                     warn!(
                         "Public-user loading stopped because Jellyfin setup wizard is not completed"
                     );
@@ -3877,7 +3897,9 @@ async fn load_public_users(
                     return;
                 }
 
-                if detect_incomplete_jellyfin_setup_with_timeout(&client).await {
+                if should_probe_incomplete_setup(&e.to_string())
+                    && detect_incomplete_jellyfin_setup_with_timeout(&client).await
+                {
                     warn!(
                         "Public-user background retry stopped because Jellyfin setup wizard is not completed"
                     );
