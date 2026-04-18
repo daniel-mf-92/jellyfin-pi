@@ -1904,6 +1904,7 @@ fn setup_auth_callbacks(
             // Navigate to login screen
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_current_screen("login".into());
+                ui.global::<AppBridge>().set_is_loading(false);
                 ui.global::<AppBridge>().set_home_rows(ModelRc::default());
                 ui.global::<AppBridge>().set_search_results(ModelRc::default());
                 ui.global::<AppBridge>().set_library_items(ModelRc::default());
