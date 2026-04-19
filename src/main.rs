@@ -1104,7 +1104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
                 info!("Loading public users while saved-token background recovery is active");
-                let users_loaded_in_foreground = load_public_users_foreground_once(
+                let mut users_loaded_in_foreground = load_public_users_foreground_once(
                     ui_handle.clone(),
                     client_clone.clone(),
                     image_clone.clone(),
@@ -1136,6 +1136,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     retry_attempt = retry_attempt.saturating_add(1);
                     let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
                     tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
+
+                    // Keep login avatars/messages fresh while saved-token recovery keeps
+                    // probing in background. Without this, public-user loading could be
+                    // deferred forever when startup keeps hitting transient connectivity errors.
+                    if !users_loaded_in_foreground && retry_attempt % 3 == 0 {
+                        let users_reloaded = load_public_users_foreground_once(
+                            ui_retry.clone(),
+                            client_retry.clone(),
+                            image_retry.clone(),
+                            true,
+                        )
+                        .await;
+
+                        if users_reloaded {
+                            info!(
+                                "Public users loaded during saved-token background recovery (attempt {})",
+                                retry_attempt
+                            );
+                            users_loaded_in_foreground = true;
+                        }
+                    }
 
                     if retry_attempt == 1 || retry_attempt % 3 == 0 {
                         info!(
