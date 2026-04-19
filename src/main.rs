@@ -3822,26 +3822,31 @@ async fn load_public_users_foreground_once(
     image_cache: Arc<ImageCache>,
     background_retry_active: bool,
 ) -> bool {
-    let server_url = {
-        let c = client.read().await;
-        c.server_url.clone()
-    };
-
     let result = with_loading_timeout_secs(
         "Load public users",
         FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS,
         async {
-            let client_snapshot = { client.read().await.clone() };
-            client_snapshot
+            // Never block indefinitely on the shared client lock here.
+            // This path runs inside startup/background recovery loops and must
+            // stay responsive even if a writer is queued.
+            let client_snapshot = client
+                .try_read()
+                .map(|guard| guard.clone())
+                .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+                    "Jellyfin client lock busy while loading public users".into()
+                })?;
+            let server_url = client_snapshot.server_url.clone();
+            let users = client_snapshot
                 .get_public_users()
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+            Ok((users, server_url))
         },
     )
     .await;
 
     match result {
-        Ok(users) => {
+        Ok((users, server_url)) => {
             apply_loaded_public_users(
                 &ui_weak,
                 &server_url,
@@ -3853,7 +3858,9 @@ async fn load_public_users_foreground_once(
         }
         Err(e) => {
             let err_text = e.to_string();
-            let transient = is_transient_startup_or_connectivity_error(&err_text);
+            let lower = err_text.to_ascii_lowercase();
+            let transient = is_transient_startup_or_connectivity_error(&err_text)
+                || lower.contains("client lock busy");
             if transient {
                 if background_retry_active {
                     debug!(
@@ -3903,25 +3910,27 @@ async fn load_public_users(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
 ) {
-    let server_url = {
-        let c = client.read().await;
-        c.server_url.clone()
-    };
-
     // Keep foreground loading under ~10s (spec) before switching to background retry.
     let max_attempts_before_background_retry = 1;
     for attempt in 1..=max_attempts_before_background_retry {
         let result = with_loading_timeout("Load public users", async {
-            let client_snapshot = { client.read().await.clone() };
-            client_snapshot
+            let client_snapshot = client
+                .try_read()
+                .map(|guard| guard.clone())
+                .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+                    "Jellyfin client lock busy while loading public users".into()
+                })?;
+            let server_url = client_snapshot.server_url.clone();
+            let users = client_snapshot
                 .get_public_users()
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+            Ok((users, server_url))
         })
         .await;
 
         match result {
-            Ok(users) => {
+            Ok((users, server_url)) => {
                 apply_loaded_public_users(
                     &ui_weak,
                     &server_url,
@@ -3932,7 +3941,11 @@ async fn load_public_users(
                 return;
             }
             Err(e) => {
-                let transient = is_transient_startup_or_connectivity_error(&e.to_string());
+                let err_text = e.to_string();
+                let transient = is_transient_startup_or_connectivity_error(&err_text)
+                    || err_text
+                        .to_ascii_lowercase()
+                        .contains("client lock busy");
                 warn!(
                     "Failed to load public users (attempt {}/{}): {}",
                     attempt, max_attempts_before_background_retry, e
@@ -3989,16 +4002,23 @@ async fn load_public_users(
         }
 
         let result = with_loading_timeout("Load public users (background)", async {
-            let client_snapshot = { client.read().await.clone() };
-            client_snapshot
+            let client_snapshot = client
+                .try_read()
+                .map(|guard| guard.clone())
+                .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+                    "Jellyfin client lock busy while loading public users".into()
+                })?;
+            let server_url = client_snapshot.server_url.clone();
+            let users = client_snapshot
                 .get_public_users()
                 .await
-                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
+            Ok((users, server_url))
         })
         .await;
 
         match result {
-            Ok(users) => {
+            Ok((users, server_url)) => {
                 info!(
                     "Recovered public users after background retry attempt {}",
                     retry_attempt
@@ -4013,7 +4033,11 @@ async fn load_public_users(
                 return;
             }
             Err(e) => {
-                let transient = is_transient_startup_or_connectivity_error(&e.to_string());
+                let err_text = e.to_string();
+                let transient = is_transient_startup_or_connectivity_error(&err_text)
+                    || err_text
+                        .to_ascii_lowercase()
+                        .contains("client lock busy");
                 if !transient {
                     error!("Failed to load public users during background retry: {}", e);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
