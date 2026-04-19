@@ -1120,7 +1120,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     info!(
-                        "Deferring public-user background retry while saved-token recovery continues"
+                        "Public users unavailable during startup; continuing retries while saved-token recovery runs"
                     );
                 }
 
@@ -1140,7 +1140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // Keep login avatars/messages fresh while saved-token recovery keeps
                     // probing in background. Without this, public-user loading could be
                     // deferred forever when startup keeps hitting transient connectivity errors.
-                    if !users_loaded_in_foreground && retry_attempt % 3 == 0 {
+                    if !users_loaded_in_foreground {
                         let users_reloaded = load_public_users_foreground_once(
                             ui_retry.clone(),
                             client_retry.clone(),
