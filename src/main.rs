@@ -1122,19 +1122,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     true,
                 )
                 .await;
-                let mut public_user_background_retry_started = false;
 
                 if !users_loaded_in_foreground {
                     info!(
-                        "Public users unavailable during startup; continuing retries while saved-token recovery runs"
+                        "Public users unavailable during startup; pausing login retries while saved-token recovery runs"
                     );
-                    public_user_background_retry_started = true;
-                    let ui_users = ui_handle.clone();
-                    let client_users = client_clone.clone();
-                    let image_users = image_clone.clone();
-                    spawn_ui_task(async move {
-                        load_public_users(ui_users, client_users, image_users).await;
-                    });
                 }
 
                 let ui_retry = ui_handle.clone();
@@ -1359,10 +1351,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                if should_show_login
-                    && !users_loaded_in_foreground
-                    && !public_user_background_retry_started
-                {
+                if should_show_login && !users_loaded_in_foreground {
                     load_public_users(ui_retry, client_retry, image_retry).await;
                 }
             }
