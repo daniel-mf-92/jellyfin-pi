@@ -1915,9 +1915,15 @@ fn setup_navigation_callbacks(
                 {
                     cancel_pending_detail_only_flag.store(true, Ordering::Release);
                 }
-                let should_preserve_error =
+                let login_without_users =
                     current_screen.as_str() == "login" && ui.global::<AppBridge>().get_users().row_count() == 0;
-                if !should_preserve_error {
+                if login_without_users {
+                    let has_error = ui.global::<AppBridge>().get_error_message().trim().len() > 0;
+                    if !has_error {
+                        ui.global::<AppBridge>()
+                            .set_error_message(JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into());
+                    }
+                } else {
                     ui.global::<AppBridge>().set_error_message("".into());
                 }
                 ui.global::<AppBridge>().set_is_loading(false);
