@@ -2107,7 +2107,7 @@ async fn detect_incomplete_jellyfin_setup(
 
             // Guard against false positives while Jellyfin is still booting:
             // only treat setup as incomplete when the public-users endpoint is
-            // reachable and confirms no users yet.
+            // reachable and explicitly confirms no users yet.
             let public_users = {
                 let client_snapshot = { client.read().await.clone() };
                 client_snapshot.get_public_users().await
@@ -2126,14 +2126,15 @@ async fn detect_incomplete_jellyfin_setup(
                             "Could not verify public users while checking setup status: {}",
                             err
                         );
-                        reset_incomplete_setup_detection();
-                        return false;
+                    } else {
+                        debug!(
+                            "Public users endpoint returned startup-style response while checking setup status (treating as transient): {}",
+                            err
+                        );
                     }
 
-                    debug!(
-                        "Public users endpoint returned startup-style response while setup wizard is incomplete: {}",
-                        err
-                    );
+                    reset_incomplete_setup_detection();
+                    return false;
                 }
             }
 
