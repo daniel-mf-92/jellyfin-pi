@@ -3822,10 +3822,16 @@ async fn load_public_users_foreground_once(
         Err(e) => {
             let err_text = e.to_string();
             let transient = is_transient_startup_or_connectivity_error(&err_text);
-            if transient && background_retry_active {
-                info!(
-                    "Public users unavailable during saved-token recovery; keeping login available while background recovery continues"
-                );
+            if transient {
+                if background_retry_active {
+                    info!(
+                        "Public users unavailable during saved-token recovery; keeping login available while background recovery continues"
+                    );
+                } else {
+                    info!(
+                        "Public users unavailable during foreground retry; keeping login available"
+                    );
+                }
             } else {
                 warn!("Failed to load public users (foreground pass): {}", err_text);
             }
