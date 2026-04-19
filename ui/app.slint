@@ -163,7 +163,8 @@ export component AppWindow inherits Window {
 
         key-pressed(event) => {
             if (event.text == Key.Escape) {
-                if (AppBridge.error-message != "") {
+                let dismissible-error = AppBridge.current-screen != "login" || AppBridge.users.length > 0;
+                if (AppBridge.error-message != "" && dismissible-error) {
                     AppBridge.error-message = "";
                     AppBridge.is-loading = false;
                     return accept;
