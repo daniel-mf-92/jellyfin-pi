@@ -2046,8 +2046,14 @@ fn is_transient_startup_or_connectivity_error(error_text: &str) -> bool {
 async fn probe_saved_token_access(
     client: Arc<RwLock<JellyfinClient>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let c = client.read().await;
-    c.get_user_views().await.map(|_| ()).map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+    // Never hold the shared client lock across network I/O.
+    // Snapshot first so background recovery cannot stall behind queued writers.
+    let client_snapshot = { client.read().await.clone() };
+    client_snapshot
+        .get_user_views()
+        .await
+        .map(|_| ())
+        .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
 }
 
 async fn detect_incomplete_jellyfin_setup(
@@ -2070,8 +2076,8 @@ async fn detect_incomplete_jellyfin_setup(
     }
 
     let public_info = {
-        let c = client.read().await;
-        c.get_public_system_info().await
+        let client_snapshot = { client.read().await.clone() };
+        client_snapshot.get_public_system_info().await
     };
 
     match public_info {
