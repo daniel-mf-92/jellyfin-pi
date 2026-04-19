@@ -1115,20 +1115,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
                 info!("Loading public users while saved-token background recovery is active");
-                let users_loaded_in_foreground = Arc::new(AtomicBool::new(
-                    load_public_users_foreground_once(
-                        ui_handle.clone(),
-                        client_clone.clone(),
-                        image_clone.clone(),
-                        true,
-                    )
-                    .await,
-                ));
+                let users_loaded_in_foreground = load_public_users_foreground_once(
+                    ui_handle.clone(),
+                    client_clone.clone(),
+                    image_clone.clone(),
+                    true,
+                )
+                .await;
+                let mut public_user_background_retry_started = false;
 
-                if !users_loaded_in_foreground.load(Ordering::Relaxed) {
+                if !users_loaded_in_foreground {
                     info!(
                         "Public users unavailable during startup; continuing retries while saved-token recovery runs"
                     );
+                    public_user_background_retry_started = true;
+                    let ui_users = ui_handle.clone();
+                    let client_users = client_clone.clone();
+                    let image_users = image_clone.clone();
+                    spawn_ui_task(async move {
+                        load_public_users(ui_users, client_users, image_users).await;
+                    });
                 }
 
                 let ui_retry = ui_handle.clone();
@@ -1143,48 +1149,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     retry_attempt = retry_attempt.saturating_add(1);
                     let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
                     tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
-
-                    // Keep login avatars/messages fresh while saved-token recovery keeps
-                    // probing in background. Without this, public-user loading could be
-                    // deferred forever when startup keeps hitting transient connectivity errors.
-                    if !users_loaded_in_foreground.load(Ordering::Relaxed)
-                        && (retry_attempt == 1 || retry_attempt % 3 == 0)
-                    {
-                        let users_loaded_in_foreground = users_loaded_in_foreground.clone();
-                        let ui_users = ui_retry.clone();
-                        let client_users = client_retry.clone();
-                        let image_users = image_retry.clone();
-
-                        spawn_ui_task(async move {
-                            let users_reloaded = tokio::time::timeout(
-                                tokio::time::Duration::from_secs(
-                                    FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS.saturating_add(2),
-                                ),
-                                load_public_users_foreground_once(
-                                    ui_users,
-                                    client_users,
-                                    image_users,
-                                    true,
-                                ),
-                            )
-                            .await;
-
-                            match users_reloaded {
-                                Ok(true) => {
-                                    users_loaded_in_foreground.store(true, Ordering::Relaxed);
-                                    info!(
-                                        "Public users loaded during saved-token background recovery"
-                                    );
-                                }
-                                Ok(false) => {}
-                                Err(_) => {
-                                    warn!(
-                                        "Public-user refresh timed out during saved-token background recovery; continuing"
-                                    );
-                                }
-                            }
-                        });
-                    }
 
                     if retry_attempt == 1 || retry_attempt % 3 == 0 {
                         info!(
@@ -1395,7 +1359,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                if should_show_login && !users_loaded_in_foreground.load(Ordering::Relaxed) {
+                if should_show_login
+                    && !users_loaded_in_foreground
+                    && !public_user_background_retry_started
+                {
                     load_public_users(ui_retry, client_retry, image_retry).await;
                 }
             }
