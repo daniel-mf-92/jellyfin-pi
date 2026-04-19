@@ -829,16 +829,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if !auth_failure && transient_startup_failure {
                             let mut setup_incomplete = false;
-                            let _ = ui_handle.upgrade_in_event_loop(|ui| {
-                                ui.global::<AppBridge>().set_error_message(
-                                    "Jellyfin is starting… retrying connection.".into(),
-                                );
-                                ui.global::<AppBridge>().set_is_loading(false);
-                            });
-
                             let retry_window = std::time::Duration::from_secs(
                                 SAVED_TOKEN_TRANSIENT_RETRY_WINDOW_SECS,
                             );
+                            let transient_message = if retry_window.is_zero() {
+                                JELLYFIN_CONNECTIVITY_ERROR_MESSAGE
+                            } else {
+                                "Jellyfin is starting… retrying connection."
+                            };
+                            let _ = ui_handle.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>()
+                                    .set_error_message(transient_message.into());
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+
                             let retry_started_at = std::time::Instant::now();
                             let mut retry_attempt: u32 = 0;
 
