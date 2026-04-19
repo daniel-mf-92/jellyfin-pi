@@ -1120,12 +1120,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     info!(
-                        "Public users unavailable during saved-token recovery; keeping login available while saved-token recovery continues"
-                    );
-                }
-
-                if !users_loaded_in_foreground {
-                    info!(
                         "Deferring public-user background retry while saved-token recovery continues"
                     );
                 }
@@ -3830,7 +3824,7 @@ async fn load_public_users_foreground_once(
             let transient = is_transient_startup_or_connectivity_error(&err_text);
             if transient {
                 if background_retry_active {
-                    info!(
+                    debug!(
                         "Public users unavailable during saved-token recovery; keeping login available while background recovery continues"
                     );
                 } else {
