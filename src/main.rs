@@ -103,10 +103,12 @@ const JELLYFIN_CONNECTIVITY_ERROR_MESSAGE: &str =
 
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 static SETUP_INCOMPLETE_FIRST_SEEN_TS: AtomicU64 = AtomicU64::new(0);
+static SETUP_INCOMPLETE_CONFIRMED: AtomicBool = AtomicBool::new(false);
 
 fn reset_incomplete_setup_detection() {
     SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
     SETUP_INCOMPLETE_FIRST_SEEN_TS.store(0, Ordering::Relaxed);
+    SETUP_INCOMPLETE_CONFIRMED.store(false, Ordering::Relaxed);
 }
 
 slint::include_modules!();
@@ -1138,6 +1140,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut retry_attempt: u32 = 0;
                 let mut should_show_login = false;
                 loop {
+                    if SETUP_INCOMPLETE_CONFIRMED.load(Ordering::Relaxed) {
+                        warn!(
+                            "Stopping saved-token background recovery because Jellyfin setup wizard is already confirmed incomplete"
+                        );
+                        should_show_login = false;
+                        break;
+                    }
+
                     retry_attempt = retry_attempt.saturating_add(1);
                     let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
                     tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
@@ -2204,6 +2214,7 @@ async fn detect_incomplete_jellyfin_setup_with_timeout(
 }
 
 fn show_incomplete_jellyfin_setup_message(ui_weak: &slint::Weak<AppWindow>) {
+    SETUP_INCOMPLETE_CONFIRMED.store(true, Ordering::Relaxed);
     let _ = ui_weak.upgrade_in_event_loop(|ui| {
         ui.global::<AppBridge>().set_error_message(
             "Jellyfin setup is incomplete. Finish setup in Jellyfin Web, then retry.".into(),
@@ -2243,6 +2254,8 @@ fn setup_auth_callbacks(
         }
 
         spawn_ui_task(async move {
+            reset_incomplete_setup_detection();
+
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>()
                     .set_error_message(JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into());
