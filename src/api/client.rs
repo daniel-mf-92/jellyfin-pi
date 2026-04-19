@@ -3,6 +3,7 @@ use serde::de::DeserializeOwned;
 use std::fmt;
 use std::time::Duration;
 use tokio::time::timeout;
+use log::warn;
 
 use crate::api::models::*;
 use crate::config::AppConfig;
@@ -69,6 +70,87 @@ pub struct JellyfinClient {
 }
 
 impl JellyfinClient {
+    fn normalize_base_url(url: &str) -> String {
+        url.trim_end_matches('/').to_string()
+    }
+
+    fn server_base_candidates(&self) -> Vec<String> {
+        let primary = Self::normalize_base_url(&self.server_url);
+        let mut candidates = vec![primary.clone()];
+
+        let auto_fallback = if primary.contains("10.100.0.2") {
+            Some(primary.replace("10.100.0.2", "192.168.8.136"))
+        } else if primary.contains("192.168.8.136") {
+            Some(primary.replace("192.168.8.136", "10.100.0.2"))
+        } else {
+            None
+        };
+
+        if let Some(url) = auto_fallback {
+            candidates.push(url);
+        }
+
+        if let Ok(env_fallback) = std::env::var("JELLYFIN_SERVER_FALLBACK_URL") {
+            let env_fallback = Self::normalize_base_url(&env_fallback);
+            if !env_fallback.is_empty() {
+                candidates.push(env_fallback);
+            }
+        }
+
+        candidates.dedup();
+        candidates
+    }
+
+    async fn send_with_base_fallback<F>(
+        &self,
+        endpoint: &str,
+        build_request: F,
+    ) -> ApiResult<reqwest::Response>
+    where
+        F: Fn(&Client, &str) -> reqwest::RequestBuilder,
+    {
+        let candidates = self.server_base_candidates();
+        let mut last_error: Option<reqwest::Error> = None;
+
+        for (index, base_url) in candidates.iter().enumerate() {
+            let url = format!("{base_url}{endpoint}");
+            match build_request(&self.http, &url).send().await {
+                Ok(resp) => {
+                    if index > 0 {
+                        warn!(
+                            "Jellyfin request recovered via fallback URL {} for {}",
+                            base_url, endpoint
+                        );
+                    }
+                    return Ok(resp);
+                }
+                Err(err) => {
+                    let retryable = err.is_connect() || err.is_timeout();
+                    last_error = Some(err);
+
+                    if !retryable {
+                        break;
+                    }
+
+                    if index + 1 < candidates.len() {
+                        warn!(
+                            "Jellyfin request failed via {} ({}). Trying fallback URL...",
+                            base_url,
+                            last_error
+                                .as_ref()
+                                .map(std::string::ToString::to_string)
+                                .unwrap_or_else(|| "unknown error".to_string())
+                        );
+                    }
+                }
+            }
+        }
+
+        Err(ApiError::Network(
+            last_error.expect("send_with_base_fallback called without URL candidates"),
+        ))
+    }
+
     fn summarize_server_error_body(body: &str) -> String {
         let trimmed = body.trim();
         if trimmed.is_empty() {
@@ -214,12 +296,11 @@ impl JellyfinClient {
 
     /// GET /Users/Public
     pub async fn get_public_users(&self) -> ApiResult<Vec<UserDto>> {
-        let url = format!("{}/Users/Public", self.server_url);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.public_auth_header())
-            .send()
+            .send_with_base_fallback("/Users/Public", |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.public_auth_header())
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         self.parse_json_response(resp).await
@@ -233,8 +314,6 @@ impl JellyfinClient {
         username: &str,
         password: &str,
     ) -> ApiResult<AuthenticationResult> {
-        let url = format!("{}/Users/AuthenticateByName", self.server_url);
-
         #[derive(serde::Serialize)]
         struct Body<'a> {
             #[serde(rename = "Username")]
@@ -244,14 +323,14 @@ impl JellyfinClient {
         }
 
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .json(&Body {
-                username,
-                pw: password,
+            .send_with_base_fallback("/Users/AuthenticateByName", |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .json(&Body {
+                        username,
+                        pw: password,
+                    })
             })
-            .send()
             .await?;
 
         let resp = self.check_response(resp).await?;
@@ -260,8 +339,9 @@ impl JellyfinClient {
 
     /// GET /System/Info/Public
     pub async fn get_public_system_info(&self) -> ApiResult<PublicSystemInfo> {
-        let url = format!("{}/System/Info/Public", self.server_url);
-        let resp = self.http.get(&url).send().await?;
+        let resp = self
+            .send_with_base_fallback("/System/Info/Public", |http, url| http.get(url))
+            .await?;
         let resp = self.check_response(resp).await?;
         self.parse_json_response(resp).await
     }
@@ -277,12 +357,12 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Users/{}/Views", self.server_url, user_id);
+        let endpoint = format!("/Users/{}/Views", user_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
