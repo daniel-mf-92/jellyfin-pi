@@ -820,9 +820,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if auth_failure {
                             warn!("Saved token is no longer valid: {}", err_text);
+                        } else if transient_startup_failure {
+                            info!(
+                                "Saved token auto-login hit transient server/network issue (keeping token in config): {}",
+                                err_text
+                            );
                         } else {
                             warn!(
-                                "Saved token auto-login failed due to server/network issue (keeping token in config): {}",
+                                "Saved token auto-login failed with non-transient error (keeping token in config): {}",
                                 err_text
                             );
                         }
@@ -1093,7 +1098,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 && ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY
                             {
                                 schedule_saved_token_background_recovery = true;
-                                warn!(
+                                info!(
                                     "Auto-login failed due to transient server/network issue: {}. Continuing saved-token background recovery.",
                                     err_text
                                 );
@@ -2061,6 +2066,10 @@ fn is_transient_startup_or_connectivity_error(error_text: &str) -> bool {
         || lower.contains("server is starting")
         || lower.contains("service unavailable")
         || lower.contains("network error")
+        || lower.contains("connect error")
+        || lower.contains("tcp connect")
+        || lower.contains("connection refused")
+        || lower.contains("os error 111")
         || lower.contains("timed out")
         || lower.contains("connection")
         || lower.contains("error sending request")
