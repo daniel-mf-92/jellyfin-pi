@@ -1150,8 +1150,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    if !users_loaded_in_foreground && (retry_attempt == 1 || retry_attempt % 3 == 0)
-                    {
+                    if !users_loaded_in_foreground {
                         users_loaded_in_foreground = load_public_users_foreground_once(
                             ui_retry.clone(),
                             client_retry.clone(),
@@ -1163,6 +1162,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         if users_loaded_in_foreground {
                             info!(
                                 "Recovered login user list while saved-token recovery continues in background"
+                            );
+                        } else if retry_attempt == 1 || retry_attempt % 3 == 0 {
+                            info!(
+                                "Login users still unavailable while saved-token recovery continues (attempt {})",
+                                retry_attempt
                             );
                         }
                     }
