@@ -366,17 +366,17 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Users/{}/Items/Resume", self.server_url, user_id);
+        let endpoint = format!("/Users/{}/Items/Resume", user_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("Limit", limit.to_string()),
-                ("MediaTypes", "Video".into()),
-                ("Fields", ITEM_FIELDS.into()),
-            ])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("Limit", limit.to_string()),
+                        ("MediaTypes", "Video".into()),
+                        ("Fields", ITEM_FIELDS.into()),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
@@ -390,17 +390,16 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Shows/NextUp", self.server_url);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("UserId", user_id.to_string()),
-                ("Limit", limit.to_string()),
-                ("Fields", ITEM_FIELDS.into()),
-            ])
-            .send()
+            .send_with_base_fallback("/Shows/NextUp", |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("UserId", user_id.to_string()),
+                        ("Limit", limit.to_string()),
+                        ("Fields", ITEM_FIELDS.into()),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
@@ -418,17 +417,17 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Users/{}/Items/Latest", self.server_url, user_id);
+        let endpoint = format!("/Users/{}/Items/Latest", user_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("ParentId", parent_id),
-                ("Limit", &limit.to_string()),
-                ("Fields", ITEM_FIELDS),
-            ])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("ParentId", parent_id),
+                        ("Limit", &limit.to_string()),
+                        ("Fields", ITEM_FIELDS),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         // Latest endpoint returns a plain array, not a QueryResult wrapper
@@ -455,7 +454,7 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Users/{}/Items", self.server_url, user_id);
+        let endpoint = format!("/Users/{}/Items", user_id);
 
         let mut params: Vec<(&str, String)> = vec![
             ("StartIndex", start_index.to_string()),
@@ -481,11 +480,11 @@ impl JellyfinClient {
         }
 
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&params)
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&params)
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         Ok(resp.json().await?)
@@ -498,16 +497,13 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!(
-            "{}/Users/{}/Items/{}",
-            self.server_url, user_id, item_id
-        );
+        let endpoint = format!("/Users/{}/Items/{}", user_id, item_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[("Fields", ITEM_FIELDS)])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[("Fields", ITEM_FIELDS)])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         Ok(resp.json().await?)
@@ -520,16 +516,13 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Shows/{}/Seasons", self.server_url, series_id);
+        let endpoint = format!("/Shows/{}/Seasons", series_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("UserId", user_id),
-                ("Fields", ITEM_FIELDS),
-            ])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[("UserId", user_id), ("Fields", ITEM_FIELDS)])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
@@ -547,17 +540,17 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Shows/{}/Episodes", self.server_url, series_id);
+        let endpoint = format!("/Shows/{}/Episodes", series_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("UserId", user_id),
-                ("SeasonId", season_id),
-                ("Fields", ITEM_FIELDS),
-            ])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("UserId", user_id),
+                        ("SeasonId", season_id),
+                        ("Fields", ITEM_FIELDS),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
@@ -575,17 +568,17 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Items/{}/Similar", self.server_url, item_id);
+        let endpoint = format!("/Items/{}/Similar", item_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("UserId", user_id.to_string()),
-                ("Limit", limit.to_string()),
-                ("Fields", ITEM_FIELDS.into()),
-            ])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("UserId", user_id.to_string()),
+                        ("Limit", limit.to_string()),
+                        ("Fields", ITEM_FIELDS.into()),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: QueryResult = resp.json().await?;
@@ -607,17 +600,16 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Search/Hints", self.server_url);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[
-                ("UserId", user_id.to_string()),
-                ("SearchTerm", query.into()),
-                ("Limit", limit.to_string()),
-            ])
-            .send()
+            .send_with_base_fallback("/Search/Hints", |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[
+                        ("UserId", user_id.to_string()),
+                        ("SearchTerm", query.into()),
+                        ("Limit", limit.to_string()),
+                    ])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: SearchHintResult = resp.json().await?;
@@ -638,8 +630,6 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!("{}/Items/{}/PlaybackInfo", self.server_url, item_id);
-
         let profile = crate::device_profile::DeviceProfile::pi5_vlc();
 
         #[derive(serde::Serialize)]
@@ -648,13 +638,16 @@ impl JellyfinClient {
             device_profile: crate::device_profile::DeviceProfile,
         }
 
+        let endpoint = format!("/Items/{}/PlaybackInfo", item_id);
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[("UserId", user_id)])
-            .json(&Body { device_profile: profile })
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[("UserId", user_id)])
+                    .json(&Body {
+                        device_profile: profile.clone(),
+                    })
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         Ok(resp.json().await?)
@@ -662,13 +655,13 @@ impl JellyfinClient {
 
     /// GET /MediaSegments/{itemId} — fetch intro/credits/recap markers.
     pub async fn get_media_segments(&self, item_id: &str) -> ApiResult<Vec<MediaSegment>> {
-        let url = format!("{}/MediaSegments/{}", self.server_url, item_id);
+        let endpoint = format!("/MediaSegments/{}", item_id);
         let resp = self
-            .http
-            .get(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .query(&[("IncludeSegmentTypes", "Intro,Outro,Recap,Preview")])
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .query(&[("IncludeSegmentTypes", "Intro,Outro,Recap,Preview")])
+            })
             .await?;
         let resp = self.check_response(resp).await?;
         let result: MediaSegmentResult = resp.json().await?;
@@ -680,13 +673,12 @@ impl JellyfinClient {
         &self,
         info: &PlaybackStartInfo,
     ) -> ApiResult<()> {
-        let url = format!("{}/Sessions/Playing", self.server_url);
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .json(info)
-            .send()
+            .send_with_base_fallback("/Sessions/Playing", |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .json(info)
+            })
             .await?;
         self.check_response(resp).await?;
         Ok(())
@@ -697,13 +689,12 @@ impl JellyfinClient {
         &self,
         info: &PlaybackProgressInfo,
     ) -> ApiResult<()> {
-        let url = format!("{}/Sessions/Playing/Progress", self.server_url);
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .json(info)
-            .send()
+            .send_with_base_fallback("/Sessions/Playing/Progress", |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .json(info)
+            })
             .await?;
         self.check_response(resp).await?;
         Ok(())
@@ -714,13 +705,12 @@ impl JellyfinClient {
         &self,
         info: &PlaybackStopInfo,
     ) -> ApiResult<()> {
-        let url = format!("{}/Sessions/Playing/Stopped", self.server_url);
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .json(info)
-            .send()
+            .send_with_base_fallback("/Sessions/Playing/Stopped", |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+                    .json(info)
+            })
             .await?;
         self.check_response(resp).await?;
         Ok(())
@@ -741,24 +731,18 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!(
-            "{}/Users/{}/FavoriteItems/{}",
-            self.server_url, user_id, item_id
-        );
-
-        let resp = if is_favorite {
-            self.http
-                .post(&url)
-                .header("X-Emby-Authorization", self.auth_header())
-                .send()
-                .await?
-        } else {
-            self.http
-                .delete(&url)
-                .header("X-Emby-Authorization", self.auth_header())
-                .send()
-                .await?
-        };
+        let endpoint = format!("/Users/{}/FavoriteItems/{}", user_id, item_id);
+        let resp = self
+            .send_with_base_fallback(&endpoint, |http, url| {
+                if is_favorite {
+                    http.post(url)
+                        .header("X-Emby-Authorization", self.auth_header())
+                } else {
+                    http.delete(url)
+                        .header("X-Emby-Authorization", self.auth_header())
+                }
+            })
+            .await?;
 
         self.check_response(resp).await?;
         Ok(())
@@ -771,15 +755,12 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!(
-            "{}/Users/{}/PlayedItems/{}",
-            self.server_url, user_id, item_id
-        );
+        let endpoint = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
         let resp = self
-            .http
-            .post(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.post(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+            })
             .await?;
         self.check_response(resp).await?;
         Ok(())
@@ -792,15 +773,12 @@ impl JellyfinClient {
             .as_deref()
             .ok_or_else(|| ApiError::Auth("Not authenticated".into()))?;
 
-        let url = format!(
-            "{}/Users/{}/PlayedItems/{}",
-            self.server_url, user_id, item_id
-        );
+        let endpoint = format!("/Users/{}/PlayedItems/{}", user_id, item_id);
         let resp = self
-            .http
-            .delete(&url)
-            .header("X-Emby-Authorization", self.auth_header())
-            .send()
+            .send_with_base_fallback(&endpoint, |http, url| {
+                http.delete(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+            })
             .await?;
         self.check_response(resp).await?;
         Ok(())
