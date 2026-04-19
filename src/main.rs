@@ -3848,6 +3848,22 @@ async fn load_public_users_foreground_once(
 
     match result {
         Ok((users, server_url)) => {
+            if users.is_empty() {
+                info!(
+                    "Public users endpoint returned 0 users during foreground pass; keeping retry flow active"
+                );
+                let message = if background_retry_active {
+                    "Cannot connect to Jellyfin (retrying in background)...".to_string()
+                } else {
+                    JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.to_string()
+                };
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                    ui.global::<AppBridge>().set_error_message(message.into());
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
+                return false;
+            }
+
             apply_loaded_public_users(
                 &ui_weak,
                 &server_url,
@@ -3914,7 +3930,10 @@ async fn load_public_users(
     // Keep foreground loading under ~10s (spec) before switching to background retry.
     let max_attempts_before_background_retry = 1;
     for attempt in 1..=max_attempts_before_background_retry {
-        let result = with_loading_timeout("Load public users", async {
+        let result = with_loading_timeout_secs(
+            "Load public users",
+            FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS,
+            async {
             let client_snapshot = client
                 .try_read()
                 .map(|guard| guard.clone())
@@ -3927,11 +3946,31 @@ async fn load_public_users(
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })?;
             Ok((users, server_url))
-        })
+        },
+        )
         .await;
 
         match result {
             Ok((users, server_url)) => {
+                if users.is_empty() {
+                    warn!(
+                        "Public-user foreground attempt {}/{} returned 0 users; treating as transient startup state",
+                        attempt,
+                        max_attempts_before_background_retry
+                    );
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>().set_error_message(
+                            "Cannot connect to Jellyfin (retrying in background)...".into(),
+                        );
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
+
+                    if attempt < max_attempts_before_background_retry {
+                        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+                    }
+                    continue;
+                }
+
                 apply_loaded_public_users(
                     &ui_weak,
                     &server_url,
@@ -4020,6 +4059,23 @@ async fn load_public_users(
 
         match result {
             Ok((users, server_url)) => {
+                if users.is_empty() {
+                    if retry_attempt == 1 || retry_attempt % 3 == 0 {
+                        warn!(
+                            "Public-user background retry attempt {} returned 0 users; waiting for Jellyfin startup to finish",
+                            retry_attempt
+                        );
+                    }
+
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>().set_error_message(
+                            "Cannot connect to Jellyfin (retrying in background)...".into(),
+                        );
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
+                    continue;
+                }
+
                 info!(
                     "Recovered public users after background retry attempt {}",
                     retry_attempt
