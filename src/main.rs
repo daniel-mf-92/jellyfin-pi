@@ -1141,20 +1141,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     // probing in background. Without this, public-user loading could be
                     // deferred forever when startup keeps hitting transient connectivity errors.
                     if !users_loaded_in_foreground {
-                        let users_reloaded = load_public_users_foreground_once(
-                            ui_retry.clone(),
-                            client_retry.clone(),
-                            image_retry.clone(),
-                            true,
+                        let users_reloaded = tokio::time::timeout(
+                            tokio::time::Duration::from_secs(
+                                FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS.saturating_add(2),
+                            ),
+                            load_public_users_foreground_once(
+                                ui_retry.clone(),
+                                client_retry.clone(),
+                                image_retry.clone(),
+                                true,
+                            ),
                         )
                         .await;
 
-                        if users_reloaded {
-                            info!(
-                                "Public users loaded during saved-token background recovery (attempt {})",
-                                retry_attempt
-                            );
-                            users_loaded_in_foreground = true;
+                        match users_reloaded {
+                            Ok(true) => {
+                                info!(
+                                    "Public users loaded during saved-token background recovery (attempt {})",
+                                    retry_attempt
+                                );
+                                users_loaded_in_foreground = true;
+                            }
+                            Ok(false) => {}
+                            Err(_) => {
+                                warn!(
+                                    "Public-user refresh timed out during saved-token background recovery (attempt {}); continuing",
+                                    retry_attempt
+                                );
+                            }
                         }
                     }
 
