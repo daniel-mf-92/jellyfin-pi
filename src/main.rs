@@ -1113,7 +1113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .await;
 
                 if !users_loaded_in_foreground {
-                    warn!(
+                    info!(
                         "Public users unavailable during saved-token recovery; keeping login available while saved-token recovery continues"
                     );
                 }
