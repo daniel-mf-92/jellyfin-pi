@@ -2080,22 +2080,6 @@ async fn probe_saved_token_access(
 async fn detect_incomplete_jellyfin_setup(
     client: &Arc<RwLock<JellyfinClient>>,
 ) -> bool {
-    // A saved token implies the server has been set up before. During server
-    // startup/recovery we can briefly observe inconsistent setup metadata, so
-    // do not hard-stop retries on the setup-incomplete path in this state.
-    let has_saved_token = {
-        let c = client.read().await;
-        c.access_token
-            .as_ref()
-            .map(|token| !token.trim().is_empty())
-            .unwrap_or(false)
-    };
-
-    if has_saved_token {
-        reset_incomplete_setup_detection();
-        return false;
-    }
-
     let public_info = {
         let client_snapshot = { client.read().await.clone() };
         client_snapshot.get_public_system_info().await
@@ -2136,12 +2120,20 @@ async fn detect_incomplete_jellyfin_setup(
                 }
                 Ok(_) => {}
                 Err(err) => {
+                    let err_text = err.to_string();
+                    if !should_probe_incomplete_setup(&err_text) {
+                        debug!(
+                            "Could not verify public users while checking setup status: {}",
+                            err
+                        );
+                        reset_incomplete_setup_detection();
+                        return false;
+                    }
+
                     debug!(
-                        "Could not verify public users while checking setup status: {}",
+                        "Public users endpoint returned startup-style response while setup wizard is incomplete: {}",
                         err
                     );
-                    reset_incomplete_setup_detection();
-                    return false;
                 }
             }
 
