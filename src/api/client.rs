@@ -71,6 +71,7 @@ pub type ApiResult<T> = Result<T, ApiError>;
 // Client
 // ---------------------------------------------------------------------------
 
+#[derive(Clone)]
 pub struct JellyfinClient {
     http: Client,
     pub server_url: String,

@@ -2109,8 +2109,8 @@ async fn detect_incomplete_jellyfin_setup(
             // only treat setup as incomplete when the public-users endpoint is
             // reachable and confirms no users yet.
             let public_users = {
-                let c = client.read().await;
-                c.get_public_users().await
+                let client_snapshot = { client.read().await.clone() };
+                client_snapshot.get_public_users().await
             };
 
             match public_users {
@@ -2355,8 +2355,8 @@ fn setup_auth_callbacks(
             // Fetch the user's name for authentication
             // The login screen passes user_id; we need to find the username
             let username = {
-                let c = client.read().await;
-                match c.get_public_users().await {
+                let client_snapshot = { client.read().await.clone() };
+                match client_snapshot.get_public_users().await {
                     Ok(users) => users
                         .iter()
                         .find(|u| u.id == user_id_str)
@@ -3823,11 +3823,12 @@ async fn load_public_users_foreground_once(
         "Load public users",
         FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS,
         async {
-        let c = client.read().await;
-        c.get_public_users()
-            .await
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
-    },
+            let client_snapshot = { client.read().await.clone() };
+            client_snapshot
+                .get_public_users()
+                .await
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
+        },
     )
     .await;
 
@@ -3903,8 +3904,9 @@ async fn load_public_users(
     let max_attempts_before_background_retry = 1;
     for attempt in 1..=max_attempts_before_background_retry {
         let result = with_loading_timeout("Load public users", async {
-            let c = client.read().await;
-            c.get_public_users()
+            let client_snapshot = { client.read().await.clone() };
+            client_snapshot
+                .get_public_users()
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
         })
@@ -3979,8 +3981,9 @@ async fn load_public_users(
         }
 
         let result = with_loading_timeout("Load public users (background)", async {
-            let c = client.read().await;
-            c.get_public_users()
+            let client_snapshot = { client.read().await.clone() };
+            client_snapshot
+                .get_public_users()
                 .await
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
         })
