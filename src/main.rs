@@ -2277,7 +2277,25 @@ fn setup_auth_callbacks(
                     }
                     Err(e) => {
                         let err_text = e.to_string();
-                        if is_transient_startup_or_connectivity_error(&err_text) {
+                        let lower = err_text.to_ascii_lowercase();
+                        let auth_failure = lower.contains("auth error")
+                            || lower.contains("unauthorized")
+                            || lower.contains("not authenticated");
+
+                        if auth_failure {
+                            warn!(
+                                "Manual retry saved-token attempt failed due to invalid token; clearing cached auth before public-user fallback"
+                            );
+                            {
+                                let mut cfg = config.write().await;
+                                cfg.clear_auth();
+                            }
+                            {
+                                let mut c = client.write().await;
+                                c.user_id = None;
+                                c.access_token = None;
+                            }
+                        } else if is_transient_startup_or_connectivity_error(&err_text) {
                             info!(
                                 "Manual retry saved-token attempt hit transient connectivity issue; falling back to public users"
                             );
