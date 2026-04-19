@@ -93,10 +93,6 @@ const SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS: u64 = 5;
 const FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS: u64 = 5;
 const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
 const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 60;
-// Cap background retries so prolonged outages don't spin forever.
-// Retry delays back off to 60s, so 6 attempts covers ~3m 15s total.
-const SAVED_TOKEN_BACKGROUND_MAX_ATTEMPTS: u32 = 6;
-const PUBLIC_USERS_BACKGROUND_MAX_ATTEMPTS: usize = 6;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -1145,21 +1141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let mut retry_attempt: u32 = 0;
                 let mut should_show_login = false;
                 loop {
-                    if retry_attempt >= SAVED_TOKEN_BACKGROUND_MAX_ATTEMPTS {
-                        warn!(
-                            "Saved-token background recovery paused after {} attempts; waiting for manual retry",
-                            SAVED_TOKEN_BACKGROUND_MAX_ATTEMPTS
-                        );
-                        let _ = ui_retry.upgrade_in_event_loop(move |ui| {
-                            ui.global::<AppBridge>().set_error_message(
-                                JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into(),
-                            );
-                            ui.global::<AppBridge>().set_is_loading(false);
-                        });
-                        break;
-                    }
-
-                    retry_attempt += 1;
+                    retry_attempt = retry_attempt.saturating_add(1);
                     let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
                     tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
 
@@ -3933,20 +3915,7 @@ async fn load_public_users(
 
     let mut retry_attempt: usize = 0;
     loop {
-        if retry_attempt >= PUBLIC_USERS_BACKGROUND_MAX_ATTEMPTS {
-            warn!(
-                "Public-user background retry paused after {} attempts; waiting for manual retry",
-                PUBLIC_USERS_BACKGROUND_MAX_ATTEMPTS
-            );
-            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                ui.global::<AppBridge>()
-                    .set_error_message(JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into());
-                ui.global::<AppBridge>().set_is_loading(false);
-            });
-            return;
-        }
-
-        retry_attempt += 1;
+        retry_attempt = retry_attempt.saturating_add(1);
         let retry_delay_secs = background_retry_delay_secs(retry_attempt);
         tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
 
