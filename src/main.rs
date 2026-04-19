@@ -3776,9 +3776,9 @@ async fn load_public_users_foreground_once(
     image_cache: Arc<ImageCache>,
     background_retry_active: bool,
 ) -> bool {
-    let (server_url, access_token) = {
+    let server_url = {
         let c = client.read().await;
-        (c.server_url.clone(), c.access_token.clone())
+        c.server_url.clone()
     };
 
     let result = with_loading_timeout_secs(
@@ -3798,7 +3798,6 @@ async fn load_public_users_foreground_once(
             apply_loaded_public_users(
                 &ui_weak,
                 &server_url,
-                access_token.as_deref(),
                 &image_cache,
                 users,
             )
@@ -3844,9 +3843,9 @@ async fn load_public_users(
     client: Arc<RwLock<JellyfinClient>>,
     image_cache: Arc<ImageCache>,
 ) {
-    let (server_url, access_token) = {
+    let server_url = {
         let c = client.read().await;
-        (c.server_url.clone(), c.access_token.clone())
+        c.server_url.clone()
     };
 
     // Keep foreground loading under ~10s (spec) before switching to background retry.
@@ -3865,7 +3864,6 @@ async fn load_public_users(
                 apply_loaded_public_users(
                     &ui_weak,
                     &server_url,
-                    access_token.as_deref(),
                     &image_cache,
                     users,
                 )
@@ -3946,7 +3944,6 @@ async fn load_public_users(
                 apply_loaded_public_users(
                     &ui_weak,
                     &server_url,
-                    access_token.as_deref(),
                     &image_cache,
                     users,
                 )
@@ -3997,14 +3994,15 @@ async fn load_public_users(
 async fn apply_loaded_public_users(
     ui_weak: &slint::Weak<AppWindow>,
     server_url: &str,
-    access_token: Option<&str>,
     image_cache: &Arc<ImageCache>,
     users: Vec<UserDto>,
 ) {
     info!("Loaded {} public users", users.len());
     let mut user_infos = Vec::with_capacity(users.len());
     for user in &users {
-        let avatar = load_user_avatar_fast(user, server_url, access_token, image_cache).await;
+        // Keep login avatars on public-auth paths only: stale cached tokens can
+        // cause 401s and blank avatar rows on the login screen.
+        let avatar = load_user_avatar_fast(user, server_url, None, image_cache).await;
         user_infos.push(user_dto_to_user_info(user, server_url, avatar));
     }
 
