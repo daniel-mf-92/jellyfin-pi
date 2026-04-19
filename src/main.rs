@@ -2126,15 +2126,14 @@ async fn detect_incomplete_jellyfin_setup(
                             "Could not verify public users while checking setup status: {}",
                             err
                         );
+                        reset_incomplete_setup_detection();
+                        return false;
                     } else {
                         debug!(
-                            "Public users endpoint returned startup-style response while checking setup status (treating as transient): {}",
+                            "Public users endpoint returned startup-style response while checking setup status (treating as setup-incomplete candidate): {}",
                             err
                         );
                     }
-
-                    reset_incomplete_setup_detection();
-                    return false;
                 }
             }
 
