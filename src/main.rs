@@ -814,12 +814,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             || lower.contains("unauthorized")
                             || lower.contains("not authenticated");
                         let mut should_clear_saved_auth = auth_failure;
-                        let transient_startup_failure = lower.contains("503")
-                            || lower.contains("server is starting")
-                            || lower.contains("service unavailable")
-                            || lower.contains("network error")
-                            || lower.contains("timed out")
-                            || lower.contains("connection");
+                        let transient_startup_failure =
+                            is_transient_startup_or_connectivity_error(&err_text);
 
                         if auth_failure {
                             warn!("Saved token is no longer valid: {}", err_text);
@@ -888,12 +884,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         let retry_auth_failure = retry_lower.contains("auth error")
                                             || retry_lower.contains("unauthorized")
                                             || retry_lower.contains("not authenticated");
-                                        let retry_transient_startup_failure = retry_lower.contains("503")
-                                            || retry_lower.contains("server is starting")
-                                            || retry_lower.contains("service unavailable")
-                                            || retry_lower.contains("network error")
-                                            || retry_lower.contains("timed out")
-                                            || retry_lower.contains("connection");
+                                        let retry_transient_startup_failure =
+                                            is_transient_startup_or_connectivity_error(&retry_text);
 
                                         warn!(
                                             "Saved-token auto-login retry {} failed: {}",
@@ -1079,13 +1071,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         Err(e) => {
                             let err_text = e.to_string();
-                            let lower = err_text.to_ascii_lowercase();
-                            let transient_startup_failure = lower.contains("503")
-                                || lower.contains("server is starting")
-                                || lower.contains("service unavailable")
-                                || lower.contains("network error")
-                                || lower.contains("timed out")
-                                || lower.contains("connection");
+                            let transient_startup_failure =
+                                is_transient_startup_or_connectivity_error(&err_text);
 
                             // If Jellyfin is still booting and we still have saved auth,
                             // keep trying saved-token recovery in background instead of
@@ -1196,12 +1183,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let retry_auth_failure = retry_lower.contains("auth error")
                                 || retry_lower.contains("unauthorized")
                                 || retry_lower.contains("not authenticated");
-                            let retry_transient_startup_failure = retry_lower.contains("503")
-                                || retry_lower.contains("server is starting")
-                                || retry_lower.contains("service unavailable")
-                                || retry_lower.contains("network error")
-                                || retry_lower.contains("timed out")
-                                || retry_lower.contains("connection");
+                            let retry_transient_startup_failure =
+                                is_transient_startup_or_connectivity_error(&retry_text);
 
                             if retry_auth_failure {
                                 warn!(
@@ -1295,12 +1278,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let retry_auth_failure = retry_lower.contains("auth error")
                                 || retry_lower.contains("unauthorized")
                                 || retry_lower.contains("not authenticated");
-                            let retry_transient_startup_failure = retry_lower.contains("503")
-                                || retry_lower.contains("server is starting")
-                                || retry_lower.contains("service unavailable")
-                                || retry_lower.contains("network error")
-                                || retry_lower.contains("timed out")
-                                || retry_lower.contains("connection");
+                            let retry_transient_startup_failure =
+                                is_transient_startup_or_connectivity_error(&retry_text);
 
                             if retry_auth_failure {
                                 warn!(
@@ -2020,6 +1999,24 @@ fn should_probe_incomplete_setup(error_text: &str) -> bool {
         && !lower.contains("network error")
         && !lower.contains("timed out")
         && !lower.contains("connection")
+        && !lower.contains("error sending request")
+        && !lower.contains("failed to connect")
+        && !lower.contains("could not connect")
+        && !lower.contains("dns error")
+}
+
+fn is_transient_startup_or_connectivity_error(error_text: &str) -> bool {
+    let lower = error_text.to_ascii_lowercase();
+    lower.contains("503")
+        || lower.contains("server is starting")
+        || lower.contains("service unavailable")
+        || lower.contains("network error")
+        || lower.contains("timed out")
+        || lower.contains("connection")
+        || lower.contains("error sending request")
+        || lower.contains("failed to connect")
+        || lower.contains("could not connect")
+        || lower.contains("dns error")
 }
 
 async fn probe_saved_token_access(
@@ -3787,15 +3784,7 @@ async fn load_public_users_foreground_once(
             true
         }
         Err(e) => {
-            let transient = {
-                let lower = e.to_ascii_lowercase();
-                lower.contains("503")
-                    || lower.contains("server is starting")
-                    || lower.contains("service unavailable")
-                    || lower.contains("network error")
-                    || lower.contains("timed out")
-                    || lower.contains("connection")
-            };
+            let transient = is_transient_startup_or_connectivity_error(&e);
             warn!("Failed to load public users (foreground pass): {}", e);
 
             if should_probe_incomplete_setup(&e)
@@ -3840,15 +3829,6 @@ async fn load_public_users(
 
     // Keep foreground loading under ~10s (spec) before switching to background retry.
     let max_attempts_before_background_retry = 1;
-    let is_transient_startup_error = |err_text: &str| {
-        let lower = err_text.to_ascii_lowercase();
-        lower.contains("503")
-            || lower.contains("server is starting")
-            || lower.contains("service unavailable")
-            || lower.contains("network error")
-            || lower.contains("timed out")
-            || lower.contains("connection")
-    };
     for attempt in 1..=max_attempts_before_background_retry {
         let result = with_loading_timeout("Load public users", async {
             let c = client.read().await;
@@ -3871,7 +3851,7 @@ async fn load_public_users(
                 return;
             }
             Err(e) => {
-                let transient = is_transient_startup_error(&e.to_string());
+                let transient = is_transient_startup_or_connectivity_error(&e.to_string());
                 warn!(
                     "Failed to load public users (attempt {}/{}): {}",
                     attempt, max_attempts_before_background_retry, e
@@ -3952,7 +3932,7 @@ async fn load_public_users(
                 return;
             }
             Err(e) => {
-                let transient = is_transient_startup_error(&e.to_string());
+                let transient = is_transient_startup_or_connectivity_error(&e.to_string());
                 if !transient {
                     error!("Failed to load public users during background retry: {}", e);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
