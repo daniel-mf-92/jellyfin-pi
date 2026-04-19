@@ -78,22 +78,12 @@ impl JellyfinClient {
         let primary = Self::normalize_base_url(&self.server_url);
         let mut candidates = vec![primary.clone()];
 
-        let auto_fallback = if primary.contains("10.100.0.2") {
-            Some(primary.replace("10.100.0.2", "192.168.8.136"))
-        } else if primary.contains("192.168.8.136") {
-            Some(primary.replace("192.168.8.136", "10.100.0.2"))
-        } else {
-            None
-        };
-
-        if let Some(url) = auto_fallback {
-            candidates.push(url);
-        }
-
         if let Ok(env_fallback) = std::env::var("JELLYFIN_SERVER_FALLBACK_URL") {
-            let env_fallback = Self::normalize_base_url(&env_fallback);
-            if !env_fallback.is_empty() {
-                candidates.push(env_fallback);
+            for value in env_fallback.split(',') {
+                let value = Self::normalize_base_url(value.trim());
+                if !value.is_empty() {
+                    candidates.push(value);
+                }
             }
         }
 
