@@ -78,10 +78,9 @@ const RSS_EMERGENCY_EXIT_MB: u64 = 6500;
 const LOADING_TIMEOUT_SECS: u64 = 10;
 // Match global loading timeout contract: allow up to 10s before fallback.
 const SAVED_TOKEN_INITIAL_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
-// Background saved-token recovery also loads poster/backdrop images while building
-// home rows; allow a slightly longer non-blocking timeout to avoid false failures
-// when the server has just recovered and image cache is cold.
-const SAVED_TOKEN_BACKGROUND_LOAD_TIMEOUT_SECS: u64 = 30;
+// Keep background saved-token recovery aligned with the global loading timeout
+// contract so loading overlays never exceed the 10s spec budget.
+const SAVED_TOKEN_BACKGROUND_LOAD_TIMEOUT_SECS: u64 = LOADING_TIMEOUT_SECS;
 const SAVED_TOKEN_TRANSIENT_RETRY_DELAY_SECS: u64 = 2;
 // Keep login interaction instant when Jellyfin is unreachable: skip foreground
 // saved-token retries and continue recovery in background instead.
