@@ -2276,10 +2276,17 @@ fn setup_auth_callbacks(
                         recovered_with_saved_token = true;
                     }
                     Err(e) => {
-                        warn!(
-                            "Manual retry saved-token attempt failed, falling back to public users: {}",
-                            e
-                        );
+                        let err_text = e.to_string();
+                        if is_transient_startup_or_connectivity_error(&err_text) {
+                            info!(
+                                "Manual retry saved-token attempt hit transient connectivity issue; falling back to public users"
+                            );
+                        } else {
+                            warn!(
+                                "Manual retry saved-token attempt failed, falling back to public users: {}",
+                                err_text
+                            );
+                        }
                     }
                 }
             }
@@ -3813,10 +3820,17 @@ async fn load_public_users_foreground_once(
             true
         }
         Err(e) => {
-            let transient = is_transient_startup_or_connectivity_error(&e);
-            warn!("Failed to load public users (foreground pass): {}", e);
+            let err_text = e.to_string();
+            let transient = is_transient_startup_or_connectivity_error(&err_text);
+            if transient && background_retry_active {
+                info!(
+                    "Public users unavailable during saved-token recovery; keeping login available while background recovery continues"
+                );
+            } else {
+                warn!("Failed to load public users (foreground pass): {}", err_text);
+            }
 
-            if should_probe_incomplete_setup(&e)
+            if should_probe_incomplete_setup(&err_text)
                 && detect_incomplete_jellyfin_setup_with_timeout(&client).await
             {
                 warn!(
@@ -3834,7 +3848,7 @@ async fn load_public_users_foreground_once(
                         .to_string()
                 }
             } else {
-                format!("Cannot connect to server: {}", e)
+                format!("Cannot connect to server: {}", err_text)
             };
             let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                 ui.global::<AppBridge>().set_error_message(message.into());
