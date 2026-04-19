@@ -69,7 +69,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
-use slint::{Image as SlintImage, ModelRc, VecModel, SharedString};
+use slint::{Image as SlintImage, Model, ModelRc, VecModel, SharedString};
 
 const RSS_WARN_MB: u64 = 2500;
 const RSS_SOFT_LIMIT_MB: u64 = 4000;
@@ -1895,7 +1895,11 @@ fn setup_navigation_callbacks(
                 {
                     cancel_pending_detail_only_flag.store(true, Ordering::Release);
                 }
-                ui.global::<AppBridge>().set_error_message("".into());
+                let should_preserve_error =
+                    current_screen.as_str() == "login" && ui.global::<AppBridge>().get_users().row_count() == 0;
+                if !should_preserve_error {
+                    ui.global::<AppBridge>().set_error_message("".into());
+                }
                 ui.global::<AppBridge>().set_is_loading(false);
             });
 
