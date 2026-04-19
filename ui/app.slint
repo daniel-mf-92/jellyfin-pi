@@ -182,12 +182,15 @@ export component AppWindow inherits Window {
                 AppBridge.navigate("home", "");
                 return accept;
             }
-            // Ensure retry works from login when public users are unavailable,
+            // Ensure retry works from login when connectivity is degraded,
             // even if a child FocusScope did not capture Enter.
             if (
                 event.text == Key.Return
                 && AppBridge.current-screen == "login"
-                && AppBridge.users.length == 0
+                && (
+                    AppBridge.users.length == 0
+                    || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
+                )
             ) {
                 AppBridge.retry-connection();
                 return accept;
