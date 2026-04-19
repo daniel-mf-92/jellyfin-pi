@@ -1119,6 +1119,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     );
                 }
 
+                let mut public_user_background_retry_started = false;
+                if !users_loaded_in_foreground {
+                    info!(
+                        "Starting public-user background retry while saved-token recovery continues"
+                    );
+                    public_user_background_retry_started = true;
+                    let ui_public_retry = ui_handle.clone();
+                    let client_public_retry = client_clone.clone();
+                    let image_public_retry = image_clone.clone();
+                    spawn_ui_task(async move {
+                        load_public_users(
+                            ui_public_retry,
+                            client_public_retry,
+                            image_public_retry,
+                        )
+                        .await;
+                    });
+                }
+
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
                 let image_retry = image_clone.clone();
@@ -1341,7 +1360,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                if should_show_login && !users_loaded_in_foreground {
+                if should_show_login
+                    && !users_loaded_in_foreground
+                    && !public_user_background_retry_started
+                {
                     load_public_users(ui_retry, client_retry, image_retry).await;
                 }
             }
