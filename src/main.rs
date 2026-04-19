@@ -2232,7 +2232,7 @@ fn setup_auth_callbacks(
         spawn_ui_task(async move {
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>()
-                    .set_error_message("Retrying connection...".into());
+                    .set_error_message(JELLYFIN_CONNECTIVITY_ERROR_MESSAGE.into());
                 ui.global::<AppBridge>().set_is_loading(false);
             });
 
