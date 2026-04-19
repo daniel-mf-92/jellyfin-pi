@@ -91,7 +91,7 @@ const ENABLE_SAVED_TOKEN_BACKGROUND_RECOVERY: bool = true;
 const SAVED_TOKEN_BACKGROUND_PROBE_TIMEOUT_SECS: u64 = 5;
 const FOREGROUND_LOGIN_RETRY_TIMEOUT_SECS: u64 = 5;
 const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
-const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 60;
+const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
@@ -118,7 +118,9 @@ fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
 }
 
 fn background_retry_delay_secs(attempt: usize) -> u64 {
-    let exponent = attempt.saturating_sub(1).min(6) as u32;
+    // Keep reconnect cadence tight while Jellyfin is rebooting: 5s -> 10s -> 15s.
+    // A 60s ceiling leaves the login screen feeling stalled after transient outages.
+    let exponent = attempt.saturating_sub(1).min(2) as u32;
     let multiplier = 1u64 << exponent;
     (BACKGROUND_RETRY_BASE_DELAY_SECS.saturating_mul(multiplier)).min(BACKGROUND_RETRY_MAX_DELAY_SECS)
 }
