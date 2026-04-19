@@ -1,5 +1,6 @@
 use reqwest::Client;
 use serde::de::DeserializeOwned;
+use std::error::Error;
 use std::fmt;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -30,7 +31,19 @@ pub enum ApiError {
 impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ApiError::Network(e) => write!(f, "Network error: {e}"),
+            ApiError::Network(e) => {
+                let mut message = e.to_string();
+                let mut source = e.source();
+                while let Some(err) = source {
+                    let part = err.to_string();
+                    if !part.is_empty() {
+                        message.push_str(": ");
+                        message.push_str(&part);
+                    }
+                    source = err.source();
+                }
+                write!(f, "Network error: {message}")
+            }
             ApiError::Auth(msg) => write!(f, "Auth error: {msg}"),
             ApiError::NotFound => write!(f, "Not found"),
             ApiError::Server(msg) => write!(f, "Server error: {msg}"),
