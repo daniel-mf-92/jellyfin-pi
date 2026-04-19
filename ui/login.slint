@@ -197,7 +197,7 @@ export component LoginScreen inherits Rectangle {
 // server-name text removed (duplicate of JellyfinBranding banner)
 
             Text {
-                text: "Select User";
+                text: root.users.length > 0 ? "Select User" : "Cannot connect";
                 font-size: Theme.font-body-large;
                 color: Theme.text-secondary;
                 horizontal-alignment: center;
@@ -241,7 +241,7 @@ export component LoginScreen inherits Rectangle {
                 }
 
                 Text {
-                    text: "Press A / Enter to retry connection";
+                    text: "Press A/Enter to retry connection";
                     font-size: Theme.font-body-large;
                     color: Theme.text-secondary;
                     horizontal-alignment: center;
@@ -250,7 +250,7 @@ export component LoginScreen inherits Rectangle {
         }
 
         // Quick Connect button
-        Rectangle {
+        if root.users.length > 0: Rectangle {
             height: 40px;
             HorizontalLayout {
                 alignment: center;
