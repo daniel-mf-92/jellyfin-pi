@@ -1115,7 +1115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
                 info!("Loading public users while saved-token background recovery is active");
-                let users_loaded_in_foreground = load_public_users_foreground_once(
+                let mut users_loaded_in_foreground = load_public_users_foreground_once(
                     ui_handle.clone(),
                     client_clone.clone(),
                     image_clone.clone(),
@@ -1125,7 +1125,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 if !users_loaded_in_foreground {
                     info!(
-                        "Public users unavailable during startup; pausing login retries while saved-token recovery runs"
+                        "Public users unavailable during startup; retrying login users in parallel with saved-token recovery"
                     );
                 }
 
@@ -1148,6 +1148,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             retry_attempt,
                             retry_delay_secs,
                         );
+                    }
+
+                    if !users_loaded_in_foreground && (retry_attempt == 1 || retry_attempt % 3 == 0)
+                    {
+                        users_loaded_in_foreground = load_public_users_foreground_once(
+                            ui_retry.clone(),
+                            client_retry.clone(),
+                            image_retry.clone(),
+                            true,
+                        )
+                        .await;
+
+                        if users_loaded_in_foreground {
+                            info!(
+                                "Recovered login user list while saved-token recovery continues in background"
+                            );
+                        }
                     }
 
                     let (saved_user_id, saved_token) = {
