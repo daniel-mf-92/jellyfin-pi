@@ -4246,6 +4246,7 @@ async fn load_home_data(
             ui.global::<AppBridge>()
                 .set_home_rows(ModelRc::new(VecModel::from(rows)));
         }
+        ui.global::<AppBridge>().set_error_message("".into());
         ui.global::<AppBridge>().set_is_loading(false);
     }
 
