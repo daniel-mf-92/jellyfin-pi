@@ -241,7 +241,9 @@ export component LoginScreen inherits Rectangle {
                 }
 
                 Text {
-                    text: "Press A/Enter to retry connection";
+                    text: root.error == "Cannot connect to Jellyfin (retrying in background)..."
+                        ? "Reconnecting automatically..."
+                        : "Press A/Enter to retry connection";
                     font-size: Theme.font-body-large;
                     color: Theme.text-secondary;
                     horizontal-alignment: center;
