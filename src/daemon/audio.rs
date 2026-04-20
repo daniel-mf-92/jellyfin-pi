@@ -123,18 +123,28 @@ impl AudioHealer {
             Err(_) => return,
         };
 
-        // Find HDMI sink ID
-        let hdmi_id = status
-            .lines()
-            .find(|l| l.contains("Built-in Audio Digital Stereo (HDMI)"))
-            .and_then(|l| {
-                l.trim()
-                    .trim_start_matches('*')
-                    .trim()
-                    .split_whitespace()
-                    .next()
-                    .and_then(|s| s.trim_end_matches('.').parse::<u32>().ok())
-            });
+        // Find HDMI sink ID.
+        // `wpctl status` lines can include tree glyphs/prefixes (e.g. "│  * 52.")
+        // so parse the first numeric token on any line containing "hdmi".
+        let mut hdmi_id: Option<u32> = None;
+        let mut hdmi_is_default = false;
+        for line in status.lines() {
+            if !line.to_ascii_lowercase().contains("hdmi") {
+                continue;
+            }
+
+            let parsed_id = line
+                .split_whitespace()
+                .find_map(|token| token.trim_end_matches('.').parse::<u32>().ok());
+
+            if let Some(id) = parsed_id {
+                hdmi_id = Some(id);
+                if line.contains('*') {
+                    hdmi_is_default = true;
+                }
+                break;
+            }
+        }
 
         if let Some(id) = hdmi_id {
             {
@@ -142,12 +152,7 @@ impl AudioHealer {
                 *miss_streak = 0;
             }
 
-            // Check if it's the default (has * prefix)
-            let is_default = status
-                .lines()
-                .any(|l| l.contains("Built-in Audio Digital Stereo (HDMI)") && l.trim().starts_with('*'));
-
-            if !is_default {
+            if !hdmi_is_default {
                 let _ = self
                     .run_wayland_cmd("wpctl", &["set-default", &id.to_string()])
                     .await;
