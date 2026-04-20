@@ -2379,14 +2379,14 @@ fn setup_auth_callbacks(
                             }
                         } else if is_transient_startup_or_connectivity_error(&err_text) {
                             info!(
-                                "Manual retry saved-token attempt hit transient connectivity issue; keeping Home visible while background recovery continues"
+                                "Manual retry saved-token attempt hit transient connectivity issue; keeping Login visible while background recovery continues"
                             );
                             transient_saved_token_retry_failure = true;
-                            if state.current_screen_name().await != "home" {
-                                state.navigate_replace(Screen::Home).await;
+                            if state.current_screen_name().await != "login" {
+                                state.navigate_replace(Screen::Login).await;
                             }
                             let _ = ui_weak.upgrade_in_event_loop(|ui| {
-                                ui.global::<AppBridge>().set_current_screen("home".into());
+                                ui.global::<AppBridge>().set_current_screen("login".into());
                                 ui.global::<AppBridge>().set_error_message(
                                     JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                                 );
