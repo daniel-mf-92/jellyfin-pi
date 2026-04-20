@@ -97,6 +97,8 @@ const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
 const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 2;
 const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 2;
+const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
+const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 2;
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
@@ -5008,10 +5010,30 @@ async fn load_library(
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
 
-    // First get the library's name
-    let library_name = match c.get_item(library_id).await {
-        Ok(lib_item) => lib_item.name.clone(),
-        Err(_) => String::from("Library"),
+    // Keep library navigation responsive: bound optional title lookup so
+    // it cannot block list loading and trigger the global 10s timeout.
+    let library_name = match tokio::time::timeout(
+        tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
+        c.get_item(library_id),
+    )
+    .await
+    {
+        Ok(Ok(lib_item)) => lib_item.name.clone(),
+        Ok(Err(e)) => {
+            warn!(
+                "Failed to fetch library metadata for {}: {}; using fallback title",
+                library_id, e
+            );
+            String::from("Library")
+        }
+        Err(_) => {
+            warn!(
+                "Library metadata fetch timed out after {}s for {}; using fallback title",
+                LIBRARY_NAME_FETCH_TIMEOUT_SECS,
+                library_id
+            );
+            String::from("Library")
+        }
     };
 
     let result = c
@@ -5028,11 +5050,12 @@ async fn load_library(
         .map_err(|e| format!("Failed to get library items: {}", e))?;
     drop(c);
 
-    let media_items = items_to_media_items(
+    let media_items = items_to_media_items_fast(
         &result.items,
         &server_url,
         access_token.as_deref(),
         &image_cache,
+        LIBRARY_IMAGE_LOAD_TIMEOUT_MS,
     )
     .await;
 
