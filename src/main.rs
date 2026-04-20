@@ -2378,10 +2378,18 @@ fn setup_auth_callbacks(
                                 c.access_token = None;
                             }
                         } else if is_transient_startup_or_connectivity_error(&err_text) {
-                            info!(
-                                "Manual retry saved-token attempt hit transient connectivity issue; keeping Login visible while background recovery continues"
-                            );
-                            transient_saved_token_retry_failure = true;
+                            let background_recovery_active =
+                                LOGIN_BACKGROUND_RECOVERY_ACTIVE.load(Ordering::Acquire);
+                            if background_recovery_active {
+                                info!(
+                                    "Manual retry saved-token attempt hit transient connectivity issue; keeping Login visible while background recovery continues"
+                                );
+                                transient_saved_token_retry_failure = true;
+                            } else {
+                                info!(
+                                    "Manual retry saved-token attempt hit transient connectivity issue with no active background recovery; falling back to public-user retry loop"
+                                );
+                            }
                             if state.current_screen_name().await != "login" {
                                 state.navigate_replace(Screen::Login).await;
                             }
