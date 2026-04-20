@@ -3856,14 +3856,22 @@ fn setup_content_callbacks(
                 } else {
                     Some(mapped_filter.as_str())
                 };
-                if let Err(e) = load_library_with_fallback(
-                    ui_weak.clone(),
-                    client,
-                    image_cache,
-                    &library_id_str,
-                    sort_opt,
-                    filter_opt,
-                ).await
+                if let Err(e) = with_loading_timeout(
+                    "Library refresh",
+                    async {
+                        load_library_with_fallback(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &library_id_str,
+                            sort_opt,
+                            filter_opt,
+                        )
+                        .await
+                        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                    },
+                )
+                .await
                 {
                     error!("Failed to load library: {}", e);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
