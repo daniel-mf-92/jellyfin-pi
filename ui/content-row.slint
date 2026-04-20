@@ -73,7 +73,7 @@ export component ContentRow inherits VerticalLayout {
         private property <length> raw-scroll-target:
             // Match Jellyfin TV behavior: only scroll once focus reaches the
             // visible right edge, instead of re-centering every move.
-            max(0px, self.focused-card-end + root.row-padding - self.width);
+            max(0px, self.focused-card-end - self.width);
         private property <length> clamped-scroll-target:
             root.row-focused ? min(self.max-scroll, self.raw-scroll-target) : 0px;
 
