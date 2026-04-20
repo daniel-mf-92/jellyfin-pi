@@ -2175,25 +2175,15 @@ async fn detect_incomplete_jellyfin_setup(
                 }
                 Ok(_) => {}
                 Err(err) => {
-                    let err_text = err.to_string();
-                    let lower = err_text.to_ascii_lowercase();
-                    let startup_unavailable = lower.contains("503")
-                        || lower.contains("service unavailable")
-                        || lower.contains("server is starting");
-
-                    if startup_unavailable {
-                        warn!(
-                            "Public users endpoint unavailable while startup wizard is still incomplete; continuing setup-incomplete confirmation streak: {}",
-                            err_text
-                        );
-                    } else {
-                        debug!(
-                            "Could not verify public users while checking setup status; treating as transient and resetting setup-incomplete streak: {}",
-                            err_text
-                        );
-                        reset_incomplete_setup_detection();
-                        return false;
-                    }
+                    // Only treat setup as incomplete when /Users/Public explicitly responds
+                    // with an empty list. Any endpoint error (including startup 503s) is
+                    // transient and should not advance the setup-incomplete confirmation streak.
+                    debug!(
+                        "Could not verify public users while checking setup status; treating as transient and resetting setup-incomplete streak: {}",
+                        err
+                    );
+                    reset_incomplete_setup_detection();
+                    return false;
                 }
             }
 
