@@ -2352,14 +2352,14 @@ fn setup_auth_callbacks(
         });
     });
 
-    // login(user_id, password)
+    // login(user_id, username, password)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
     let state_clone = state.clone();
     let config_clone = config.clone();
     let daemon_mgr_clone = daemon_mgr.clone();
-    ui.global::<AppBridge>().on_login(move |user_id, password| {
+    ui.global::<AppBridge>().on_login(move |user_id, username, password| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let image_cache = image_clone.clone();
@@ -2367,6 +2367,7 @@ fn setup_auth_callbacks(
         let config = config_clone.clone();
         let daemon_mgr = daemon_mgr_clone.clone();
         let user_id_str = user_id.to_string();
+        let username_from_ui = username.to_string();
         let password_str = password.to_string();
 
         spawn_ui_task(async move {
@@ -2379,7 +2380,9 @@ fn setup_auth_callbacks(
 
             // Fetch the user's name for authentication
             // The login screen passes user_id; we need to find the username
-            let username = {
+            let username = if !username_from_ui.trim().is_empty() {
+                username_from_ui.clone()
+            } else {
                 let client_snapshot = { client.read().await.clone() };
                 match client_snapshot.get_public_users().await {
                     Ok(users) => users

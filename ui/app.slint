@@ -24,7 +24,7 @@ export global AppBridge {
     callback go-back();
 
     // Auth
-    callback login(/* user_id */ string, /* password */ string);
+    callback login(/* user_id */ string, /* username */ string, /* password */ string);
     callback logout();
     callback retry-connection();
 
@@ -209,11 +209,11 @@ export component AppWindow inherits Window {
             height: 100%;
             users: AppBridge.users;
             error: AppBridge.error-message;
-            select-user(id) => {
-                AppBridge.login(id, "");
+            select-user(id, username) => {
+                AppBridge.login(id, username, "");
             }
-            submit-password(user-id, password) => {
-                AppBridge.login(user-id, password);
+            submit-password(user-id, username, password) => {
+                AppBridge.login(user-id, username, password);
             }
             request-quick-connect() => {
                 AppBridge.retry-connection();
