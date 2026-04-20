@@ -436,6 +436,82 @@ export component HomeScreen inherits Rectangle {
                     alignment: center;
                     spacing: Theme.spacing-md;
 
+                    Rectangle {
+                        width: min(root.width - (Theme.overscan-h * 2), 1560px);
+                        height: 300px;
+                        border-radius: Theme.card-radius;
+                        background: Theme.surface.with-alpha(0.9);
+
+                        VerticalLayout {
+                            width: 100%;
+                            height: 100%;
+                            padding-left: Theme.spacing-lg;
+                            padding-right: Theme.spacing-lg;
+                            padding-top: Theme.spacing-lg;
+                            padding-bottom: Theme.spacing-lg;
+                            spacing: Theme.spacing-md;
+
+                            Text {
+                                text: "Libraries";
+                                color: Theme.on-background;
+                                font-size: Theme.font-title-large;
+                                font-weight: 700;
+                            }
+
+                            HorizontalLayout {
+                                spacing: Theme.spacing-md;
+
+                                Rectangle {
+                                    width: 460px;
+                                    height: 170px;
+                                    border-radius: Theme.card-radius;
+                                    background: Theme.surface-variant.with-alpha(0.95);
+
+                                    Text {
+                                        text: "Movies";
+                                        color: Theme.on-background;
+                                        font-size: Theme.font-title-medium;
+                                        font-weight: 700;
+                                        x: 20px;
+                                        y: parent.height - self.height - 18px;
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 460px;
+                                    height: 170px;
+                                    border-radius: Theme.card-radius;
+                                    background: Theme.surface-variant.with-alpha(0.95);
+
+                                    Text {
+                                        text: "TV Shows";
+                                        color: Theme.on-background;
+                                        font-size: Theme.font-title-medium;
+                                        font-weight: 700;
+                                        x: 20px;
+                                        y: parent.height - self.height - 18px;
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: 460px;
+                                    height: 170px;
+                                    border-radius: Theme.card-radius;
+                                    background: Theme.surface-variant.with-alpha(0.95);
+
+                                    Text {
+                                        text: "Collections";
+                                        color: Theme.on-background;
+                                        font-size: Theme.font-title-medium;
+                                        font-weight: 700;
+                                        x: 20px;
+                                        y: parent.height - self.height - 18px;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Text {
                         text: "Waiting for Jellyfin";
                         color: Theme.on-background;
