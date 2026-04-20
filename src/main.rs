@@ -107,8 +107,9 @@ const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
 const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
-const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
-const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 2;
+const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
+const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 1;
+const LIBRARY_ITEM_LIMIT: i32 = 48;
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
@@ -5082,52 +5083,52 @@ async fn load_library(
     filters: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     const LIBRARY_ITEM_FIELDS: &str =
-        "Genres,CommunityRating,ProductionYear,RunTimeTicks,OfficialRating,Overview,UserData,PrimaryImageAspectRatio";
+        "CommunityRating,ProductionYear,OfficialRating,UserData,PrimaryImageAspectRatio";
 
     let c = client.read().await;
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
 
-    // Keep library navigation responsive: bound optional title lookup so
-    // it cannot block list loading and trigger the global 10s timeout.
-    let library_name = match tokio::time::timeout(
-        tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
-        c.get_item(library_id),
-    )
-    .await
-    {
-        Ok(Ok(lib_item)) => lib_item.name.clone(),
-        Ok(Err(e)) => {
-            warn!(
-                "Failed to fetch library metadata for {}: {}; using fallback title",
-                library_id, e
-            );
-            String::from("Library")
-        }
-        Err(_) => {
-            warn!(
-                "Library metadata fetch timed out after {}s for {}; using fallback title",
-                LIBRARY_NAME_FETCH_TIMEOUT_SECS,
-                library_id
-            );
-            String::from("Library")
+    let library_name_future = async {
+        match tokio::time::timeout(
+            tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
+            c.get_item(library_id),
+        )
+        .await
+        {
+            Ok(Ok(lib_item)) => lib_item.name.clone(),
+            Ok(Err(e)) => {
+                warn!(
+                    "Failed to fetch library metadata for {}: {}; using fallback title",
+                    library_id, e
+                );
+                String::from("Library")
+            }
+            Err(_) => {
+                warn!(
+                    "Library metadata fetch timed out after {}s for {}; using fallback title",
+                    LIBRARY_NAME_FETCH_TIMEOUT_SECS,
+                    library_id
+                );
+                String::from("Library")
+            }
         }
     };
 
-    let result = c
-        .get_items(
-            Some(library_id),
-            None,
-            sort_by.or(Some("SortName")),
-            Some("Ascending"),
-            0,
-            100,
-            filters,
-            Some(LIBRARY_ITEM_FIELDS),
-            false,
-        )
-        .await
-        .map_err(|e| format!("Failed to get library items: {}", e))?;
+    let library_items_future = c.get_items(
+        Some(library_id),
+        None,
+        sort_by.or(Some("SortName")),
+        Some("Ascending"),
+        0,
+        LIBRARY_ITEM_LIMIT,
+        filters,
+        Some(LIBRARY_ITEM_FIELDS),
+        false,
+    );
+
+    let (library_name, result) = tokio::join!(library_name_future, library_items_future);
+    let result = result.map_err(|e| format!("Failed to get library items: {}", e))?;
     drop(c);
 
     let media_items = items_to_media_items_fast(
