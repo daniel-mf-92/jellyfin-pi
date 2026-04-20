@@ -547,15 +547,83 @@ async fn load_poster_image(
     image_cache: &ImageCache,
     max_height: i32,
 ) -> SlintImage {
-    if let Some(url) = item.primary_image_url(server_url, max_height) {
-        let url = append_api_key(url, access_token);
-        image_cache
-            .load_image(&url)
-            .await
-            .unwrap_or_default()
-    } else {
-        SlintImage::default()
+    let mut candidate_urls: Vec<String> = Vec::new();
+
+    let primary_tag = item
+        .image_tags
+        .as_ref()
+        .and_then(|tags| tags.get("Primary"))
+        .map(|value| value.as_str())
+        .or(item.primary_image_tag.as_deref());
+
+    if let Some(tag) = primary_tag {
+        candidate_urls.push(format!(
+            "{}/Items/{}/Images/Primary?maxHeight={}&quality=90&tag={}",
+            server_url, item.id, max_height, tag
+        ));
     }
+
+    if let Some(parent_thumb_item_id) = item.parent_thumb_item_id.as_ref() {
+        candidate_urls.push(format!(
+            "{}/Items/{}/Images/Thumb?maxWidth={}&quality=85",
+            server_url,
+            parent_thumb_item_id,
+            max_height * 2
+        ));
+    }
+
+    if let (Some(series_id), Some(series_primary_tag)) =
+        (item.series_id.as_ref(), item.series_primary_image_tag.as_ref())
+    {
+        candidate_urls.push(format!(
+            "{}/Items/{}/Images/Primary?maxHeight={}&quality=90&tag={}",
+            server_url, series_id, max_height, series_primary_tag
+        ));
+    }
+
+    if let Some(thumb_tag) = item
+        .image_tags
+        .as_ref()
+        .and_then(|tags| tags.get("Thumb"))
+    {
+        candidate_urls.push(format!(
+            "{}/Items/{}/Images/Thumb?maxWidth={}&quality=85&tag={}",
+            server_url,
+            item.id,
+            max_height * 2,
+            thumb_tag
+        ));
+    }
+
+    if let Some(backdrop_tag) = item
+        .backdrop_image_tags
+        .as_ref()
+        .and_then(|tags| tags.first())
+    {
+        candidate_urls.push(format!(
+            "{}/Items/{}/Images/Backdrop/0?maxWidth={}&quality=80&tag={}",
+            server_url,
+            item.id,
+            max_height * 2,
+            backdrop_tag
+        ));
+    }
+
+    // Keep an untagged Primary attempt as a final fallback because some
+    // Jellyfin libraries expose images without image tags.
+    candidate_urls.push(format!(
+        "{}/Items/{}/Images/Primary?maxHeight={}&quality=90",
+        server_url, item.id, max_height
+    ));
+
+    for url in candidate_urls {
+        let url = append_api_key(url, access_token);
+        if let Some(image) = image_cache.load_image(&url).await {
+            return image;
+        }
+    }
+
+    SlintImage::default()
 }
 
 /// Load a backdrop image for an item through the image cache.
