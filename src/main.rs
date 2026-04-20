@@ -98,8 +98,8 @@ const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Keep each phase capped well below 10s so the combined path
 // stays within the global loading timeout and avoids saved-token fallback.
-const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
-const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
+const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
