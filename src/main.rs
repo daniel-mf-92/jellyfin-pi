@@ -140,11 +140,16 @@ fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
 }
 
 fn background_retry_delay_secs(attempt: usize) -> u64 {
-    // Keep reconnect cadence tight while Jellyfin is rebooting: 5s -> 10s -> 15s.
-    // A 60s ceiling leaves the login screen feeling stalled after transient outages.
+    // Try immediately once, then keep reconnect cadence tight while Jellyfin is
+    // rebooting: 5s -> 10s -> 15s.
     let exponent = attempt.saturating_sub(1).min(2) as u32;
     let multiplier = 1u64 << exponent;
-    (BACKGROUND_RETRY_BASE_DELAY_SECS.saturating_mul(multiplier)).min(BACKGROUND_RETRY_MAX_DELAY_SECS)
+    if attempt <= 1 {
+        0
+    } else {
+        (BACKGROUND_RETRY_BASE_DELAY_SECS.saturating_mul(multiplier))
+            .min(BACKGROUND_RETRY_MAX_DELAY_SECS)
+    }
 }
 
 fn read_rss_mb() -> Option<u64> {
