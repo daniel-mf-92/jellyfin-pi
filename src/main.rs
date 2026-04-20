@@ -94,6 +94,9 @@ const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
 const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
+const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
+const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 2;
+const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 2;
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
@@ -716,6 +719,47 @@ async fn items_to_media_items(
                     )
                     .await;
                     let backdrop = SlintImage::default(); // defer backdrop until detail page
+                    base_item_to_media_item(item, &server_url, poster, backdrop)
+                }
+            })
+            .collect();
+        let batch_results = futures::future::join_all(futures).await;
+        result.extend(batch_results);
+    }
+    result
+}
+
+/// Convert a list of `BaseItemDto` into `Vec<MediaItem>` while bounding
+/// per-card image wait time. This keeps Home loading responsive during
+/// connectivity hiccups and prevents startup from timing out on slow artwork.
+async fn items_to_media_items_fast(
+    items: &[BaseItemDto],
+    server_url: &str,
+    access_token: Option<&str>,
+    image_cache: &ImageCache,
+    image_timeout_ms: u64,
+) -> Vec<MediaItem> {
+    let mut result = Vec::with_capacity(items.len());
+    for chunk in items.chunks(20) {
+        let futures: Vec<_> = chunk
+            .iter()
+            .map(|item| {
+                let server_url = server_url.to_string();
+                let access_token = access_token.map(str::to_owned);
+                async move {
+                    let poster = tokio::time::timeout(
+                        tokio::time::Duration::from_millis(image_timeout_ms),
+                        load_poster_image(
+                            item,
+                            &server_url,
+                            access_token.as_deref(),
+                            image_cache,
+                            225,
+                        ),
+                    )
+                    .await
+                    .unwrap_or_default();
+                    let backdrop = SlintImage::default();
                     base_item_to_media_item(item, &server_url, poster, backdrop)
                 }
             })
@@ -4339,16 +4383,49 @@ async fn load_home_data(
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
 
-    // Fetch all data concurrently
+    // Fetch all data concurrently, but bound non-critical rows so one slow
+    // endpoint cannot stall the entire Home load beyond global timeout.
     let (views_result, resume_result, next_up_result) = tokio::join!(
         c.get_user_views(),
-        c.get_resume_items(8),
-        c.get_next_up(8),
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
+            c.get_resume_items(8),
+        ),
+        tokio::time::timeout(
+            tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
+            c.get_next_up(8),
+        ),
     );
 
     let views = views_result.map_err(|e| format!("Failed to get views: {}", e))?;
-    let resume_items = resume_result.unwrap_or_default();
-    let next_up_items = next_up_result.unwrap_or_default();
+    let resume_items = match resume_result {
+        Ok(Ok(items)) => items,
+        Ok(Err(e)) => {
+            warn!("Failed to get resume items; continuing without row: {}", e);
+            Vec::new()
+        }
+        Err(_) => {
+            warn!(
+                "Resume row timed out after {}s; continuing without row",
+                HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS
+            );
+            Vec::new()
+        }
+    };
+    let next_up_items = match next_up_result {
+        Ok(Ok(items)) => items,
+        Ok(Err(e)) => {
+            warn!("Failed to get Next Up items; continuing without row: {}", e);
+            Vec::new()
+        }
+        Err(_) => {
+            warn!(
+                "Next Up row timed out after {}s; continuing without row",
+                HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS
+            );
+            Vec::new()
+        }
+    };
 
     drop(c); // Release the read lock before loading images
 
@@ -4356,9 +4433,14 @@ async fn load_home_data(
 
     // "Continue Watching" row
     if !resume_items.is_empty() {
-        let media_items =
-            items_to_media_items(&resume_items, &server_url, access_token.as_deref(), &image_cache)
-                .await;
+        let media_items = items_to_media_items_fast(
+            &resume_items,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            HOME_IMAGE_LOAD_TIMEOUT_MS,
+        )
+        .await;
         rows.push(ContentRowData {
             title: SharedString::from("Continue Watching"),
             items: ModelRc::new(VecModel::from(media_items)),
@@ -4368,9 +4450,14 @@ async fn load_home_data(
 
     // "Next Up" row
     if !next_up_items.is_empty() {
-        let media_items =
-            items_to_media_items(&next_up_items, &server_url, access_token.as_deref(), &image_cache)
-                .await;
+        let media_items = items_to_media_items_fast(
+            &next_up_items,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            HOME_IMAGE_LOAD_TIMEOUT_MS,
+        )
+        .await;
         rows.push(ContentRowData {
             title: SharedString::from("Next Up"),
             items: ModelRc::new(VecModel::from(media_items)),
@@ -4378,39 +4465,75 @@ async fn load_home_data(
         });
     }
 
-    // "Latest in {Library}" rows for each library view
-    for view in &views {
-        let c = client.read().await;
-        if rows.len() >= 5 { break; } // Cap total rows to limit memory
-        match c.get_latest_media(&view.id, 8).await {
-            Ok(latest) if !latest.is_empty() => {
-                drop(c);
-                let media_items = items_to_media_items(
-                    &latest,
-                    &server_url,
-                    access_token.as_deref(),
-                    &image_cache,
+    // "Latest in {Library}" rows for each library view. Fetch in parallel with
+    // per-library timeout so slow libraries do not block Home startup.
+    let latest_row_slots = 5usize.saturating_sub(rows.len());
+    if latest_row_slots > 0 {
+        let latest_targets: Vec<(String, String, Option<String>)> = views
+            .iter()
+            .take(latest_row_slots)
+            .map(|view| {
+                (
+                    view.id.clone(),
+                    view.name.clone(),
+                    view.collection_type.clone(),
                 )
-                .await;
-                let row_type = match view.collection_type.as_deref() {
-                    Some("movies") => "poster",
-                    Some("tvshows") => "poster",
-                    Some("music") => "square",
-                    _ => "poster",
-                };
-                rows.push(ContentRowData {
-                    title: SharedString::from(format!("Latest in {}", view.name)),
-                    items: ModelRc::new(VecModel::from(media_items)),
-                    row_type: SharedString::from(row_type),
-                });
-            }
-            Ok(_) => {
-                drop(c);
-                debug!("No latest items for library: {}", view.name);
-            }
-            Err(e) => {
-                drop(c);
-                warn!("Failed to get latest for {}: {}", view.name, e);
+            })
+            .collect();
+
+        let latest_results = futures::future::join_all(latest_targets.into_iter().map(
+            |(view_id, view_name, collection_type)| {
+                let client = client.clone();
+                async move {
+                    let c = client.read().await;
+                    let latest_result = tokio::time::timeout(
+                        tokio::time::Duration::from_secs(HOME_LATEST_ROW_FETCH_TIMEOUT_SECS),
+                        c.get_latest_media(&view_id, 8),
+                    )
+                    .await;
+                    drop(c);
+                    (view_id, view_name, collection_type, latest_result)
+                }
+            },
+        ))
+        .await;
+
+        for (_view_id, view_name, collection_type, latest_result) in latest_results {
+            match latest_result {
+                Ok(Ok(latest)) if !latest.is_empty() => {
+                    let media_items = items_to_media_items_fast(
+                        &latest,
+                        &server_url,
+                        access_token.as_deref(),
+                        &image_cache,
+                        HOME_IMAGE_LOAD_TIMEOUT_MS,
+                    )
+                    .await;
+                    let row_type = match collection_type.as_deref() {
+                        Some("movies") => "poster",
+                        Some("tvshows") => "poster",
+                        Some("music") => "square",
+                        _ => "poster",
+                    };
+                    rows.push(ContentRowData {
+                        title: SharedString::from(format!("Latest in {}", view_name)),
+                        items: ModelRc::new(VecModel::from(media_items)),
+                        row_type: SharedString::from(row_type),
+                    });
+                }
+                Ok(Ok(_)) => {
+                    debug!("No latest items for library: {}", view_name);
+                }
+                Ok(Err(e)) => {
+                    warn!("Failed to get latest for {}: {}", view_name, e);
+                }
+                Err(_) => {
+                    warn!(
+                        "Latest row for {} timed out after {}s; skipping row",
+                        view_name,
+                        HOME_LATEST_ROW_FETCH_TIMEOUT_SECS
+                    );
+                }
             }
         }
     }
@@ -4462,7 +4585,14 @@ async fn load_home_data(
             let mut poster = slint::Image::default();
             for url in candidate_urls {
                 let url = append_api_key(url, access_token.as_deref());
-                if let Some(image) = image_cache.load_image(&url).await {
+                let image = tokio::time::timeout(
+                    tokio::time::Duration::from_millis(HOME_IMAGE_LOAD_TIMEOUT_MS),
+                    image_cache.load_image(&url),
+                )
+                .await
+                .ok()
+                .flatten();
+                if let Some(image) = image {
                     poster = image;
                     break;
                 }
