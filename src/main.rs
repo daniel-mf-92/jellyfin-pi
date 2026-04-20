@@ -2182,22 +2182,17 @@ async fn detect_incomplete_jellyfin_setup(
                 }
                 Ok(_) => {}
                 Err(err) => {
-                    let err_text = err.to_string();
-                    if should_probe_incomplete_setup(&err_text) {
-                        debug!(
-                            "Public users endpoint still looks like startup/unavailable state while checking setup status; allowing setup-incomplete confirmation to continue: {}",
-                            err
-                        );
-                    } else {
-                        debug!(
-                            "Could not verify public users while checking setup status: {}",
-                            err
-                        );
-                        // Non-startup failures (e.g. unrelated connectivity errors)
-                        // should reset setup detection to avoid false positives.
-                        reset_incomplete_setup_detection();
-                        return false;
-                    }
+                    debug!(
+                        "Could not verify public users while checking setup status; treating as transient and resetting setup-incomplete streak: {}",
+                        err
+                    );
+                    // A setup-incomplete confirmation requires a successful
+                    // public-users response. Startup/unavailable errors here
+                    // are transient and must not advance the confirmation
+                    // streak, otherwise 503 windows can produce false setup-
+                    // incomplete detections.
+                    reset_incomplete_setup_detection();
+                    return false;
                 }
             }
 
