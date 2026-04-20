@@ -17,8 +17,7 @@ export component LibraryScreen inherits Rectangle {
     in-out property <int> columns: 6;
 
     callback item-selected(string);
-    callback sort-changed(string);
-    callback filter-changed(string);
+    callback library-query-changed(string, string);
     callback load-more();
     callback go-back();
 
@@ -97,7 +96,10 @@ export component LibraryScreen inherits Rectangle {
             TouchArea {
                 clicked => {
                     root.current-sort = root.current-sort + 1 - ((root.current-sort + 1) / root.sort-options.length) * root.sort-options.length;
-                    root.sort-changed(root.sort-options[root.current-sort]);
+                    root.library-query-changed(
+                        root.sort-options[root.current-sort],
+                        root.filter-options[root.current-filter],
+                    );
                 }
             }
         }
@@ -129,7 +131,10 @@ export component LibraryScreen inherits Rectangle {
             TouchArea {
                 clicked => {
                     root.current-filter = root.current-filter + 1 - ((root.current-filter + 1) / root.filter-options.length) * root.filter-options.length;
-                    root.filter-changed(root.filter-options[root.current-filter]);
+                    root.library-query-changed(
+                        root.sort-options[root.current-sort],
+                        root.filter-options[root.current-filter],
+                    );
                 }
             }
         }
@@ -236,10 +241,16 @@ export component LibraryScreen inherits Rectangle {
                 if (event.text == Key.Return || event.text == " " || event.text == "a" || event.text == "A") {
                     if (root.toolbar-focus == 0) {
                         root.current-sort = root.current-sort + 1 - ((root.current-sort + 1) / root.sort-options.length) * root.sort-options.length;
-                        root.sort-changed(root.sort-options[root.current-sort]);
+                        root.library-query-changed(
+                            root.sort-options[root.current-sort],
+                            root.filter-options[root.current-filter],
+                        );
                     } else {
                         root.current-filter = root.current-filter + 1 - ((root.current-filter + 1) / root.filter-options.length) * root.filter-options.length;
-                        root.filter-changed(root.filter-options[root.current-filter]);
+                        root.library-query-changed(
+                            root.sort-options[root.current-sort],
+                            root.filter-options[root.current-filter],
+                        );
                     }
                     return accept;
                 }

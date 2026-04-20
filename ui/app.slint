@@ -310,11 +310,8 @@ export component AppWindow inherits Window {
             item-selected(id) => {
                 AppBridge.navigate("detail", id);
             }
-            sort-changed(sort) => {
-                AppBridge.request-library(AppBridge.library-id, sort, "");
-            }
-            filter-changed(filter) => {
-                AppBridge.request-library(AppBridge.library-id, "", filter);
+            library-query-changed(sort, filter) => {
+                AppBridge.request-library(AppBridge.library-id, sort, filter);
             }
             go-back() => {
                 AppBridge.go-back();
