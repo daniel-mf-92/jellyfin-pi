@@ -110,6 +110,11 @@ const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
 const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 1;
 const LIBRARY_ITEM_LIMIT: i32 = 48;
+const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
+const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
+const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
+const LIBRARY_FALLBACK_ITEM_TYPES: &str = "Movie,Series,Episode,Video";
+const LIBRARY_FALLBACK_ITEM_FIELDS: &str = "ProductionYear,PrimaryImageAspectRatio";
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
@@ -1820,16 +1825,13 @@ fn setup_navigation_callbacks(
                                     ui.global::<AppBridge>().set_current_screen("library".into());
                                     ui.global::<AppBridge>().set_is_loading(true);
                                 });
-                                if let Err(e) = with_loading_timeout(
-                                    "Library load",
-                                    load_library(
-                                        ui_weak.clone(),
-                                        client.clone(),
-                                        image_cache.clone(),
-                                        &item_id,
-                                        None,
-                                        None,
-                                    ),
+                                if let Err(e) = load_library_with_fallback(
+                                    ui_weak.clone(),
+                                    client.clone(),
+                                    image_cache.clone(),
+                                    &item_id,
+                                    None,
+                                    None,
                                 )
                                 .await
                                 {
@@ -1896,16 +1898,13 @@ fn setup_navigation_callbacks(
                             ui.global::<AppBridge>().set_current_screen("library".into());
                             ui.global::<AppBridge>().set_is_loading(true);
                         });
-                        if let Err(e) = with_loading_timeout(
-                            "Library load",
-                            load_library(
-                                ui_weak.clone(),
-                                client,
-                                image_cache,
-                                &item_id,
-                                None,
-                                None,
-                            ),
+                        if let Err(e) = load_library_with_fallback(
+                            ui_weak.clone(),
+                            client,
+                            image_cache,
+                            &item_id,
+                            None,
+                            None,
                         ).await
                         {
                             if is_stale_navigation() {
@@ -1999,16 +1998,13 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("library".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = with_loading_timeout(
-                        "Library load",
-                        load_library(
-                            ui_weak.clone(),
-                            client,
-                            image_cache,
-                            &library_id,
-                            None,
-                            None,
-                        ),
+                    if let Err(e) = load_library_with_fallback(
+                        ui_weak.clone(),
+                        client,
+                        image_cache,
+                        &library_id,
+                        None,
+                        None,
                     ).await
                     {
                         if is_stale_navigation() {
@@ -3753,16 +3749,13 @@ fn setup_content_callbacks(
                 } else {
                     Some(mapped_filter.as_str())
                 };
-                if let Err(e) = with_loading_timeout(
-                    "Library refresh",
-                    load_library(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        &library_id_str,
-                        sort_opt,
-                        filter_opt,
-                    ),
+                if let Err(e) = load_library_with_fallback(
+                    ui_weak.clone(),
+                    client,
+                    image_cache,
+                    &library_id_str,
+                    sort_opt,
+                    filter_opt,
                 ).await
                 {
                     error!("Failed to load library: {}", e);
@@ -5156,6 +5149,127 @@ async fn load_library(
         library_name
     );
     Ok(())
+}
+
+async fn load_library_fallback(
+    ui_weak: slint::Weak<AppWindow>,
+    client: Arc<RwLock<JellyfinClient>>,
+    image_cache: Arc<ImageCache>,
+    library_id: &str,
+    sort_by: Option<&str>,
+    filters: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let c = client.read().await;
+    let server_url = c.server_url.clone();
+    let access_token = c.access_token.clone();
+
+    let library_name = match c.get_item(library_id).await {
+        Ok(item) => item.name,
+        Err(e) => {
+            warn!(
+                "Fallback metadata fetch failed for {}: {}; using generic title",
+                library_id, e
+            );
+            String::from("Library")
+        }
+    };
+
+    let result = c
+        .get_items(
+            Some(library_id),
+            Some(LIBRARY_FALLBACK_ITEM_TYPES),
+            sort_by.or(Some("SortName")),
+            Some("Ascending"),
+            0,
+            LIBRARY_FALLBACK_ITEM_LIMIT,
+            filters,
+            Some(LIBRARY_FALLBACK_ITEM_FIELDS),
+            false,
+        )
+        .await
+        .map_err(|e| format!("Failed to get fallback library items: {}", e))?;
+    drop(c);
+
+    let media_items = items_to_media_items_fast(
+        &result.items,
+        &server_url,
+        access_token.as_deref(),
+        &image_cache,
+        LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS,
+    )
+    .await;
+
+    if let Some(ui) = ui_weak.upgrade() {
+        ui.global::<AppBridge>()
+            .set_library_items(ModelRc::new(VecModel::from(media_items)));
+        ui.global::<AppBridge>()
+            .set_library_id(SharedString::from(library_id));
+        ui.global::<AppBridge>()
+            .set_library_title(SharedString::from(&library_name));
+        ui.global::<AppBridge>().set_is_loading(false);
+    }
+
+    warn!(
+        "Loaded fallback library view for '{}' with {} items",
+        library_name,
+        result.items.len()
+    );
+    Ok(())
+}
+
+async fn load_library_with_fallback(
+    ui_weak: slint::Weak<AppWindow>,
+    client: Arc<RwLock<JellyfinClient>>,
+    image_cache: Arc<ImageCache>,
+    library_id: &str,
+    sort_by: Option<&str>,
+    filters: Option<&str>,
+) -> Result<(), String> {
+    match with_loading_timeout(
+        "Library load",
+        load_library(
+            ui_weak.clone(),
+            client.clone(),
+            image_cache.clone(),
+            library_id,
+            sort_by,
+            filters,
+        ),
+    )
+    .await
+    {
+        Ok(()) => Ok(()),
+        Err(primary_err) => {
+            if !primary_err.to_ascii_lowercase().contains("timed out") {
+                return Err(primary_err);
+            }
+
+            warn!(
+                "Library load timed out for {}; retrying lightweight fallback",
+                library_id
+            );
+
+            with_loading_timeout_secs(
+                "Library fallback",
+                LIBRARY_FALLBACK_TIMEOUT_SECS,
+                load_library_fallback(
+                    ui_weak,
+                    client,
+                    image_cache,
+                    library_id,
+                    sort_by,
+                    filters,
+                ),
+            )
+            .await
+            .map_err(|fallback_err| {
+                format!(
+                    "{} (fallback failed: {})",
+                    primary_err, fallback_err
+                )
+            })
+        }
+    }
 }
 
 /// Perform a search and update the UI.
