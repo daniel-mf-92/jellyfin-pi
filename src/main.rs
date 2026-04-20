@@ -2137,21 +2137,20 @@ async fn detect_incomplete_jellyfin_setup(
                     let err_text = err.to_string();
                     if should_probe_incomplete_setup(&err_text) {
                         debug!(
-                            "Public users endpoint still looks like startup/unavailable state while checking setup status; continuing setup-incomplete confirmation checks: {}",
+                            "Public users endpoint still looks like startup/unavailable state while checking setup status; deferring setup-incomplete confirmation: {}",
                             err
                         );
-                        // Jellyfin can report startup wizard state as incomplete while
-                        // `/Users/Public` still returns the startup 503 page. Continue
-                        // confirmation instead of resetting so we can eventually surface
-                        // the dedicated setup-incomplete message.
                     } else {
                         debug!(
                             "Could not verify public users while checking setup status: {}",
                             err
                         );
-                        reset_incomplete_setup_detection();
-                        return false;
                     }
+                    // Treat setup status as inconclusive unless `/Users/Public` responds
+                    // successfully. This avoids false setup-incomplete positives during
+                    // transient startup/network outages.
+                    reset_incomplete_setup_detection();
+                    return false;
                 }
             }
 
