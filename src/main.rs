@@ -4563,7 +4563,7 @@ async fn load_home_data(
         ui.global::<AppBridge>()
             .set_library_tiles(ModelRc::new(VecModel::from(tiles)));
 
-        // Also add a "My Libraries" row at the TOP of home rows with poster images
+        // Also add a "My Media" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
         for view in &views {
             let mut candidate_urls: Vec<String> = Vec::new();
@@ -4617,7 +4617,7 @@ async fn load_home_data(
         if !library_cards.is_empty() {
             let mut all_rows: Vec<ContentRowData> = Vec::with_capacity(rows.len() + 1);
             all_rows.push(ContentRowData {
-                title: SharedString::from("My Libraries"),
+                title: SharedString::from("My Media"),
                 items: ModelRc::new(VecModel::from(library_cards)),
                 row_type: SharedString::from("landscape"),
             });
