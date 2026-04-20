@@ -1752,6 +1752,16 @@ fn setup_navigation_callbacks(
                     let item_id = param_str.clone();
                     let detail_navigation_started = tokio::time::Instant::now();
 
+                    if item_id.trim().is_empty() {
+                        warn!("Ignoring detail navigation with empty item id");
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>()
+                                .set_error_message("This item is unavailable right now.".into());
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                        return;
+                    }
+
                     if is_stale_navigation() {
                         debug!("Ignoring stale detail navigation request: {}", item_id);
                         return;
@@ -2036,6 +2046,18 @@ fn setup_navigation_callbacks(
                 }
                 "library" => {
                     let library_id = param_str.clone();
+
+                    if library_id.trim().is_empty() {
+                        warn!("Ignoring library navigation with empty library id");
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_error_message(
+                                "This library is unavailable right now.".into(),
+                            );
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                        return;
+                    }
+
                     if is_stale_navigation() {
                         debug!("Ignoring stale library navigation request: {}", library_id);
                         return;
@@ -2853,6 +2875,16 @@ fn setup_playback_callbacks(
         let item_id_str = item_id.to_string();
 
         tokio::spawn(async move {
+            if item_id_str.trim().is_empty() {
+                warn!("Ignoring play request with empty item id");
+                let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>()
+                        .set_error_message("Cannot play this item right now.".into());
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
+                return;
+            }
+
             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                 ui.global::<AppBridge>().set_is_loading(true);
             });
