@@ -1139,14 +1139,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !authenticated && schedule_saved_token_background_recovery {
-                // Keep login visible while background recovery reconnects to
-                // Jellyfin so users always have an immediate retry path.
+                // Keep Home visible while saved-token recovery reconnects to
+                // Jellyfin so startup with cached auth does not regress to Login.
                 info!(
-                    "Saved-token background recovery is active; keeping Login visible while reconnecting"
+                    "Saved-token background recovery is active; keeping Home visible while reconnecting"
                 );
-                state_clone.navigate_replace(Screen::Login).await;
+                state_clone.navigate_replace(Screen::Home).await;
                 let _ = ui_handle.upgrade_in_event_loop(|ui| {
-                    ui.global::<AppBridge>().set_current_screen("login".into());
+                    ui.global::<AppBridge>().set_current_screen("home".into());
                     ui.global::<AppBridge>().set_error_message(
                         JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                     );
@@ -2382,7 +2382,7 @@ fn setup_auth_callbacks(
                                 LOGIN_BACKGROUND_RECOVERY_ACTIVE.load(Ordering::Acquire);
                             if background_recovery_active {
                                 info!(
-                                    "Manual retry saved-token attempt hit transient connectivity issue; keeping Login visible while background recovery continues"
+                                    "Manual retry saved-token attempt hit transient connectivity issue; keeping current screen while background recovery continues"
                                 );
                                 transient_saved_token_retry_failure = true;
                             } else {
@@ -2390,11 +2390,15 @@ fn setup_auth_callbacks(
                                     "Manual retry saved-token attempt hit transient connectivity issue with no active background recovery; falling back to public-user retry loop"
                                 );
                             }
-                            if state.current_screen_name().await != "login" {
+                            let current_screen = state.current_screen_name().await;
+                            if !background_recovery_active && current_screen != "login" {
                                 state.navigate_replace(Screen::Login).await;
                             }
-                            let _ = ui_weak.upgrade_in_event_loop(|ui| {
-                                ui.global::<AppBridge>().set_current_screen("login".into());
+                            let show_home = background_recovery_active && current_screen == "home";
+                            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>().set_current_screen(
+                                    if show_home { "home".into() } else { "login".into() },
+                                );
                                 ui.global::<AppBridge>().set_error_message(
                                     JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                                 );
