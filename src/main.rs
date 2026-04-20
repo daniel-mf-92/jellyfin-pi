@@ -103,7 +103,7 @@ const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // stays within the global loading timeout and avoids saved-token fallback.
 const HOME_RESUME_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
-const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
+const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
 const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
