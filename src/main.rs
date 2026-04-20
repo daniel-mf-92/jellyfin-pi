@@ -2185,7 +2185,7 @@ async fn detect_incomplete_jellyfin_setup(
                     let err_text = err.to_string();
                     if should_probe_incomplete_setup(&err_text) {
                         debug!(
-                            "Public users endpoint still looks like startup/unavailable state while checking setup status; deferring setup-incomplete confirmation: {}",
+                            "Public users endpoint still looks like startup/unavailable state while checking setup status; allowing setup-incomplete confirmation to continue: {}",
                             err
                         );
                     } else {
@@ -2193,12 +2193,11 @@ async fn detect_incomplete_jellyfin_setup(
                             "Could not verify public users while checking setup status: {}",
                             err
                         );
+                        // Non-startup failures (e.g. unrelated connectivity errors)
+                        // should reset setup detection to avoid false positives.
+                        reset_incomplete_setup_detection();
+                        return false;
                     }
-                    // Treat setup status as inconclusive unless `/Users/Public` responds
-                    // successfully. This avoids false setup-incomplete positives during
-                    // transient startup/network outages.
-                    reset_incomplete_setup_detection();
-                    return false;
                 }
             }
 
