@@ -104,6 +104,7 @@ const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 const HOME_RESUME_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
 const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
+const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
@@ -4468,10 +4469,11 @@ async fn load_home_data(
     if latest_row_slots > 0 {
         let latest_budget = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
             .saturating_sub(home_load_started.elapsed())
-            .saturating_sub(tokio::time::Duration::from_millis(750));
+            .saturating_sub(tokio::time::Duration::from_millis(HOME_LATEST_FETCH_PHASE_RESERVE_MS));
+        let latest_budget_secs = ((latest_budget.as_millis() + 999) / 1000) as u64;
         let latest_timeout_secs = std::cmp::min(
             HOME_LATEST_ROW_FETCH_TIMEOUT_SECS,
-            latest_budget.as_secs(),
+            latest_budget_secs,
         );
         if latest_timeout_secs == 0 {
             warn!(
