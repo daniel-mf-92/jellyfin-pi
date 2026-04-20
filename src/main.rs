@@ -2135,19 +2135,19 @@ async fn detect_incomplete_jellyfin_setup(
                 Ok(_) => {}
                 Err(err) => {
                     let err_text = err.to_string();
-                    if !should_probe_incomplete_setup(&err_text) {
+                    if should_probe_incomplete_setup(&err_text) {
+                        debug!(
+                            "Public users endpoint still looks like startup/unavailable state while checking setup status; not treating as setup-incomplete yet: {}",
+                            err
+                        );
+                    } else {
                         debug!(
                             "Could not verify public users while checking setup status: {}",
                             err
                         );
-                        reset_incomplete_setup_detection();
-                        return false;
-                    } else {
-                        debug!(
-                            "Public users endpoint returned startup-style response while checking setup status (treating as setup-incomplete candidate): {}",
-                            err
-                        );
                     }
+                    reset_incomplete_setup_detection();
+                    return false;
                 }
             }
 
