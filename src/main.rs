@@ -1801,6 +1801,10 @@ fn setup_navigation_callbacks(
                                     "Detail preflight failed for known library {} (routing directly to library): {}",
                                     item_id, e
                                 );
+                                // Library redirects are not detail renders; clear the
+                                // detail in-flight flag so Escape/back during library
+                                // loading performs normal go-back behavior.
+                                detail_load_in_flight.store(false, Ordering::Release);
                                 state
                                     .navigate_to(Screen::Library {
                                         library_id: item_id.clone(),
@@ -1874,6 +1878,9 @@ fn setup_navigation_callbacks(
                         }
 
                         // Navigate to library screen instead
+                        // This path is no longer a detail navigation; clear the
+                        // detail in-flight flag so Escape/back works as a real back.
+                        detail_load_in_flight.store(false, Ordering::Release);
                         state
                             .navigate_to(Screen::Library {
                                 library_id: item_id.clone(),
