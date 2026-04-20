@@ -101,7 +101,8 @@ const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Keep each phase capped well below 10s so the combined path
 // stays within the global loading timeout and avoids saved-token fallback.
-const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_RESUME_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
 const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
@@ -4399,11 +4400,11 @@ async fn load_home_data(
     let (views_result, resume_result, next_up_result) = tokio::join!(
         c.get_user_views(),
         tokio::time::timeout(
-            tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
+            tokio::time::Duration::from_secs(HOME_RESUME_ROW_FETCH_TIMEOUT_SECS),
             c.get_resume_items(HOME_OPTIONAL_ROW_ITEM_LIMIT),
         ),
         tokio::time::timeout(
-            tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
+            tokio::time::Duration::from_secs(HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS),
             c.get_next_up(HOME_OPTIONAL_ROW_ITEM_LIMIT),
         ),
     );
@@ -4418,7 +4419,7 @@ async fn load_home_data(
         Err(_) => {
             warn!(
                 "Resume row timed out after {}s; continuing without row",
-                HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS
+                HOME_RESUME_ROW_FETCH_TIMEOUT_SECS
             );
             Vec::new()
         }
@@ -4432,7 +4433,7 @@ async fn load_home_data(
         Err(_) => {
             warn!(
                 "Next Up row timed out after {}s; continuing without row",
-                HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS
+                HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS
             );
             Vec::new()
         }
