@@ -2779,6 +2779,7 @@ fn setup_playback_callbacks(
                                 0,
                                 1,
                                 None,
+                                true,
                             )
                             .await
                         {
@@ -5045,6 +5046,7 @@ async fn load_library(
             0,
             100,
             filters,
+            false,
         )
         .await
         .map_err(|e| format!("Failed to get library items: {}", e))?;

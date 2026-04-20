@@ -462,6 +462,7 @@ impl JellyfinClient {
         start_index: i32,
         limit: i32,
         filters: Option<&str>,
+        recursive: bool,
     ) -> ApiResult<QueryResult> {
         let user_id = self
             .user_id
@@ -474,7 +475,7 @@ impl JellyfinClient {
             ("StartIndex", start_index.to_string()),
             ("Limit", limit.to_string()),
             ("Fields", ITEM_FIELDS.into()),
-            ("Recursive", "true".into()),
+            ("Recursive", recursive.to_string()),
         ];
 
         if let Some(v) = parent_id {
