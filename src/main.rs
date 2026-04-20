@@ -103,7 +103,7 @@ const DISPLAY_BACKEND_WAIT_POLL_MS: u64 = 250;
 const JELLYFIN_CONNECTIVITY_ERROR_MESSAGE: &str =
     "Cannot connect to Jellyfin. Press A / Enter to retry connection.";
 const JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE: &str =
-    "Cannot connect to Jellyfin (retrying in background)...";
+    "Cannot connect to Jellyfin. Press A / Enter to retry now. Reconnecting automatically in background...";
 
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 static SETUP_INCOMPLETE_FIRST_SEEN_TS: AtomicU64 = AtomicU64::new(0);
