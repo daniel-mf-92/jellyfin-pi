@@ -32,7 +32,7 @@ export component ContentRow inherits VerticalLayout {
             : 0;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
+            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2) + root.focus-overhang
             : root.row-padding * 2;
 
     spacing: 0px;
