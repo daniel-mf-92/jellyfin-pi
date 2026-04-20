@@ -1749,6 +1749,7 @@ fn setup_navigation_callbacks(
                 }
                 "detail" => {
                     let item_id = param_str.clone();
+                    let detail_navigation_started = tokio::time::Instant::now();
 
                     if is_stale_navigation() {
                         debug!("Ignoring stale detail navigation request: {}", item_id);
@@ -1825,13 +1826,28 @@ fn setup_navigation_callbacks(
                                     ui.global::<AppBridge>().set_current_screen("library".into());
                                     ui.global::<AppBridge>().set_is_loading(true);
                                 });
-                                if let Err(e) = load_library_with_fallback(
-                                    ui_weak.clone(),
-                                    client.clone(),
-                                    image_cache.clone(),
-                                    &item_id,
-                                    None,
-                                    None,
+                                let remaining_timeout = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+                                    .saturating_sub(detail_navigation_started.elapsed());
+                                if remaining_timeout.is_zero() {
+                                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                                        ui.global::<AppBridge>().set_error_message(
+                                            "Navigation timed out while opening library".into(),
+                                        );
+                                        ui.global::<AppBridge>().set_is_loading(false);
+                                    });
+                                    return;
+                                }
+                                if let Err(e) = with_loading_timeout_duration(
+                                    "Library load (detail redirect)",
+                                    remaining_timeout,
+                                    load_library_with_fallback(
+                                        ui_weak.clone(),
+                                        client.clone(),
+                                        image_cache.clone(),
+                                        &item_id,
+                                        None,
+                                        None,
+                                    ),
                                 )
                                 .await
                                 {
@@ -1898,13 +1914,28 @@ fn setup_navigation_callbacks(
                             ui.global::<AppBridge>().set_current_screen("library".into());
                             ui.global::<AppBridge>().set_is_loading(true);
                         });
-                        if let Err(e) = load_library_with_fallback(
-                            ui_weak.clone(),
-                            client,
-                            image_cache,
-                            &item_id,
-                            None,
-                            None,
+                        let remaining_timeout = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+                            .saturating_sub(detail_navigation_started.elapsed());
+                        if remaining_timeout.is_zero() {
+                            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_error_message(
+                                    "Navigation timed out while opening library".into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                            return;
+                        }
+                        if let Err(e) = with_loading_timeout_duration(
+                            "Library load (detail redirect)",
+                            remaining_timeout,
+                            load_library_with_fallback(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &item_id,
+                                None,
+                                None,
+                            ),
                         ).await
                         {
                             if is_stale_navigation() {
@@ -1954,8 +1985,20 @@ fn setup_navigation_callbacks(
                         debug!("Detail navigation superseded before detail payload load: {}", item_id);
                         return;
                     }
-                    if let Err(e) = with_loading_timeout(
+                    let remaining_timeout = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+                        .saturating_sub(detail_navigation_started.elapsed());
+                    if remaining_timeout.is_zero() {
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>().set_error_message(
+                                "Navigation timed out while loading details".into(),
+                            );
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                        return;
+                    }
+                    if let Err(e) = with_loading_timeout_duration(
                         "Detail load",
+                        remaining_timeout,
                         load_item_detail(
                             ui_weak.clone(),
                             client,
@@ -2176,12 +2219,25 @@ fn setup_navigation_callbacks(
 async fn with_loading_timeout_secs<T>(
     operation: &str,
     timeout_secs: u64,
-    future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
+    future: impl std::future::Future<Output = Result<T, impl std::fmt::Display>>,
 ) -> Result<T, String> {
-    match tokio::time::timeout(tokio::time::Duration::from_secs(timeout_secs), future).await {
+    with_loading_timeout_duration(
+        operation,
+        tokio::time::Duration::from_secs(timeout_secs),
+        future,
+    )
+    .await
+}
+
+async fn with_loading_timeout_duration<T>(
+    operation: &str,
+    timeout: tokio::time::Duration,
+    future: impl std::future::Future<Output = Result<T, impl std::fmt::Display>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(timeout, future).await {
         Ok(Ok(value)) => Ok(value),
         Ok(Err(e)) => Err(e.to_string()),
-        Err(_) => Err(format!("{} timed out after {}s", operation, timeout_secs)),
+        Err(_) => Err(format!("{} timed out after {:.1}s", operation, timeout.as_secs_f32())),
     }
 }
 
