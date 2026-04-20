@@ -97,6 +97,8 @@ const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
 const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 4;
 const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 4;
+const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
+const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
 const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 2;
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
@@ -4392,11 +4394,11 @@ async fn load_home_data(
         c.get_user_views(),
         tokio::time::timeout(
             tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
-            c.get_resume_items(8),
+            c.get_resume_items(HOME_OPTIONAL_ROW_ITEM_LIMIT),
         ),
         tokio::time::timeout(
             tokio::time::Duration::from_secs(HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS),
-            c.get_next_up(8),
+            c.get_next_up(HOME_OPTIONAL_ROW_ITEM_LIMIT),
         ),
     );
 
@@ -4491,7 +4493,7 @@ async fn load_home_data(
                     let c = client.read().await;
                     let latest_result = tokio::time::timeout(
                         tokio::time::Duration::from_secs(HOME_LATEST_ROW_FETCH_TIMEOUT_SECS),
-                        c.get_latest_media(&view_id, 8),
+                        c.get_latest_media(&view_id, HOME_LATEST_ROW_ITEM_LIMIT),
                     )
                     .await;
                     drop(c);
