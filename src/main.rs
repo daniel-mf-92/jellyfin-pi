@@ -107,9 +107,9 @@ const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 5;
 const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
-const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
+const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
 const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 1;
-const LIBRARY_ITEM_LIMIT: i32 = 48;
+const LIBRARY_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
@@ -5163,12 +5163,25 @@ async fn load_library_fallback(
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
 
-    let library_name = match c.get_item(library_id).await {
-        Ok(item) => item.name,
-        Err(e) => {
+    let library_name = match tokio::time::timeout(
+        tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
+        c.get_item(library_id),
+    )
+    .await
+    {
+        Ok(Ok(item)) => item.name,
+        Ok(Err(e)) => {
             warn!(
                 "Fallback metadata fetch failed for {}: {}; using generic title",
                 library_id, e
+            );
+            String::from("Library")
+        }
+        Err(_) => {
+            warn!(
+                "Fallback metadata fetch timed out after {}s for {}; using generic title",
+                LIBRARY_NAME_FETCH_TIMEOUT_SECS,
+                library_id
             );
             String::from("Library")
         }
