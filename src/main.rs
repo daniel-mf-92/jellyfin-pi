@@ -1134,35 +1134,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !authenticated && schedule_saved_token_background_recovery {
-                // Keep login usable while saved-token recovery runs in background.
-                // This attempts to load public users immediately instead of waiting
-                // for recovery to fail first.
-                info!("Loading public users while saved-token background recovery is active");
-                let users_loaded_in_foreground = load_public_users_foreground_once(
-                    ui_handle.clone(),
-                    client_clone.clone(),
-                    image_clone.clone(),
-                    true,
-                )
-                .await;
-
-                if !users_loaded_in_foreground {
-                    info!(
-                        "Public users unavailable during startup; retrying login users in parallel with saved-token recovery"
+                // Saved-token sessions should skip login and keep Home visible while
+                // background recovery reconnects to Jellyfin.
+                info!(
+                    "Saved-token background recovery is active; keeping Home visible while reconnecting"
+                );
+                state_clone.navigate_replace(Screen::Home).await;
+                let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>().set_current_screen("home".into());
+                    ui.global::<AppBridge>().set_error_message(
+                        JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                     );
-
-                    let ui_login_retry = ui_handle.clone();
-                    let client_login_retry = client_clone.clone();
-                    let image_login_retry = image_clone.clone();
-                    spawn_ui_task(async move {
-                        retry_login_users_during_saved_token_recovery(
-                            ui_login_retry,
-                            client_login_retry,
-                            image_login_retry,
-                        )
-                        .await;
-                    });
-                }
+                    ui.global::<AppBridge>().set_is_loading(false);
+                });
 
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
@@ -1395,7 +1379,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 }
 
-                if should_show_login && !users_loaded_in_foreground {
+                if should_show_login {
+                    state_retry.navigate_replace(Screen::Login).await;
+                    let _ = ui_retry.upgrade_in_event_loop(|ui| {
+                        ui.global::<AppBridge>().set_current_screen("login".into());
+                    });
                     load_public_users(ui_retry, client_retry, image_retry).await;
                 }
             }
