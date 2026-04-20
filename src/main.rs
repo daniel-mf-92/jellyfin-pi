@@ -110,6 +110,7 @@ const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
 const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 1;
 const LIBRARY_ITEM_LIMIT: i32 = 24;
+const LIBRARY_PRIMARY_TIMEOUT_SECS: u64 = 4;
 const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
@@ -5312,8 +5313,14 @@ async fn load_library_with_fallback(
     sort_by: Option<&str>,
     filters: Option<&str>,
 ) -> Result<(), String> {
-    match with_loading_timeout(
+    let fallback_budget_secs = std::cmp::min(
+        LIBRARY_FALLBACK_TIMEOUT_SECS,
+        LOADING_TIMEOUT_SECS.saturating_sub(LIBRARY_PRIMARY_TIMEOUT_SECS),
+    );
+
+    match with_loading_timeout_secs(
         "Library load",
+        LIBRARY_PRIMARY_TIMEOUT_SECS,
         load_library(
             ui_weak.clone(),
             client.clone(),
@@ -5336,9 +5343,13 @@ async fn load_library_with_fallback(
                 library_id
             );
 
+            if fallback_budget_secs == 0 {
+                return Err(primary_err);
+            }
+
             with_loading_timeout_secs(
                 "Library fallback",
-                LIBRARY_FALLBACK_TIMEOUT_SECS,
+                fallback_budget_secs,
                 load_library_fallback(
                     ui_weak,
                     client,
