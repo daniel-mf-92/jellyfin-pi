@@ -2802,6 +2802,7 @@ fn setup_playback_callbacks(
                                 0,
                                 1,
                                 None,
+                                None,
                                 true,
                             )
                             .await
@@ -5069,6 +5070,9 @@ async fn load_library(
     sort_by: Option<&str>,
     filters: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    const LIBRARY_ITEM_FIELDS: &str =
+        "Genres,CommunityRating,ProductionYear,RunTimeTicks,OfficialRating,Overview,UserData,PrimaryImageAspectRatio";
+
     let c = client.read().await;
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
@@ -5108,6 +5112,7 @@ async fn load_library(
             0,
             100,
             filters,
+            Some(LIBRARY_ITEM_FIELDS),
             false,
         )
         .await

@@ -462,6 +462,7 @@ impl JellyfinClient {
         start_index: i32,
         limit: i32,
         filters: Option<&str>,
+        fields: Option<&str>,
         recursive: bool,
     ) -> ApiResult<QueryResult> {
         let user_id = self
@@ -474,7 +475,7 @@ impl JellyfinClient {
         let mut params: Vec<(&str, String)> = vec![
             ("StartIndex", start_index.to_string()),
             ("Limit", limit.to_string()),
-            ("Fields", ITEM_FIELDS.into()),
+            ("Fields", fields.unwrap_or(ITEM_FIELDS).into()),
             ("Recursive", recursive.to_string()),
         ];
 
