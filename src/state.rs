@@ -83,6 +83,14 @@ impl StateManager {
 
     pub async fn navigate_to(&self, screen: Screen) {
         let mut state = self.state.write().await;
+        if state.current_screen == screen {
+            debug!(
+                "Navigate ignored: already on {} (stack depth: {})",
+                state.current_screen.name(),
+                state.screen_stack.len()
+            );
+            return;
+        }
         let previous_name = state.current_screen.name().to_string();
         let new_name = screen.name().to_string();
         let previous = std::mem::replace(&mut state.current_screen, screen);
