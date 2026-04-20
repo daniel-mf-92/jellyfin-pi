@@ -194,6 +194,7 @@ export component AppWindow inherits Window {
                 && (
                     AppBridge.users.length == 0
                     || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
+                    || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry now. Reconnecting automatically in background..."
                 )
             ) {
                 AppBridge.retry-connection();
