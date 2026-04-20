@@ -1138,7 +1138,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // This attempts to load public users immediately instead of waiting
                 // for recovery to fail first.
                 info!("Loading public users while saved-token background recovery is active");
-                let mut users_loaded_in_foreground = load_public_users_foreground_once(
+                let users_loaded_in_foreground = load_public_users_foreground_once(
                     ui_handle.clone(),
                     client_clone.clone(),
                     image_clone.clone(),
@@ -1150,6 +1150,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     info!(
                         "Public users unavailable during startup; retrying login users in parallel with saved-token recovery"
                     );
+
+                    let ui_login_retry = ui_handle.clone();
+                    let client_login_retry = client_clone.clone();
+                    let image_login_retry = image_clone.clone();
+                    spawn_ui_task(async move {
+                        retry_login_users_during_saved_token_recovery(
+                            ui_login_retry,
+                            client_login_retry,
+                            image_login_retry,
+                        )
+                        .await;
+                    });
                 }
 
                 let ui_retry = ui_handle.clone();
@@ -1180,27 +1192,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             retry_attempt,
                             retry_delay_secs,
                         );
-                    }
-
-                    if !users_loaded_in_foreground {
-                        users_loaded_in_foreground = load_public_users_foreground_once(
-                            ui_retry.clone(),
-                            client_retry.clone(),
-                            image_retry.clone(),
-                            true,
-                        )
-                        .await;
-
-                        if users_loaded_in_foreground {
-                            info!(
-                                "Recovered login user list while saved-token recovery continues in background"
-                            );
-                        } else if retry_attempt == 1 || retry_attempt % 3 == 0 {
-                            info!(
-                                "Login users still unavailable while saved-token recovery continues (attempt {})",
-                                retry_attempt
-                            );
-                        }
                     }
 
                     let (saved_user_id, saved_token) = {
@@ -2108,6 +2099,44 @@ async fn probe_saved_token_access(
         .await
         .map(|_| ())
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+}
+
+async fn retry_login_users_during_saved_token_recovery(
+    ui_weak: slint::Weak<AppWindow>,
+    client: Arc<RwLock<JellyfinClient>>,
+    image_cache: Arc<ImageCache>,
+) {
+    let mut retry_attempt: usize = 0;
+    loop {
+        if SETUP_INCOMPLETE_CONFIRMED.load(Ordering::Relaxed) {
+            break;
+        }
+
+        retry_attempt = retry_attempt.saturating_add(1);
+        let retry_delay_secs = background_retry_delay_secs(retry_attempt);
+        tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
+
+        if load_public_users_foreground_once(
+            ui_weak.clone(),
+            client.clone(),
+            image_cache.clone(),
+            true,
+        )
+        .await
+        {
+            info!(
+                "Recovered login user list while saved-token recovery continues in background"
+            );
+            break;
+        }
+
+        if retry_attempt == 1 || retry_attempt % 3 == 0 {
+            info!(
+                "Login users still unavailable while saved-token recovery continues (attempt {})",
+                retry_attempt
+            );
+        }
+    }
 }
 
 async fn detect_incomplete_jellyfin_setup(
