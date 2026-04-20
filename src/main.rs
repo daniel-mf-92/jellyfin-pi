@@ -2303,6 +2303,7 @@ fn setup_auth_callbacks(
             });
 
             let mut recovered_with_saved_token = false;
+            let mut transient_saved_token_retry_failure = false;
             let (saved_user_id, saved_token) = {
                 let cfg = config.read().await;
                 (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
@@ -2363,8 +2364,17 @@ fn setup_auth_callbacks(
                             }
                         } else if is_transient_startup_or_connectivity_error(&err_text) {
                             info!(
-                                "Manual retry saved-token attempt hit transient connectivity issue; falling back to public users"
+                                "Manual retry saved-token attempt hit transient connectivity issue; keeping Home visible while background recovery continues"
                             );
+                            transient_saved_token_retry_failure = true;
+                            state.navigate_replace(Screen::Home).await;
+                            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_current_screen("home".into());
+                                ui.global::<AppBridge>().set_error_message(
+                                    JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
                         } else {
                             warn!(
                                 "Manual retry saved-token attempt failed, falling back to public users: {}",
@@ -2375,7 +2385,7 @@ fn setup_auth_callbacks(
                 }
             }
 
-            if !recovered_with_saved_token {
+            if !recovered_with_saved_token && !transient_saved_token_retry_failure {
                 // If startup recovery is already active, keep manual retry lightweight.
                 // If it is not active, start the full public-user retry loop so login
                 // cannot get stuck on a single failed foreground pass.
