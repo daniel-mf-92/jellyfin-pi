@@ -1840,14 +1840,20 @@ fn setup_navigation_callbacks(
                                 if let Err(e) = with_loading_timeout_duration(
                                     "Library load (detail redirect)",
                                     remaining_timeout,
-                                    load_library_with_fallback(
-                                        ui_weak.clone(),
-                                        client.clone(),
-                                        image_cache.clone(),
-                                        &item_id,
-                                        None,
-                                        None,
-                                    ),
+                                    async {
+                                        load_library_with_fallback(
+                                            ui_weak.clone(),
+                                            client.clone(),
+                                            image_cache.clone(),
+                                            &item_id,
+                                            None,
+                                            None,
+                                        )
+                                        .await
+                                        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                                            e.into()
+                                        })
+                                    },
                                 )
                                 .await
                                 {
@@ -1928,14 +1934,20 @@ fn setup_navigation_callbacks(
                         if let Err(e) = with_loading_timeout_duration(
                             "Library load (detail redirect)",
                             remaining_timeout,
-                            load_library_with_fallback(
-                                ui_weak.clone(),
-                                client,
-                                image_cache,
-                                &item_id,
-                                None,
-                                None,
-                            ),
+                            async {
+                                load_library_with_fallback(
+                                    ui_weak.clone(),
+                                    client,
+                                    image_cache,
+                                    &item_id,
+                                    None,
+                                    None,
+                                )
+                                .await
+                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                                    e.into()
+                                })
+                            },
                         ).await
                         {
                             if is_stale_navigation() {
@@ -2146,14 +2158,20 @@ fn setup_navigation_callbacks(
                 return;
             }
 
-            // Dismiss screensaver if active
+            // Dismiss screensaver if active. Back should only close the
+            // screensaver overlay, not pop navigation state.
+            let screensaver_dismissed = Arc::new(AtomicBool::new(false));
             {
-                let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                let screensaver_dismissed_flag = screensaver_dismissed.clone();
+                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
                     if ui.global::<AppBridge>().get_show_screensaver() {
                         ui.global::<AppBridge>().set_show_screensaver(false);
-                        return;
+                        screensaver_dismissed_flag.store(true, Ordering::Release);
                     }
                 });
+            }
+            if screensaver_dismissed.load(Ordering::Acquire) {
+                return;
             }
 
             state.reset_idle().await;
@@ -2219,7 +2237,7 @@ fn setup_navigation_callbacks(
 async fn with_loading_timeout_secs<T>(
     operation: &str,
     timeout_secs: u64,
-    future: impl std::future::Future<Output = Result<T, impl std::fmt::Display>>,
+    future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 ) -> Result<T, String> {
     with_loading_timeout_duration(
         operation,
@@ -2232,7 +2250,7 @@ async fn with_loading_timeout_secs<T>(
 async fn with_loading_timeout_duration<T>(
     operation: &str,
     timeout: tokio::time::Duration,
-    future: impl std::future::Future<Output = Result<T, impl std::fmt::Display>>,
+    future: impl std::future::Future<Output = Result<T, Box<dyn std::error::Error + Send + Sync>>>,
 ) -> Result<T, String> {
     match tokio::time::timeout(timeout, future).await {
         Ok(Ok(value)) => Ok(value),
