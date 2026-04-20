@@ -2064,7 +2064,6 @@ fn setup_navigation_callbacks(
                 let current_screen = ui.global::<AppBridge>().get_current_screen();
                 if detail_load_in_flight_for_ui.load(Ordering::Acquire)
                     && current_screen.as_str() != "detail"
-                    && current_screen.as_str() != "library"
                 {
                     cancel_pending_detail_only_flag.store(true, Ordering::Release);
                 }
