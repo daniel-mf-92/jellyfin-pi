@@ -1139,14 +1139,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !authenticated && schedule_saved_token_background_recovery {
-                // Saved-token sessions should skip login and keep Home visible while
-                // background recovery reconnects to Jellyfin.
+                // Keep login visible while background recovery reconnects to
+                // Jellyfin so users always have an immediate retry path.
                 info!(
-                    "Saved-token background recovery is active; keeping Home visible while reconnecting"
+                    "Saved-token background recovery is active; keeping Login visible while reconnecting"
                 );
-                state_clone.navigate_replace(Screen::Home).await;
+                state_clone.navigate_replace(Screen::Login).await;
                 let _ = ui_handle.upgrade_in_event_loop(|ui| {
-                    ui.global::<AppBridge>().set_current_screen("home".into());
+                    ui.global::<AppBridge>().set_current_screen("login".into());
                     ui.global::<AppBridge>().set_error_message(
                         JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                     );
