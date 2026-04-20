@@ -1147,10 +1147,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 state_clone.navigate_replace(Screen::Home).await;
                 let _ = ui_handle.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_current_screen("home".into());
-                    // Keep Home fully navigable while saved-token recovery retries
-                    // in the background. The connectivity message is shown on the
-                    // login flow; avoid a modal error overlay here.
-                    ui.global::<AppBridge>().set_error_message("".into());
+                    ui.global::<AppBridge>().set_error_message(
+                        JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
+                    );
                     ui.global::<AppBridge>().set_is_loading(false);
                 });
 
@@ -1276,7 +1275,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             let _ = ui_retry.upgrade_in_event_loop(move |ui| {
-                                ui.global::<AppBridge>().set_error_message("".into());
+                                ui.global::<AppBridge>().set_error_message(
+                                    JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
+                                );
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 
@@ -1369,7 +1370,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
 
                             let _ = ui_retry.upgrade_in_event_loop(move |ui| {
-                                ui.global::<AppBridge>().set_error_message("".into());
+                                ui.global::<AppBridge>().set_error_message(
+                                    JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
+                                );
                                 ui.global::<AppBridge>().set_is_loading(false);
                             });
 

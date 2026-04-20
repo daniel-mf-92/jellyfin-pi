@@ -190,7 +190,10 @@ export component AppWindow inherits Window {
             // even if a child FocusScope did not capture Enter.
             if (
                 event.text == Key.Return
-                && AppBridge.current-screen == "login"
+                && (
+                    AppBridge.current-screen == "login"
+                    || AppBridge.current-screen == "home"
+                )
                 && (
                     AppBridge.users.length == 0
                     || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
@@ -433,6 +436,16 @@ export component AppWindow inherits Window {
                 height: 100%;
                 init => { self.focus(); }
                 key-pressed(event) => {
+                    if (
+                        event.text == Key.Return
+                        && (
+                            AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
+                            || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry now. Reconnecting automatically in background..."
+                        )
+                    ) {
+                        AppBridge.retry-connection();
+                        return accept;
+                    }
                     if (event.text == Key.Escape) {
                         AppBridge.error-message = "";
                         AppBridge.is-loading = false;
