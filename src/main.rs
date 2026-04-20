@@ -4405,6 +4405,7 @@ async fn load_home_data(
     image_cache: Arc<ImageCache>,
     state: Arc<StateManager>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let home_load_started = tokio::time::Instant::now();
     let c = client.read().await;
     let server_url = c.server_url.clone();
     let access_token = c.access_token.clone();
@@ -4495,6 +4496,19 @@ async fn load_home_data(
     // per-library timeout so slow libraries do not block Home startup.
     let latest_row_slots = 5usize.saturating_sub(rows.len());
     if latest_row_slots > 0 {
+        let latest_budget = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+            .saturating_sub(home_load_started.elapsed())
+            .saturating_sub(tokio::time::Duration::from_millis(750));
+        let latest_timeout_secs = std::cmp::min(
+            HOME_LATEST_ROW_FETCH_TIMEOUT_SECS,
+            latest_budget.as_secs(),
+        );
+        if latest_timeout_secs == 0 {
+            warn!(
+                "Skipping latest rows: startup budget exhausted before row fetch phase"
+            );
+        }
+
         let latest_targets: Vec<(String, String, Option<String>)> = views
             .iter()
             .take(latest_row_slots)
@@ -4507,22 +4521,26 @@ async fn load_home_data(
             })
             .collect();
 
-        let latest_results = futures::future::join_all(latest_targets.into_iter().map(
-            |(view_id, view_name, collection_type)| {
-                let client = client.clone();
-                async move {
-                    let c = client.read().await;
-                    let latest_result = tokio::time::timeout(
-                        tokio::time::Duration::from_secs(HOME_LATEST_ROW_FETCH_TIMEOUT_SECS),
-                        c.get_latest_media(&view_id, HOME_LATEST_ROW_ITEM_LIMIT),
-                    )
-                    .await;
-                    drop(c);
-                    (view_id, view_name, collection_type, latest_result)
-                }
-            },
-        ))
-        .await;
+        let latest_results = if latest_timeout_secs == 0 {
+            Vec::new()
+        } else {
+            futures::future::join_all(latest_targets.into_iter().map(
+                |(view_id, view_name, collection_type)| {
+                    let client = client.clone();
+                    async move {
+                        let c = client.read().await;
+                        let latest_result = tokio::time::timeout(
+                            tokio::time::Duration::from_secs(latest_timeout_secs),
+                            c.get_latest_media(&view_id, HOME_LATEST_ROW_ITEM_LIMIT),
+                        )
+                        .await;
+                        drop(c);
+                        (view_id, view_name, collection_type, latest_result)
+                    }
+                },
+            ))
+            .await
+        };
 
         for (_view_id, view_name, collection_type, latest_result) in latest_results {
             match latest_result {
@@ -4557,7 +4575,7 @@ async fn load_home_data(
                     warn!(
                         "Latest row for {} timed out after {}s; skipping row",
                         view_name,
-                        HOME_LATEST_ROW_FETCH_TIMEOUT_SECS
+                        latest_timeout_secs
                     );
                 }
             }
@@ -4583,8 +4601,13 @@ async fn load_home_data(
 
         // Also add a "My Media" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
-        let library_image_deadline = tokio::time::Instant::now()
-            + tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS);
+        let library_image_budget = tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS)
+            .min(
+                tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+                    .saturating_sub(home_load_started.elapsed())
+                    .saturating_sub(tokio::time::Duration::from_millis(150)),
+            );
+        let library_image_deadline = tokio::time::Instant::now() + library_image_budget;
         for view in &views {
             let mut candidate_urls: Vec<String> = Vec::new();
             candidate_urls.push(view.primary_image_url(&server_url, 300).unwrap_or_else(|| {
