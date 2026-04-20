@@ -94,8 +94,10 @@ const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
 const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
-const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 6;
-const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 60;
+// Confirm incomplete setup quickly so login doesn't sit in a prolonged
+// background-retrying state when Jellyfin still needs first-time setup.
+const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
+const SETUP_INCOMPLETE_CONFIRMATION_MIN_SECS: u64 = 10;
 const DISPLAY_BACKEND_WAIT_TIMEOUT_SECS: u64 = 15;
 const DISPLAY_BACKEND_WAIT_POLL_MS: u64 = 250;
 const JELLYFIN_CONNECTIVITY_ERROR_MESSAGE: &str =
