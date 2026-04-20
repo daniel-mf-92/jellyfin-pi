@@ -2334,7 +2334,9 @@ fn setup_auth_callbacks(
                             .lock()
                             .await
                             .start(client.clone(), config.clone(), state.clone());
-                        state.navigate_replace(Screen::Home).await;
+                        if state.current_screen_name().await != "home" {
+                            state.navigate_replace(Screen::Home).await;
+                        }
                         let _ = ui_weak.upgrade_in_event_loop(|ui| {
                             ui.global::<AppBridge>().set_error_message("".into());
                             ui.global::<AppBridge>().set_current_screen("home".into());
@@ -2367,7 +2369,9 @@ fn setup_auth_callbacks(
                                 "Manual retry saved-token attempt hit transient connectivity issue; keeping Home visible while background recovery continues"
                             );
                             transient_saved_token_retry_failure = true;
-                            state.navigate_replace(Screen::Home).await;
+                            if state.current_screen_name().await != "home" {
+                                state.navigate_replace(Screen::Home).await;
+                            }
                             let _ = ui_weak.upgrade_in_event_loop(|ui| {
                                 ui.global::<AppBridge>().set_current_screen("home".into());
                                 ui.global::<AppBridge>().set_error_message(
