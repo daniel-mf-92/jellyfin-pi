@@ -426,7 +426,34 @@ export component HomeScreen inherits Rectangle {
             vertical-stretch: 1;
             clip: true;
 
-            VerticalLayout {
+            if root.rows.length == 0 : Rectangle {
+                width: 100%;
+                height: 100%;
+
+                VerticalLayout {
+                    x: (parent.width - self.width) / 2;
+                    y: (parent.height - self.height) / 2;
+                    alignment: center;
+                    spacing: Theme.spacing-md;
+
+                    Text {
+                        text: "Waiting for Jellyfin";
+                        color: Theme.on-background;
+                        font-size: Theme.font-title-large;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                    }
+
+                    Text {
+                        text: "Press A / Enter to retry connection.";
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-body-large;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            if root.rows.length > 0 : VerticalLayout {
                 y: root.target-scroll-y();
                 animate y {
                     duration: Theme.transition-duration;
