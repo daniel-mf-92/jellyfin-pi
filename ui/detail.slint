@@ -273,7 +273,10 @@ export component DetailScreen inherits Rectangle {
                         if (root.focused-episode-index > 0) {
                             root.focused-episode-index -= 1;
                         }
-                    } else if (root.focused-related-index > 0) {
+                    } else if (
+                        root.focused-section == root.section-index-similar()
+                        && root.focused-related-index > 0
+                    ) {
                         root.focused-related-index -= 1;
                     }
                     return accept;
@@ -296,7 +299,10 @@ export component DetailScreen inherits Rectangle {
                         if (root.focused-episode-index < root.episodes.length - 1) {
                             root.focused-episode-index += 1;
                         }
-                    } else if (root.focused-related-index < root.related-items.length - 1) {
+                    } else if (
+                        root.focused-section == root.section-index-similar()
+                        && root.focused-related-index < root.related-items.length - 1
+                    ) {
                         root.focused-related-index += 1;
                     }
                     return accept;
@@ -335,7 +341,11 @@ export component DetailScreen inherits Rectangle {
                         return accept;
                     }
 
-                    if (root.focused-related-index >= 0 && root.focused-related-index < root.related-items.length) {
+                    if (
+                        root.focused-section == root.section-index-similar()
+                        && root.focused-related-index >= 0
+                        && root.focused-related-index < root.related-items.length
+                    ) {
                         root.navigate("detail", root.related-items[root.focused-related-index].id);
                         return accept;
                     }
