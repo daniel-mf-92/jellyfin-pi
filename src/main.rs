@@ -4457,45 +4457,14 @@ async fn load_home_data(
 
     drop(c); // Release the read lock before loading images
 
-    let mut rows: Vec<ContentRowData> = Vec::new();
-
-    // "Continue Watching" row
-    if !resume_items.is_empty() {
-        let media_items = items_to_media_items_fast(
-            &resume_items,
-            &server_url,
-            access_token.as_deref(),
-            &image_cache,
-            HOME_IMAGE_LOAD_TIMEOUT_MS,
-        )
-        .await;
-        rows.push(ContentRowData {
-            title: SharedString::from("Continue Watching"),
-            items: ModelRc::new(VecModel::from(media_items)),
-            row_type: SharedString::from("landscape"),
-        });
-    }
-
-    // "Next Up" row
-    if !next_up_items.is_empty() {
-        let media_items = items_to_media_items_fast(
-            &next_up_items,
-            &server_url,
-            access_token.as_deref(),
-            &image_cache,
-            HOME_IMAGE_LOAD_TIMEOUT_MS,
-        )
-        .await;
-        rows.push(ContentRowData {
-            title: SharedString::from("Next Up"),
-            items: ModelRc::new(VecModel::from(media_items)),
-            row_type: SharedString::from("landscape"),
-        });
-    }
+    // Fetch latest rows before optional-row image decoding so API calls get
+    // the largest possible timeout window within the global Home load budget.
+    let optional_row_count = usize::from(!resume_items.is_empty()) + usize::from(!next_up_items.is_empty());
+    let latest_row_slots = 5usize.saturating_sub(optional_row_count);
+    let mut latest_rows_payloads: Vec<(String, Option<String>, Vec<BaseItemDto>)> = Vec::new();
 
     // "Latest in {Library}" rows for each library view. Fetch in parallel with
     // per-library timeout so slow libraries do not block Home startup.
-    let latest_row_slots = 5usize.saturating_sub(rows.len());
     if latest_row_slots > 0 {
         let latest_budget = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
             .saturating_sub(home_load_started.elapsed())
@@ -4546,25 +4515,7 @@ async fn load_home_data(
         for (_view_id, view_name, collection_type, latest_result) in latest_results {
             match latest_result {
                 Ok(Ok(latest)) if !latest.is_empty() => {
-                    let media_items = items_to_media_items_fast(
-                        &latest,
-                        &server_url,
-                        access_token.as_deref(),
-                        &image_cache,
-                        HOME_IMAGE_LOAD_TIMEOUT_MS,
-                    )
-                    .await;
-                    let row_type = match collection_type.as_deref() {
-                        Some("movies") => "poster",
-                        Some("tvshows") => "poster",
-                        Some("music") => "square",
-                        _ => "poster",
-                    };
-                    rows.push(ContentRowData {
-                        title: SharedString::from(format!("Latest in {}", view_name)),
-                        items: ModelRc::new(VecModel::from(media_items)),
-                        row_type: SharedString::from(row_type),
-                    });
+                    latest_rows_payloads.push((view_name, collection_type, latest));
                 }
                 Ok(Ok(_)) => {
                     debug!("No latest items for library: {}", view_name);
@@ -4581,6 +4532,64 @@ async fn load_home_data(
                 }
             }
         }
+    }
+
+    let mut rows: Vec<ContentRowData> = Vec::new();
+
+    // "Continue Watching" row
+    if !resume_items.is_empty() {
+        let media_items = items_to_media_items_fast(
+            &resume_items,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            HOME_IMAGE_LOAD_TIMEOUT_MS,
+        )
+        .await;
+        rows.push(ContentRowData {
+            title: SharedString::from("Continue Watching"),
+            items: ModelRc::new(VecModel::from(media_items)),
+            row_type: SharedString::from("landscape"),
+        });
+    }
+
+    // "Next Up" row
+    if !next_up_items.is_empty() {
+        let media_items = items_to_media_items_fast(
+            &next_up_items,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            HOME_IMAGE_LOAD_TIMEOUT_MS,
+        )
+        .await;
+        rows.push(ContentRowData {
+            title: SharedString::from("Next Up"),
+            items: ModelRc::new(VecModel::from(media_items)),
+            row_type: SharedString::from("landscape"),
+        });
+    }
+
+    for (view_name, collection_type, latest) in latest_rows_payloads {
+        let media_items = items_to_media_items_fast(
+            &latest,
+            &server_url,
+            access_token.as_deref(),
+            &image_cache,
+            HOME_IMAGE_LOAD_TIMEOUT_MS,
+        )
+        .await;
+        let row_type = match collection_type.as_deref() {
+            Some("movies") => "poster",
+            Some("tvshows") => "poster",
+            Some("music") => "square",
+            _ => "poster",
+        };
+        rows.push(ContentRowData {
+            title: SharedString::from(format!("Latest in {}", view_name)),
+            items: ModelRc::new(VecModel::from(media_items)),
+            row_type: SharedString::from(row_type),
+        });
     }
 
     state
