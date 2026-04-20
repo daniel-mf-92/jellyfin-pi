@@ -1183,9 +1183,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                     }
 
-                    let (saved_user_id, saved_token) = {
-                        let cfg = config_retry.read().await;
-                        (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone())
+                    let (saved_user_id, saved_token) = match config_retry.try_read() {
+                        Ok(cfg) => (cfg.server.saved_user_id.clone(), cfg.server.saved_token.clone()),
+                        Err(_) => {
+                            if retry_attempt % 6 == 0 {
+                                warn!(
+                                    "Saved-token background recovery could not read cached config immediately (attempt {}); retrying",
+                                    retry_attempt
+                                );
+                            }
+                            continue;
+                        }
                     };
 
                     let (Some(user_id), Some(token)) = (saved_user_id, saved_token) else {
@@ -2086,7 +2094,12 @@ async fn probe_saved_token_access(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Never hold the shared client lock across network I/O.
     // Snapshot first so background recovery cannot stall behind queued writers.
-    let client_snapshot = { client.read().await.clone() };
+    let client_snapshot = client
+        .try_read()
+        .map(|guard| guard.clone())
+        .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+            "Jellyfin client lock busy while probing saved-token session".into()
+        })?;
     client_snapshot
         .get_user_views()
         .await
