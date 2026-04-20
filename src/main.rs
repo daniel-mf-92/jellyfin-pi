@@ -95,8 +95,11 @@ const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
-const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 10;
-const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 10;
+// Home loading does two sequential fetch phases (optional rows, then latest
+// library rows). Keep each phase capped well below 10s so the combined path
+// stays within the global loading timeout and avoids saved-token fallback.
+const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
