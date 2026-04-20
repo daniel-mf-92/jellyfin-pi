@@ -108,6 +108,22 @@ const JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE: &str =
 static SETUP_INCOMPLETE_STREAK: AtomicUsize = AtomicUsize::new(0);
 static SETUP_INCOMPLETE_FIRST_SEEN_TS: AtomicU64 = AtomicU64::new(0);
 static SETUP_INCOMPLETE_CONFIRMED: AtomicBool = AtomicBool::new(false);
+static LOGIN_BACKGROUND_RECOVERY_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+struct LoginBackgroundRecoveryGuard;
+
+impl LoginBackgroundRecoveryGuard {
+    fn new() -> Self {
+        LOGIN_BACKGROUND_RECOVERY_ACTIVE.store(true, Ordering::Release);
+        Self
+    }
+}
+
+impl Drop for LoginBackgroundRecoveryGuard {
+    fn drop(&mut self) {
+        LOGIN_BACKGROUND_RECOVERY_ACTIVE.store(false, Ordering::Release);
+    }
+}
 
 fn reset_incomplete_setup_detection() {
     SETUP_INCOMPLETE_STREAK.store(0, Ordering::Relaxed);
@@ -1143,6 +1159,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let daemon_mgr_retry = daemon_mgr_clone.clone();
                 let mut retry_attempt: u32 = 0;
                 let mut should_show_login = false;
+                let _recovery_guard = LoginBackgroundRecoveryGuard::new();
                 loop {
                     if SETUP_INCOMPLETE_CONFIRMED.load(Ordering::Relaxed) {
                         warn!(
@@ -2343,12 +2360,19 @@ fn setup_auth_callbacks(
             }
 
             if !recovered_with_saved_token {
-                // Retry should be a single foreground attempt only.
-                // The startup flow already maintains background retry loops when needed;
-                // spawning another load_public_users() here would create duplicate
-                // infinite retry tasks on each button press.
-                let _ =
-                    load_public_users_foreground_once(ui_weak, client, image_cache, false).await;
+                // If startup recovery is already active, keep manual retry lightweight.
+                // If it is not active, start the full public-user retry loop so login
+                // cannot get stuck on a single failed foreground pass.
+                if LOGIN_BACKGROUND_RECOVERY_ACTIVE.load(Ordering::Acquire) {
+                    let _ =
+                        load_public_users_foreground_once(ui_weak, client, image_cache, false)
+                            .await;
+                } else {
+                    info!(
+                        "No active background login recovery during manual retry; starting public-user background retry loop"
+                    );
+                    load_public_users(ui_weak, client, image_cache).await;
+                }
             }
 
             retry_connection_in_flight.store(false, Ordering::Release);
@@ -4049,6 +4073,7 @@ async fn load_public_users(
         ui.global::<AppBridge>().set_is_loading(false);
     });
 
+    let _recovery_guard = LoginBackgroundRecoveryGuard::new();
     let mut retry_attempt: usize = 0;
     loop {
         retry_attempt = retry_attempt.saturating_add(1);
