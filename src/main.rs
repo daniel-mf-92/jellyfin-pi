@@ -95,12 +95,14 @@ const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
+const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 120;
+const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 1500;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Keep each phase capped well below 10s so the combined path
 // stays within the global loading timeout and avoids saved-token fallback.
-const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
-const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
+const HOME_OPTIONAL_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 250;
@@ -4566,6 +4568,8 @@ async fn load_home_data(
 
         // Also add a "My Media" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
+        let library_image_deadline = tokio::time::Instant::now()
+            + tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS);
         for view in &views {
             let mut candidate_urls: Vec<String> = Vec::new();
             candidate_urls.push(view.primary_image_url(&server_url, 300).unwrap_or_else(|| {
@@ -4593,9 +4597,23 @@ async fn load_home_data(
 
             let mut poster = slint::Image::default();
             for url in candidate_urls {
+                let now = tokio::time::Instant::now();
+                if now >= library_image_deadline {
+                    break;
+                }
+
+                let remaining = library_image_deadline.saturating_duration_since(now);
+                let per_attempt_timeout = std::cmp::min(
+                    remaining,
+                    tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS),
+                );
+                if per_attempt_timeout.is_zero() {
+                    break;
+                }
+
                 let url = append_api_key(url, access_token.as_deref());
                 let image = tokio::time::timeout(
-                    tokio::time::Duration::from_millis(HOME_IMAGE_LOAD_TIMEOUT_MS),
+                    per_attempt_timeout,
                     image_cache.load_image(&url),
                 )
                 .await
