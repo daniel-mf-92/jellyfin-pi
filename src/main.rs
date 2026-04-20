@@ -931,6 +931,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if let (Some(user_id), Some(token)) = (saved_user_id, saved_token) {
+                // Saved-token startup should not flash the login screen.
+                // Keep users on the Home shell while we validate auth and load data.
+                let _ = ui_handle.upgrade_in_event_loop(|ui| {
+                    ui.global::<AppBridge>().set_current_screen("home".into());
+                    ui.global::<AppBridge>().set_is_loading(true);
+                    ui.global::<AppBridge>().set_error_message("".into());
+                });
+
                 {
                     let mut c = client_clone.write().await;
                     c.access_token = Some(token.clone());
