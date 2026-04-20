@@ -95,6 +95,7 @@ const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
+const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Keep each phase capped well below 10s so the combined path
 // stays within the global loading timeout and avoids saved-token fallback.
@@ -747,7 +748,7 @@ async fn items_to_media_items_fast(
     image_timeout_ms: u64,
 ) -> Vec<MediaItem> {
     let mut result = Vec::with_capacity(items.len());
-    for chunk in items.chunks(20) {
+    for chunk in items.chunks(FAST_IMAGE_LOAD_BATCH_SIZE) {
         let futures: Vec<_> = chunk
             .iter()
             .map(|item| {
