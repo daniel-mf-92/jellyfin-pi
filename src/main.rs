@@ -1030,8 +1030,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let auth_result = with_loading_timeout(
                         "Credentials auto-login authenticate",
                         async {
-                            let c = client_clone.read().await;
-                            c.authenticate(&username, &password)
+                            let client_snapshot = { client_clone.read().await.clone() };
+                            client_snapshot
+                                .authenticate(&username, &password)
                                 .await
                                 .map_err(
                                     |e| -> Box<dyn std::error::Error + Send + Sync> {
@@ -1656,8 +1657,9 @@ fn setup_navigation_callbacks(
                             let client = client.clone();
                             let item_id = item_id.clone();
                             async move {
-                                let c = client.read().await;
-                                c.get_item(&item_id)
+                                let client_snapshot = { client.read().await.clone() };
+                                client_snapshot
+                                    .get_item(&item_id)
                                     .await
                                     .map_err(|e| format!("Failed preflight item lookup: {}", e).into())
                             }
@@ -2422,8 +2424,9 @@ fn setup_auth_callbacks(
             };
 
             let auth_result = with_loading_timeout("User login authenticate", async {
-                let c = client.read().await;
-                c.authenticate(&username, &password_str)
+                let client_snapshot = { client.read().await.clone() };
+                client_snapshot
+                    .authenticate(&username, &password_str)
                     .await
                     .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { Box::new(e) })
             })
