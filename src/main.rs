@@ -1243,6 +1243,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             .await
                             {
                                 error!("Failed to load home after auto-login: {}", e);
+                                let _ = ui_handle.upgrade_in_event_loop(move |ui| {
+                                    ui.global::<AppBridge>().set_error_message(
+                                        format!(
+                                            "Failed to load home after auto-login: {}",
+                                            e
+                                        )
+                                        .into(),
+                                    );
+                                    ui.global::<AppBridge>().set_is_loading(false);
+                                });
                             }
                             authenticated = true;
                         }
