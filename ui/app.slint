@@ -177,6 +177,11 @@ export component AppWindow inherits Window {
                 ) {
                     AppBridge.error-message = "";
                     AppBridge.is-loading = false;
+                    if (AppBridge.current-screen == "player") {
+                        AppBridge.stop-playback();
+                    } else {
+                        AppBridge.go-back();
+                    }
                     return accept;
                 }
                 if (AppBridge.current-screen == "player") {
@@ -440,6 +445,11 @@ export component AppWindow inherits Window {
                         if (AppBridge.error-message != "") {
                             AppBridge.error-message = "";
                             AppBridge.is-loading = false;
+                            if (AppBridge.current-screen == "player") {
+                                AppBridge.stop-playback();
+                            } else {
+                                AppBridge.go-back();
+                            }
                             return accept;
                         }
                         AppBridge.is-loading = false;
@@ -482,6 +492,11 @@ export component AppWindow inherits Window {
                     ) {
                         AppBridge.error-message = "";
                         AppBridge.is-loading = false;
+                        if (AppBridge.current-screen == "player") {
+                            AppBridge.stop-playback();
+                        } else {
+                            AppBridge.go-back();
+                        }
                         return accept;
                     }
                     return reject;
