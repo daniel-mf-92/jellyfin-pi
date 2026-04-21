@@ -292,7 +292,7 @@ export component HomeScreen inherits Rectangle {
                 }
             }
 
-            if (event.text == Key.UpArrow) {
+            if (event.text == Key.UpArrow || event.text == "Up") {
                 if (root.focused-row > 0) {
                     root.focused-row -= 1;
                     if (root.focused-col >= root.rows[root.focused-row].items.length) {
@@ -301,7 +301,7 @@ export component HomeScreen inherits Rectangle {
                 }
                 return accept;
             }
-            if (event.text == Key.DownArrow) {
+            if (event.text == Key.DownArrow || event.text == "Down") {
                 if (root.focused-row < root.rows.length - 1) {
                     root.focused-row += 1;
                     // Clamp col to new row's item count
@@ -312,7 +312,7 @@ export component HomeScreen inherits Rectangle {
                 return accept;
             }
             // Left/Right arrows navigate within the focused row
-            if (event.text == Key.RightArrow) {
+            if (event.text == Key.RightArrow || event.text == "Right") {
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col < root.rows[root.focused-row].items.length - 1) {
                         root.focused-col += 1;
@@ -320,7 +320,7 @@ export component HomeScreen inherits Rectangle {
                 }
                 return accept;
             }
-            if (event.text == Key.LeftArrow) {
+            if (event.text == Key.LeftArrow || event.text == "Left") {
                 if (root.focused-col > 0) {
                     root.focused-col -= 1;
                 }
