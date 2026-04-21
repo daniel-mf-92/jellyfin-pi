@@ -16,7 +16,7 @@ export component LibraryScreen inherits Rectangle {
     in-out property <int> focused-item: 0;
     in-out property <int> columns: 6;
 
-    callback item-selected(string);
+    callback item-selected(string, string);
     callback library-query-changed(string, string);
     callback load-more();
     callback go-back();
@@ -189,11 +189,11 @@ export component LibraryScreen inherits Rectangle {
             focused: root.focused-section == 1 && root.focused-item == index;
 
             selected(id) => {
-                root.item-selected(id);
+                root.item-selected(id, item.item-type);
             }
 
             play-requested(id) => {
-                root.item-selected(id);
+                root.item-selected(id, item.item-type);
             }
         }
 
@@ -309,7 +309,8 @@ export component LibraryScreen inherits Rectangle {
                     || event.text == "A"
                 ) {
                     if (root.focused-item >= 0 && root.focused-item < root.items.length) {
-                        root.item-selected(root.items[root.focused-item].id);
+                        let selected-item = root.items[root.focused-item];
+                        root.item-selected(selected-item.id, selected-item.item-type);
                     }
                     return accept;
                 }

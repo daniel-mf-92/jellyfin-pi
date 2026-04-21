@@ -318,8 +318,17 @@ export component AppWindow inherits Window {
             height: 100%;
             items: AppBridge.library-items;
             title: AppBridge.library-title;
-            item-selected(id) => {
-                AppBridge.navigate("detail", id);
+            item-selected(id, item-type) => {
+                if (
+                    item-type == "CollectionFolder"
+                    || item-type == "Folder"
+                    || item-type == "collectionfolder"
+                    || item-type == "folder"
+                ) {
+                    AppBridge.navigate("library", id);
+                } else {
+                    AppBridge.navigate("detail", id);
+                }
             }
             library-query-changed(sort, filter) => {
                 AppBridge.request-library(AppBridge.library-id, sort, filter);
