@@ -162,7 +162,11 @@ export component AppWindow inherits Window {
         init => { self.focus(); }
 
         key-pressed(event) => {
-            if (event.text == Key.Escape) {
+            if (
+                event.text == Key.Escape
+                || event.text == "\u{1b}"
+                || event.text == "Escape"
+            ) {
                 if (AppBridge.current-screen == "login" && AppBridge.users.length == 0) {
                     AppBridge.is-loading = false;
                     return accept;
@@ -191,7 +195,11 @@ export component AppWindow inherits Window {
             // Avoid brittle exact-string matching so backend wording changes cannot
             // break A/Enter recovery.
             if (
-                event.text == Key.Return
+                (
+                    event.text == Key.Return
+                    || event.text == "Enter"
+                    || event.text == "Return"
+                )
                 && (
                     (AppBridge.current-screen == "login" && AppBridge.users.length == 0)
                     || (
@@ -410,7 +418,11 @@ export component AppWindow inherits Window {
                 height: 100%;
                 init => { self.focus(); }
                 key-pressed(event) => {
-                    if (event.text == Key.Escape) {
+                    if (
+                        event.text == Key.Escape
+                        || event.text == "\u{1b}"
+                        || event.text == "Escape"
+                    ) {
                         if (AppBridge.error-message != "") {
                             AppBridge.error-message = "";
                             AppBridge.is-loading = false;
@@ -437,14 +449,22 @@ export component AppWindow inherits Window {
                 init => { self.focus(); }
                 key-pressed(event) => {
                     if (
-                        event.text == Key.Return
+                        (
+                            event.text == Key.Return
+                            || event.text == "Enter"
+                            || event.text == "Return"
+                        )
                         && AppBridge.current-screen == "home"
                         && AppBridge.error-message != ""
                     ) {
                         AppBridge.retry-connection();
                         return accept;
                     }
-                    if (event.text == Key.Escape) {
+                    if (
+                        event.text == Key.Escape
+                        || event.text == "\u{1b}"
+                        || event.text == "Escape"
+                    ) {
                         AppBridge.error-message = "";
                         AppBridge.is-loading = false;
                         return accept;
