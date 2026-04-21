@@ -20,19 +20,20 @@ export component ContentRow inherits VerticalLayout {
         root.is-landscape
             ? Theme.landscape-width
             : (root.is-square ? Theme.square-width : Theme.poster-width);
-    // Keep row metrics based on the base card width so max-scroll reflects
-    // real content width; apply focus overhang only to the currently focused card.
-    private property <length> focus-overhang: root.card-width * (Theme.focus-scale - 1.0) / 2.0;
+    // MediaCard reserves focus-scale padding in its own width even when
+    // unfocused, so scrolling math must use the full footprint to avoid
+    // underestimating row width and clipping the last cards off-screen.
+    private property <length> card-footprint: root.card-width * Theme.focus-scale;
     private property <length> row-padding:
         root.include-horizontal-overscan ? Theme.overscan-h : 0px;
-    private property <length> step-width: root.card-width + Theme.card-gap;
+    private property <length> step-width: root.card-footprint + Theme.card-gap;
     private property <int> safe-focused-index:
         root.items.length > 0
             ? max(0, min(root.focused-index, root.items.length - 1))
             : 0;
     private property <length> content-width:
         root.items.length > 0
-            ? (root.items.length * root.card-width) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2) + root.focus-overhang
+            ? (root.items.length * root.card-footprint) + ((root.items.length - 1) * Theme.card-gap) + (root.row-padding * 2)
             : root.row-padding * 2;
 
     spacing: 0px;
@@ -68,7 +69,7 @@ export component ContentRow inherits VerticalLayout {
         private property <length> focused-base-start:
             root.row-padding + (root.safe-focused-index * root.step-width);
         private property <length> focused-card-end:
-            self.focused-base-start + root.card-width + root.focus-overhang;
+            self.focused-base-start + root.card-footprint;
         private property <length> raw-scroll-target:
             // Match Jellyfin TV behavior: only scroll once focus reaches the
             // visible right edge, instead of re-centering every move.
