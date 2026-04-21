@@ -13,6 +13,8 @@ use crate::config::AppConfig;
 const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines";
 const NEXT_UP_FIELDS: &str =
     "PrimaryImageAspectRatio,ProductionYear,RunTimeTicks,SeriesName,ParentIndexNumber,IndexNumber";
+const LATEST_FIELDS: &str =
+    "PrimaryImageAspectRatio,ProductionYear,RunTimeTicks,SeriesName,ParentIndexNumber,IndexNumber,CommunityRating,OfficialRating,Genres,Overview";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 8;
 const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
@@ -458,7 +460,7 @@ impl JellyfinClient {
                     .query(&[
                         ("ParentId", parent_id),
                         ("Limit", &limit.to_string()),
-                        ("Fields", ITEM_FIELDS),
+                        ("Fields", LATEST_FIELDS),
                     ])
             })
             .await?;
