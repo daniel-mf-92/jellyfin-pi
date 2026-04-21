@@ -1803,10 +1803,76 @@ fn setup_navigation_callbacks(
                         return;
                     }
 
-                    // Check if this is a CollectionFolder (library) — redirect to library screen
-                    let preflight_item = match with_loading_timeout_secs(
+                    // Fast-path known libraries and avoid blocking detail navigation.
+                    // Home/library UI already routes libraries directly, but this keeps
+                    // backend navigation resilient if detail receives a library id.
+                    if state.is_known_library_id(&item_id).await {
+                        detail_load_in_flight.store(false, Ordering::Release);
+                        state
+                            .navigate_to(Screen::Library {
+                                library_id: item_id.clone(),
+                                title: String::new(),
+                            })
+                            .await;
+                        let library_id_for_ui = item_id.clone();
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>()
+                                .set_library_id(library_id_for_ui.into());
+                            ui.global::<AppBridge>().set_current_screen("library".into());
+                            ui.global::<AppBridge>().set_is_loading(true);
+                        });
+                        let remaining_timeout = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+                            .saturating_sub(detail_navigation_started.elapsed());
+                        if remaining_timeout.is_zero() {
+                            let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                                ui.global::<AppBridge>().set_error_message(
+                                    "Navigation timed out while opening library".into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                            return;
+                        }
+                        if let Err(e) = with_loading_timeout_duration(
+                            "Library load (detail redirect)",
+                            remaining_timeout,
+                            async {
+                                load_library_with_fallback(
+                                    ui_weak.clone(),
+                                    client.clone(),
+                                    image_cache.clone(),
+                                    &item_id,
+                                    None,
+                                    None,
+                                )
+                                .await
+                                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                                    e.into()
+                                })
+                            },
+                        )
+                        .await
+                        {
+                            if is_stale_navigation() {
+                                debug!("Library preflight redirect error ignored for stale navigation: {}", item_id);
+                                return;
+                            }
+                            error!("Failed to load library {}: {}", item_id, e);
+                            let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                                ui.global::<AppBridge>().set_error_message(
+                                    format!("Failed to load library: {}", e).into(),
+                                );
+                                ui.global::<AppBridge>().set_is_loading(false);
+                            });
+                        }
+                        return;
+                    }
+
+                    // For media items, keep preflight short so detail navigation remains
+                    // responsive while still catching occasional CollectionFolder ids.
+                    const DETAIL_PREFLIGHT_TIMEOUT_MS: u64 = 350;
+                    let preflight_item = match with_loading_timeout_duration(
                         "Detail preflight",
-                        2,
+                        tokio::time::Duration::from_millis(DETAIL_PREFLIGHT_TIMEOUT_MS),
                         {
                             let client = client.clone();
                             let item_id = item_id.clone();
@@ -1827,77 +1893,17 @@ fn setup_navigation_callbacks(
                                 debug!("Detail preflight result ignored for stale navigation: {}", item_id);
                                 return;
                             }
-                            if state.is_known_library_id(&item_id).await {
-                                warn!(
-                                    "Detail preflight failed for known library {} (routing directly to library): {}",
+                            if e.to_ascii_lowercase().contains("timed out") {
+                                debug!(
+                                    "Detail preflight timed out quickly for {} (continuing as media item): {}",
                                     item_id, e
                                 );
-                                // Library redirects are not detail renders; clear the
-                                // detail in-flight flag so Escape/back during library
-                                // loading performs normal go-back behavior.
-                                detail_load_in_flight.store(false, Ordering::Release);
-                                state
-                                    .navigate_to(Screen::Library {
-                                        library_id: item_id.clone(),
-                                        title: String::new(),
-                                    })
-                                    .await;
-                                let library_id_for_ui = item_id.clone();
-                                let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                                    ui.global::<AppBridge>()
-                                        .set_library_id(library_id_for_ui.into());
-                                    ui.global::<AppBridge>().set_current_screen("library".into());
-                                    ui.global::<AppBridge>().set_is_loading(true);
-                                });
-                                let remaining_timeout = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
-                                    .saturating_sub(detail_navigation_started.elapsed());
-                                if remaining_timeout.is_zero() {
-                                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
-                                        ui.global::<AppBridge>().set_error_message(
-                                            "Navigation timed out while opening library".into(),
-                                        );
-                                        ui.global::<AppBridge>().set_is_loading(false);
-                                    });
-                                    return;
-                                }
-                                if let Err(e) = with_loading_timeout_duration(
-                                    "Library load (detail redirect)",
-                                    remaining_timeout,
-                                    async {
-                                        load_library_with_fallback(
-                                            ui_weak.clone(),
-                                            client.clone(),
-                                            image_cache.clone(),
-                                            &item_id,
-                                            None,
-                                            None,
-                                        )
-                                        .await
-                                        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                                            e.into()
-                                        })
-                                    },
-                                )
-                                .await
-                                {
-                                    if is_stale_navigation() {
-                                        debug!("Library preflight redirect error ignored for stale navigation: {}", item_id);
-                                        return;
-                                    }
-                                    error!("Failed to load library {}: {}", item_id, e);
-                                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                                        ui.global::<AppBridge>().set_error_message(
-                                            format!("Failed to load library: {}", e).into(),
-                                        );
-                                        ui.global::<AppBridge>().set_is_loading(false);
-                                    });
-                                }
-                                return;
+                            } else {
+                                warn!(
+                                    "Detail preflight failed for {} (continuing as media item): {}",
+                                    item_id, e
+                                );
                             }
-                            warn!(
-                                "Detail preflight failed for {} (continuing as media item): {}",
-                                item_id, e
-                            );
                             None
                         }
                     };
