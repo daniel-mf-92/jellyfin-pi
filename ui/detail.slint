@@ -184,7 +184,13 @@ export component DetailScreen inherits Rectangle {
 
         key-pressed(event) => {
             // Back / Escape
-            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+            if (
+                event.text == Key.Escape
+                || event.text == "\u{1b}"
+                || event.text == "Escape"
+                || event.text == "b"
+                || event.text == "B"
+            ) {
                 root.go-back();
                 return accept;
             }
