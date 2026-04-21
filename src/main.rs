@@ -94,9 +94,11 @@ const BACKGROUND_RETRY_BASE_DELAY_SECS: u64 = 5;
 const BACKGROUND_RETRY_MAX_DELAY_SECS: u64 = 15;
 const SETUP_STATUS_CHECK_TIMEOUT_SECS: u64 = 3;
 const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
-const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 350;
-const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 120;
-const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 1500;
+// Keep Home image fetches short so post-fetch artwork decoding does not push
+// saved-token startup beyond the 10s global loading timeout budget.
+const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
+const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 80;
+const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 450;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Keep each phase capped well below 10s so the combined path
