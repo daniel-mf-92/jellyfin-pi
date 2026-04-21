@@ -810,6 +810,17 @@ fn items_to_media_items_no_images(
         .collect()
 }
 
+fn is_library_like_item(item: &BaseItemDto) -> bool {
+    let has_collection_type = item
+        .collection_type
+        .as_ref()
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    has_collection_type
+        || item.item_type.eq_ignore_ascii_case("CollectionFolder")
+        || item.item_type.eq_ignore_ascii_case("Folder")
+}
+
 // =============================================================================
 // Main
 // =============================================================================
@@ -1909,16 +1920,7 @@ fn setup_navigation_callbacks(
 
                     let is_collection_folder = preflight_item
                         .as_ref()
-                        .map(|item| {
-                            let has_collection_type = item
-                                .collection_type
-                                .as_ref()
-                                .map(|value| !value.trim().is_empty())
-                                .unwrap_or(false);
-                            has_collection_type
-                                || item.item_type.eq_ignore_ascii_case("CollectionFolder")
-                                || item.item_type.eq_ignore_ascii_case("Folder")
-                        })
+                        .map(is_library_like_item)
                         .unwrap_or(false);
 
                     if !detail_load_in_flight.load(Ordering::Acquire) {
@@ -3926,17 +3928,107 @@ fn setup_content_callbacks(
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let image_clone = image_cache.clone();
+    let state_clone = state.clone();
     ui.global::<AppBridge>()
         .on_request_item_detail(move |item_id| {
             let ui_weak = ui_weak.clone();
             let client = client_clone.clone();
             let image_cache = image_clone.clone();
+            let state = state_clone.clone();
             let item_id_str = item_id.to_string();
 
             spawn_ui_task(async move {
+                if item_id_str.trim().is_empty() {
+                    warn!("Ignoring detail refresh with empty item id");
+                    let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                        ui.global::<AppBridge>()
+                            .set_error_message("This item is unavailable right now.".into());
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
+                    return;
+                }
+
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
+
+                let preflight_item = match with_loading_timeout_duration(
+                    "Detail refresh preflight",
+                    tokio::time::Duration::from_millis(350),
+                    {
+                        let client = client.clone();
+                        let item_id = item_id_str.clone();
+                        async move {
+                            let client_snapshot = { client.read().await.clone() };
+                            client_snapshot
+                                .get_item(&item_id)
+                                .await
+                                .map_err(|e| format!("Failed preflight item lookup: {}", e).into())
+                        }
+                    },
+                )
+                .await
+                {
+                    Ok(item) => Some(item),
+                    Err(e) => {
+                        if e.to_ascii_lowercase().contains("timed out") {
+                            debug!(
+                                "Detail refresh preflight timed out for {} (continuing as media): {}",
+                                item_id_str, e
+                            );
+                        } else {
+                            warn!(
+                                "Detail refresh preflight failed for {} (continuing as media): {}",
+                                item_id_str, e
+                            );
+                        }
+                        None
+                    }
+                };
+
+                if preflight_item.as_ref().map(is_library_like_item).unwrap_or(false) {
+                    state
+                        .navigate_to(Screen::Library {
+                            library_id: item_id_str.clone(),
+                            title: String::new(),
+                        })
+                        .await;
+
+                    let library_id_for_ui = item_id_str.clone();
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_library_id(library_id_for_ui.into());
+                        ui.global::<AppBridge>().set_current_screen("library".into());
+                        ui.global::<AppBridge>().set_is_loading(true);
+                    });
+
+                    if let Err(e) = with_loading_timeout(
+                        "Library load (detail refresh redirect)",
+                        async {
+                            load_library_with_fallback(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &item_id_str,
+                                None,
+                                None,
+                            )
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                        },
+                    )
+                    .await
+                    {
+                        error!("Failed to load library {}: {}", item_id_str, e);
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>()
+                                .set_error_message(format!("Failed to load library: {}", e).into());
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                    }
+                    return;
+                }
+
                 if let Err(e) = with_loading_timeout(
                     "Detail refresh",
                     load_item_detail(
@@ -3944,7 +4036,7 @@ fn setup_content_callbacks(
                         client,
                         image_cache,
                         &item_id_str,
-                        None,
+                        preflight_item,
                         None,
                     ),
                 ).await
