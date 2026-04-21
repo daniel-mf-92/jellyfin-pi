@@ -11,6 +11,8 @@ use crate::config::AppConfig;
 
 // Fields to request when fetching items
 const ITEM_FIELDS: &str = "CanDelete,Chapters,ChildCount,CommunityRating,CriticRating,CumulativeRunTimeTicks,DateCreated,Genres,MediaSourceCount,MediaSources,MediaStreams,Overview,Path,People,PrimaryImageAspectRatio,Studios,Taglines";
+const NEXT_UP_FIELDS: &str =
+    "PrimaryImageAspectRatio,ProductionYear,RunTimeTicks,SeriesName,ParentIndexNumber,IndexNumber";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 8;
 const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
@@ -426,7 +428,9 @@ impl JellyfinClient {
                     .query(&[
                         ("UserId", user_id.to_string()),
                         ("Limit", limit.to_string()),
-                        ("Fields", ITEM_FIELDS.into()),
+                        // Keep Next Up payload lean so Home startup can render
+                        // this optional row reliably under transient latency.
+                        ("Fields", NEXT_UP_FIELDS.into()),
                     ])
             })
             .await?;
