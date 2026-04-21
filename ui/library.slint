@@ -212,33 +212,44 @@ export component LibraryScreen inherits Rectangle {
                 root.focused-item = root.safe-focused-item;
             }
 
-            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+            if (
+                event.text == Key.Escape
+                || event.text == "Escape"
+                || event.text == "b"
+                || event.text == "B"
+            ) {
                 root.go-back();
                 return accept;
             }
 
             // -- Toolbar navigation (focused-section == 0) --------------------
             if (root.focused-section == 0) {
-                if (event.text == Key.LeftArrow) {
+                if (event.text == Key.LeftArrow || event.text == "Left") {
                     if (root.toolbar-focus > 0) {
                         root.toolbar-focus -= 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.RightArrow) {
+                if (event.text == Key.RightArrow || event.text == "Right") {
                     if (root.toolbar-focus < 1) {
                         root.toolbar-focus += 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.DownArrow) {
+                if (event.text == Key.DownArrow || event.text == "Down") {
                     if (root.items.length > 0) {
                         root.focused-section = 1;
                         root.focused-item = 0;
                     }
                     return accept;
                 }
-                if (event.text == Key.Return || event.text == " " || event.text == "a" || event.text == "A") {
+                if (
+                    event.text == Key.Return
+                    || event.text == "Enter"
+                    || event.text == " "
+                    || event.text == "a"
+                    || event.text == "A"
+                ) {
                     if (root.toolbar-focus == 0) {
                         root.current-sort = root.current-sort + 1 - ((root.current-sort + 1) / root.sort-options.length) * root.sort-options.length;
                         root.library-query-changed(
@@ -259,20 +270,20 @@ export component LibraryScreen inherits Rectangle {
 
             // -- Grid navigation (focused-section == 1) -----------------------
             if (root.focused-section == 1) {
-                if (event.text == Key.LeftArrow) {
+                if (event.text == Key.LeftArrow || event.text == "Left") {
                     if (root.focused-col > 0) {
                         root.focused-item -= 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.RightArrow) {
+                if (event.text == Key.RightArrow || event.text == "Right") {
                     if (root.focused-col < root.effective-columns - 1
                         && root.focused-item + 1 < root.items.length) {
                         root.focused-item += 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.UpArrow) {
+                if (event.text == Key.UpArrow || event.text == "Up") {
                     if (root.focused-row == 0) {
                         // Move back to toolbar
                         root.focused-section = 0;
@@ -281,7 +292,7 @@ export component LibraryScreen inherits Rectangle {
                     }
                     return accept;
                 }
-                if (event.text == Key.DownArrow) {
+                if (event.text == Key.DownArrow || event.text == "Down") {
                     if (root.focused-item + root.effective-columns < root.items.length) {
                         root.focused-item += root.effective-columns;
                     } else if (root.focused-row < root.total-rows - 1) {
@@ -290,7 +301,13 @@ export component LibraryScreen inherits Rectangle {
                     }
                     return accept;
                 }
-                if (event.text == Key.Return || event.text == " " || event.text == "a" || event.text == "A") {
+                if (
+                    event.text == Key.Return
+                    || event.text == "Enter"
+                    || event.text == " "
+                    || event.text == "a"
+                    || event.text == "A"
+                ) {
                     if (root.focused-item >= 0 && root.focused-item < root.items.length) {
                         root.item-selected(root.items[root.focused-item].id);
                     }
