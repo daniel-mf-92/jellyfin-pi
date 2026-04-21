@@ -34,6 +34,14 @@ export component HomeScreen inherits Rectangle {
     callback open-settings();
     callback open-library(/* library_id */ string);
 
+    pure function row-is-library-row(index: int) -> bool {
+        if (index < 0 || index >= root.rows.length) {
+            return false;
+        }
+        let title = root.rows[index].title;
+        return title == "My Media" || title == "Libraries";
+    }
+
 
     // -- Internal state -------------------------------------------------------
 
@@ -327,8 +335,9 @@ export component HomeScreen inherits Rectangle {
             ) {
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
+                        let focused-row-is-library = root.row-is-library-row(root.focused-row);
                         let selected-item = root.rows[root.focused-row].items[root.focused-col];
-                        if (selected-item.item-type == "CollectionFolder") {
+                        if (focused-row-is-library || selected-item.item-type == "CollectionFolder") {
                             root.open-library(selected-item.id);
                         } else {
                             root.item-selected(selected-item.id);
@@ -547,7 +556,7 @@ export component HomeScreen inherits Rectangle {
                     focused-index: index == root.safe-focused-row ? root.safe-focused-col : 0;
 
                     item-selected(id, item-type) => {
-                        if (item-type == "CollectionFolder") {
+                        if (root.row-is-library-row(index) || item-type == "CollectionFolder") {
                             root.open-library(id);
                         } else {
                             root.item-selected(id);
