@@ -703,8 +703,12 @@ export component DetailScreen inherits Rectangle {
                     focused-index: root.focused-episode-index;
                     row-focused: root.focused-section == root.section-index-episodes();
 
-                    item-selected(id, _item-type) => {
-                        root.navigate("detail", id);
+                    item-selected(id, item-type) => {
+                        if (item-type == "CollectionFolder" || item-type == "Folder") {
+                            root.navigate("library", id);
+                        } else {
+                            root.navigate("detail", id);
+                        }
                     }
                 }
             }
@@ -721,8 +725,12 @@ export component DetailScreen inherits Rectangle {
                     focused-index: root.focused-related-index;
                     row-focused: root.focused-section == root.section-index-similar();
 
-                    item-selected(id, _item-type) => {
-                        root.navigate("detail", id);
+                    item-selected(id, item-type) => {
+                        if (item-type == "CollectionFolder" || item-type == "Folder") {
+                            root.navigate("library", id);
+                        } else {
+                            root.navigate("detail", id);
+                        }
                     }
                 }
             }
