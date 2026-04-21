@@ -101,10 +101,10 @@ const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 80;
 const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 450;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
-// library rows). Keep each phase capped well below 10s so the combined path
-// stays within the global loading timeout and avoids saved-token fallback.
-const HOME_RESUME_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
-const HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
+// library rows). Keep optional rows short so slow Resume/Next Up endpoints do
+// not consume most of the 10s global startup budget before latest rows load.
+const HOME_RESUME_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
+const HOME_NEXT_UP_ROW_FETCH_TIMEOUT_SECS: u64 = 3;
 const HOME_LATEST_ROW_FETCH_TIMEOUT_SECS: u64 = 8;
 const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
