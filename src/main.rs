@@ -2077,14 +2077,24 @@ fn setup_navigation_callbacks(
                         ui.global::<AppBridge>().set_current_screen("library".into());
                         ui.global::<AppBridge>().set_is_loading(true);
                     });
-                    if let Err(e) = load_library_with_fallback(
-                        ui_weak.clone(),
-                        client,
-                        image_cache,
-                        &library_id,
-                        None,
-                        None,
-                    ).await
+                    if let Err(e) = with_loading_timeout(
+                        "Library load",
+                        async {
+                            load_library_with_fallback(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &library_id,
+                                None,
+                                None,
+                            )
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                                e.into()
+                            })
+                        },
+                    )
+                    .await
                     {
                         if is_stale_navigation() {
                             debug!("Library load error ignored for stale navigation: {}", library_id);
