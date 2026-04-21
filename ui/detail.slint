@@ -404,6 +404,10 @@ export component DetailScreen inherits Rectangle {
             root.focused-season-index = 0;
             root.focused-episode-index = 0;
             root.focused-related-index = 0;
+            // Loading overlay can temporarily steal focus while detail data
+            // is fetched; re-focus detail keyboard scope when fresh content
+            // arrives so Escape/back keeps working immediately.
+            focus-scope.focus();
         }
     }
 
