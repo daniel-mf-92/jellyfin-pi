@@ -397,6 +397,13 @@ export component DetailScreen inherits Rectangle {
                 Image {
                     width: parent.width;
                     height: parent.height;
+                    source: @image-url("../assets/jellyfin-banner.png");
+                    image-fit: cover;
+                }
+
+                Image {
+                    width: parent.width;
+                    height: parent.height;
                     source: root.item.backdrop-source;
                     image-fit: cover;
                 }
@@ -493,6 +500,13 @@ export component DetailScreen inherits Rectangle {
                     drop-shadow-color: #00000080;
                     drop-shadow-offset-x: 0px;
                     drop-shadow-offset-y: 4px;
+
+                    Image {
+                        width: parent.width;
+                        height: parent.height;
+                        source: @image-url("../assets/jellyfin-banner.png");
+                        image-fit: cover;
+                    }
 
                     Image {
                         width: parent.width;
