@@ -100,6 +100,15 @@ impl StateManager {
 
     pub async fn go_back(&self) -> Option<Screen> {
         let mut state = self.state.write().await;
+        while matches!(state.screen_stack.last(), Some(previous) if *previous == state.current_screen) {
+            state.screen_stack.pop();
+            debug!(
+                "Go back: dropped duplicate '{}' on stack (depth: {})",
+                state.current_screen.name(),
+                state.screen_stack.len()
+            );
+        }
+
         if let Some(previous) = state.screen_stack.pop() {
             let from_name = state.current_screen.name().to_string();
             let to_name = previous.name().to_string();
