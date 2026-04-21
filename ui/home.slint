@@ -330,6 +330,8 @@ export component HomeScreen inherits Rectangle {
             // Enter/Space/A-button aliases → select item
             if (
                 event.text == Key.Return ||
+                event.text == "Enter" ||
+                event.text == "Return" ||
                 event.text == " " ||
                 event.text == "a" ||
                 event.text == "A"
