@@ -606,7 +606,14 @@ export component PlayerOverlay inherits Rectangle {
                 return accept;
             }
 
-            if event.text == Key.Escape {
+            if (
+                event.text == Key.Escape
+                || event.text == "\u{1b}"
+                || event.text == "Escape"
+                || event.text == "Esc"
+                || event.text == "b"
+                || event.text == "B"
+            ) {
                 // Close overlays first, then dismiss player
                 if root.show-chapters {
                     root.show-chapters = false;
@@ -620,7 +627,14 @@ export component PlayerOverlay inherits Rectangle {
                 return accept;
             }
 
-            if event.text == Key.Return {
+            if (
+                event.text == Key.Return
+                || event.text == "Enter"
+                || event.text == "Return"
+                || event.text == " "
+                || event.text == "a"
+                || event.text == "A"
+            ) {
                 if root.focus-zone == 1 {
                     if root.focused-control == 0 {
                         root.prev-track();
@@ -646,7 +660,7 @@ export component PlayerOverlay inherits Rectangle {
                 return accept;
             }
 
-            if event.text == Key.LeftArrow {
+            if event.text == Key.LeftArrow || event.text == "Left" {
                 if root.focus-zone == 1 {
                     if root.focused-control > 0 {
                         root.focused-control -= 1;
@@ -661,7 +675,7 @@ export component PlayerOverlay inherits Rectangle {
                 return accept;
             }
 
-            if event.text == Key.RightArrow {
+            if event.text == Key.RightArrow || event.text == "Right" {
                 if root.focus-zone == 1 {
                     if root.focused-control < 4 {
                         root.focused-control += 1;
@@ -676,14 +690,14 @@ export component PlayerOverlay inherits Rectangle {
                 return accept;
             }
 
-            if event.text == Key.UpArrow {
+            if event.text == Key.UpArrow || event.text == "Up" {
                 if root.focus-zone > 0 {
                     root.focus-zone -= 1;
                 }
                 return accept;
             }
 
-            if event.text == Key.DownArrow {
+            if event.text == Key.DownArrow || event.text == "Down" {
                 if root.focus-zone < 2 {
                     root.focus-zone += 1;
                 }
