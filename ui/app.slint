@@ -166,6 +166,7 @@ export component AppWindow inherits Window {
                 event.text == Key.Escape
                 || event.text == "\u{1b}"
                 || event.text == "Escape"
+                || event.text == "Esc"
             ) {
                 if (AppBridge.current-screen == "login" && AppBridge.users.length == 0) {
                     AppBridge.is-loading = false;
@@ -422,6 +423,7 @@ export component AppWindow inherits Window {
                         event.text == Key.Escape
                         || event.text == "\u{1b}"
                         || event.text == "Escape"
+                        || event.text == "Esc"
                     ) {
                         if (AppBridge.error-message != "") {
                             AppBridge.error-message = "";
@@ -464,6 +466,7 @@ export component AppWindow inherits Window {
                         event.text == Key.Escape
                         || event.text == "\u{1b}"
                         || event.text == "Escape"
+                        || event.text == "Esc"
                     ) {
                         AppBridge.error-message = "";
                         AppBridge.is-loading = false;
