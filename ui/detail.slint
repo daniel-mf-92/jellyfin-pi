@@ -160,6 +160,13 @@ export component DetailScreen inherits Rectangle {
             + ((root.is-series && root.has-episodes) ? 1 : 0);
     }
 
+    pure function item-type-is-library(item-type: string) -> bool {
+        return item-type == "CollectionFolder"
+            || item-type == "Folder"
+            || item-type == "collectionfolder"
+            || item-type == "folder";
+    }
+
     // Scroll offset for focused section.
     // Keep the hero visible while in the action-button section, then shift
     // down enough to bring each focused row into view.
@@ -705,7 +712,7 @@ export component DetailScreen inherits Rectangle {
                     row-focused: root.focused-section == root.section-index-episodes();
 
                     item-selected(id, item-type) => {
-                        if (item-type == "CollectionFolder" || item-type == "Folder") {
+                        if (root.item-type-is-library(item-type)) {
                             root.navigate("library", id);
                         } else {
                             root.navigate("detail", id);
@@ -727,7 +734,7 @@ export component DetailScreen inherits Rectangle {
                     row-focused: root.focused-section == root.section-index-similar();
 
                     item-selected(id, item-type) => {
-                        if (item-type == "CollectionFolder" || item-type == "Folder") {
+                        if (root.item-type-is-library(item-type)) {
                             root.navigate("library", id);
                         } else {
                             root.navigate("detail", id);
