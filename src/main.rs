@@ -1909,7 +1909,16 @@ fn setup_navigation_callbacks(
 
                     let is_collection_folder = preflight_item
                         .as_ref()
-                        .map(|item| item.collection_type.is_some() || item.item_type == "CollectionFolder")
+                        .map(|item| {
+                            let has_collection_type = item
+                                .collection_type
+                                .as_ref()
+                                .map(|value| !value.trim().is_empty())
+                                .unwrap_or(false);
+                            has_collection_type
+                                || item.item_type.eq_ignore_ascii_case("CollectionFolder")
+                                || item.item_type.eq_ignore_ascii_case("Folder")
+                        })
                         .unwrap_or(false);
 
                     if !detail_load_in_flight.load(Ordering::Acquire) {
