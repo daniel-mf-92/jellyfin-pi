@@ -116,8 +116,6 @@ const LIBRARY_PRIMARY_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
-const LIBRARY_FALLBACK_ITEM_TYPES: &str =
-    "Movie,Series,Episode,Video,BoxSet,CollectionFolder,Folder";
 const LIBRARY_FALLBACK_ITEM_FIELDS: &str = "ProductionYear,PrimaryImageAspectRatio";
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
@@ -5349,7 +5347,7 @@ async fn load_library_fallback(
     let result = c
         .get_items(
             Some(library_id),
-            Some(LIBRARY_FALLBACK_ITEM_TYPES),
+            None,
             sort_by.or(Some("SortName")),
             Some("Ascending"),
             0,
