@@ -2028,6 +2028,7 @@ fn setup_navigation_callbacks(
                             image_cache,
                             &item_id,
                             preflight_item,
+                            Some((navigation_epoch.clone(), request_epoch)),
                         ),
                     ).await
                     {
@@ -2145,7 +2146,7 @@ fn setup_navigation_callbacks(
         let navigation_epoch = navigation_epoch_clone.clone();
 
         spawn_ui_task(async move {
-            navigation_epoch.fetch_add(1, Ordering::AcqRel);
+            let back_request_epoch = navigation_epoch.fetch_add(1, Ordering::AcqRel) + 1;
             let cancel_pending_detail_only = Arc::new(AtomicBool::new(false));
             let cancel_pending_detail_only_flag = cancel_pending_detail_only.clone();
 
@@ -2215,6 +2216,7 @@ fn setup_navigation_callbacks(
                                 image_cache,
                                 &item_id,
                                 None,
+                                Some((navigation_epoch.clone(), back_request_epoch)),
                             ),
                         )
                         .await
@@ -3907,6 +3909,7 @@ fn setup_content_callbacks(
                         image_cache,
                         &item_id_str,
                         None,
+                        None,
                     ),
                 ).await
                 {
@@ -4821,6 +4824,7 @@ async fn load_item_detail(
     image_cache: Arc<ImageCache>,
     item_id: &str,
     preloaded_item: Option<BaseItemDto>,
+    navigation_token: Option<(Arc<AtomicU64>, u64)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
@@ -4855,6 +4859,12 @@ async fn load_item_detail(
     let is_series = item.item_type == "Series";
     let series_id = item.id.clone();
     let item_id_owned = item.id.clone();
+    let is_navigation_stale = || {
+        navigation_token
+            .as_ref()
+            .map(|(epoch, request_epoch)| epoch.load(Ordering::Acquire) != *request_epoch)
+            .unwrap_or(false)
+    };
 
     // Build genre tags from item data
     let genre_tags: Vec<GenreTag> = item.genres
@@ -4865,6 +4875,11 @@ async fn load_item_detail(
             }).collect()
         })
         .unwrap_or_default();
+
+    if is_navigation_stale() {
+        debug!("Skipping stale detail UI update for item {}", item_id_owned);
+        return Ok(());
+    }
 
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>().set_detail_item(detail_item);
