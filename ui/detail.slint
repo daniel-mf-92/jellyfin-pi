@@ -365,7 +365,12 @@ export component DetailScreen inherits Rectangle {
                         && root.focused-episode-index >= 0
                         && root.focused-episode-index < root.episodes.length
                     ) {
-                        root.navigate("detail", root.episodes[root.focused-episode-index].id);
+                        let selected-episode = root.episodes[root.focused-episode-index];
+                        if (root.item-type-is-library(selected-episode.item-type)) {
+                            root.navigate("library", selected-episode.id);
+                        } else {
+                            root.navigate("detail", selected-episode.id);
+                        }
                         return accept;
                     }
 
@@ -374,7 +379,12 @@ export component DetailScreen inherits Rectangle {
                         && root.focused-related-index >= 0
                         && root.focused-related-index < root.related-items.length
                     ) {
-                        root.navigate("detail", root.related-items[root.focused-related-index].id);
+                        let selected-related = root.related-items[root.focused-related-index];
+                        if (root.item-type-is-library(selected-related.item-type)) {
+                            root.navigate("library", selected-related.id);
+                        } else {
+                            root.navigate("detail", selected-related.id);
+                        }
                         return accept;
                     }
                 }
