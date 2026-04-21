@@ -248,9 +248,78 @@ export component HomeScreen inherits Rectangle {
             + root.row-block-height-for-index(13) + Theme.spacing-lg
             + root.row-block-height-for-index(14) + Theme.spacing-lg
             + root.row-block-height-for-index(15) + Theme.spacing-lg;
-        let extra-rows = i - 16;
-        let fallback-row-height = root.row-block-height-for-index(15) + Theme.spacing-lg;
-        return first-16-height + (extra-rows * fallback-row-height);
+        if (i == 17) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg;
+        }
+        if (i == 18) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg;
+        }
+        if (i == 19) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg;
+        }
+        if (i == 20) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg
+                + root.row-block-height-for-index(19) + Theme.spacing-lg;
+        }
+        if (i == 21) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg
+                + root.row-block-height-for-index(19) + Theme.spacing-lg
+                + root.row-block-height-for-index(20) + Theme.spacing-lg;
+        }
+        if (i == 22) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg
+                + root.row-block-height-for-index(19) + Theme.spacing-lg
+                + root.row-block-height-for-index(20) + Theme.spacing-lg
+                + root.row-block-height-for-index(21) + Theme.spacing-lg;
+        }
+        if (i == 23) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg
+                + root.row-block-height-for-index(19) + Theme.spacing-lg
+                + root.row-block-height-for-index(20) + Theme.spacing-lg
+                + root.row-block-height-for-index(21) + Theme.spacing-lg
+                + root.row-block-height-for-index(22) + Theme.spacing-lg;
+        }
+        if (i == 24) {
+            return first-16-height
+                + root.row-block-height-for-index(16) + Theme.spacing-lg
+                + root.row-block-height-for-index(17) + Theme.spacing-lg
+                + root.row-block-height-for-index(18) + Theme.spacing-lg
+                + root.row-block-height-for-index(19) + Theme.spacing-lg
+                + root.row-block-height-for-index(20) + Theme.spacing-lg
+                + root.row-block-height-for-index(21) + Theme.spacing-lg
+                + root.row-block-height-for-index(22) + Theme.spacing-lg
+                + root.row-block-height-for-index(23) + Theme.spacing-lg;
+        }
+        let first-24-height = first-16-height
+            + root.row-block-height-for-index(16) + Theme.spacing-lg
+            + root.row-block-height-for-index(17) + Theme.spacing-lg
+            + root.row-block-height-for-index(18) + Theme.spacing-lg
+            + root.row-block-height-for-index(19) + Theme.spacing-lg
+            + root.row-block-height-for-index(20) + Theme.spacing-lg
+            + root.row-block-height-for-index(21) + Theme.spacing-lg
+            + root.row-block-height-for-index(22) + Theme.spacing-lg
+            + root.row-block-height-for-index(23) + Theme.spacing-lg;
+        let extra-rows = i - 24;
+        let fallback-row-height = root.row-block-height-for-index(23) + Theme.spacing-lg;
+        return first-24-height + (extra-rows * fallback-row-height);
     }
 
     // Estimated viewport height for the rows region below the top bar.
