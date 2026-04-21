@@ -433,6 +433,16 @@ async fn wait_for_display_backend() {
 // Type conversion helpers
 // =============================================================================
 
+fn normalize_item_type(item_type: &str) -> SharedString {
+    if item_type.eq_ignore_ascii_case("CollectionFolder")
+        || item_type.eq_ignore_ascii_case("Folder")
+    {
+        SharedString::from("CollectionFolder")
+    } else {
+        SharedString::from(item_type)
+    }
+}
+
 /// Convert a `BaseItemDto` into the Slint `MediaItem` struct.
 fn base_item_to_media_item(
     item: &BaseItemDto,
@@ -440,13 +450,19 @@ fn base_item_to_media_item(
     poster_image: SlintImage,
     backdrop_image: SlintImage,
 ) -> MediaItem {
+    let item_type = if is_library_like_item(item) {
+        SharedString::from("CollectionFolder")
+    } else {
+        normalize_item_type(&item.item_type)
+    };
+
     MediaItem {
         id: SharedString::from(&item.id),
         title: SharedString::from(&item.name),
         subtitle: SharedString::from(
             item.series_name.as_deref().unwrap_or_default(),
         ),
-        item_type: SharedString::from(&item.item_type),
+        item_type,
         image_source: poster_image,
         backdrop_source: backdrop_image,
         progress: item.progress(),
@@ -498,13 +514,15 @@ fn search_hint_to_result(
     hint: &SearchHint,
     poster_image: SlintImage,
 ) -> SearchResult {
+    let item_type = normalize_item_type(&hint.item_type);
+
     SearchResult {
         id: SharedString::from(&hint.item_id),
         title: SharedString::from(&hint.name),
         subtitle: SharedString::from(
             hint.series.as_deref().unwrap_or_default(),
         ),
-        item_type: SharedString::from(&hint.item_type),
+        item_type,
         image_source: poster_image,
         year: SharedString::from(
             hint.production_year
