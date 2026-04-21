@@ -76,7 +76,9 @@ export component ContentRow inherits VerticalLayout {
             // visible right edge, instead of re-centering every move.
             max(0px, self.focused-card-end - self.width + self.overscan-offset);
         private property <length> clamped-scroll-target:
-            root.row-focused ? min(self.max-scroll, self.raw-scroll-target) : 0px;
+            // Keep each row's horizontal position stable when focus moves
+            // vertically to another row (Jellyfin TV behavior).
+            min(self.max-scroll, self.raw-scroll-target);
 
         // Keep Jellyfin TV overscan alignment when rows own horizontal overscan.
         viewport-x: -self.clamped-scroll-target + self.overscan-offset;
