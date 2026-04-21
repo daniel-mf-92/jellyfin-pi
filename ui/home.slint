@@ -33,6 +33,7 @@ export component HomeScreen inherits Rectangle {
     callback open-search();
     callback open-settings();
     callback open-library(/* library_id */ string);
+    callback retry-connection();
 
     pure function row-is-library-row(index: int) -> bool {
         if (index < 0 || index >= root.rows.length) {
@@ -333,6 +334,10 @@ export component HomeScreen inherits Rectangle {
                 event.text == "a" ||
                 event.text == "A"
             ) {
+                if (root.rows.length == 0) {
+                    root.retry-connection();
+                    return accept;
+                }
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
                         let focused-row-is-library = root.row-is-library-row(root.focused-row);

@@ -244,6 +244,9 @@ export component AppWindow inherits Window {
             open-library(id) => {
                 AppBridge.navigate("library", id);
             }
+            retry-connection() => {
+                AppBridge.retry-connection();
+            }
         }
 
         if AppBridge.current-screen == "detail" : DetailScreen {
