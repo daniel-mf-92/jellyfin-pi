@@ -636,7 +636,10 @@ export component HomeScreen inherits Rectangle {
                     is-square: row.row-type == "square";
                     include-horizontal-overscan: false;
                     row-focused: index == root.safe-focused-row;
-                    focused-index: index == root.safe-focused-row ? root.safe-focused-col : 0;
+                    // Preserve horizontal position when moving between rows:
+                    // all rows track the current column instead of snapping
+                    // unfocused rows back to index 0.
+                    focused-index: root.safe-focused-col;
 
                     item-selected(id, item-type) => {
                         if (root.row-is-library-row(index) || root.item-type-is-library(item-type)) {
