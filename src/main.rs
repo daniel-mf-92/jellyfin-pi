@@ -110,13 +110,14 @@ const HOME_LATEST_FETCH_PHASE_RESERVE_MS: u64 = 250;
 const HOME_OPTIONAL_ROW_ITEM_LIMIT: i32 = 4;
 const HOME_LATEST_ROW_ITEM_LIMIT: i32 = 4;
 const LIBRARY_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
-const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 1;
+const LIBRARY_NAME_FETCH_TIMEOUT_SECS: u64 = 2;
 const LIBRARY_ITEM_LIMIT: i32 = 24;
-const LIBRARY_PRIMARY_TIMEOUT_SECS: u64 = 4;
+const LIBRARY_PRIMARY_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
-const LIBRARY_FALLBACK_ITEM_TYPES: &str = "Movie,Series,Episode,Video";
+const LIBRARY_FALLBACK_ITEM_TYPES: &str =
+    "Movie,Series,Episode,Video,BoxSet,CollectionFolder,Folder";
 const LIBRARY_FALLBACK_ITEM_FIELDS: &str = "ProductionYear,PrimaryImageAspectRatio";
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
@@ -5275,7 +5276,7 @@ async fn load_library(
         LIBRARY_ITEM_LIMIT,
         filters,
         Some(LIBRARY_ITEM_FIELDS),
-        false,
+        true,
     );
 
     let (library_name, result) = tokio::join!(library_name_future, library_items_future);
@@ -5355,7 +5356,7 @@ async fn load_library_fallback(
             LIBRARY_FALLBACK_ITEM_LIMIT,
             filters,
             Some(LIBRARY_FALLBACK_ITEM_FIELDS),
-            false,
+            true,
         )
         .await
         .map_err(|e| format!("Failed to get fallback library items: {}", e))?;
