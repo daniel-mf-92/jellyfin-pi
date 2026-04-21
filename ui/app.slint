@@ -435,10 +435,8 @@ export component AppWindow inherits Window {
                 key-pressed(event) => {
                     if (
                         event.text == Key.Return
-                        && (
-                            AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
-                            || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry now. Reconnecting automatically in background..."
-                        )
+                        && AppBridge.current-screen == "home"
+                        && AppBridge.error-message != ""
                     ) {
                         AppBridge.retry-connection();
                         return accept;
