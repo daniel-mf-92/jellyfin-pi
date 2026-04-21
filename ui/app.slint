@@ -177,7 +177,6 @@ export component AppWindow inherits Window {
                 ) {
                     AppBridge.error-message = "";
                     AppBridge.is-loading = false;
-                    return accept;
                 }
                 if (AppBridge.current-screen == "player") {
                     AppBridge.stop-playback();
@@ -439,8 +438,6 @@ export component AppWindow inherits Window {
                     ) {
                         if (AppBridge.error-message != "") {
                             AppBridge.error-message = "";
-                            AppBridge.is-loading = false;
-                            return accept;
                         }
                         AppBridge.is-loading = false;
                         AppBridge.go-back();
