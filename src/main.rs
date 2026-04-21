@@ -436,6 +436,7 @@ async fn wait_for_display_backend() {
 fn normalize_item_type(item_type: &str) -> SharedString {
     if item_type.eq_ignore_ascii_case("CollectionFolder")
         || item_type.eq_ignore_ascii_case("Folder")
+        || item_type.eq_ignore_ascii_case("UserView")
     {
         SharedString::from("CollectionFolder")
     } else {
@@ -837,6 +838,7 @@ fn is_library_like_item(item: &BaseItemDto) -> bool {
     has_collection_type
         || item.item_type.eq_ignore_ascii_case("CollectionFolder")
         || item.item_type.eq_ignore_ascii_case("Folder")
+        || item.item_type.eq_ignore_ascii_case("UserView")
 }
 
 // =============================================================================
