@@ -65,7 +65,8 @@ export component ContentRow inherits VerticalLayout {
         viewport-width: root.content-width;
         private property <length> overscan-offset:
             root.include-horizontal-overscan ? Theme.overscan-h : 0px;
-        private property <length> max-scroll: max(0px, root.content-width - self.width);
+        private property <length> max-scroll:
+            max(0px, root.content-width - self.width + self.overscan-offset);
         private property <length> focused-base-start:
             root.row-padding + (root.safe-focused-index * root.step-width);
         private property <length> focused-card-end:
@@ -73,7 +74,7 @@ export component ContentRow inherits VerticalLayout {
         private property <length> raw-scroll-target:
             // Match Jellyfin TV behavior: only scroll once focus reaches the
             // visible right edge, instead of re-centering every move.
-            max(0px, self.focused-card-end - self.width);
+            max(0px, self.focused-card-end - self.width + self.overscan-offset);
         private property <length> clamped-scroll-target:
             root.row-focused ? min(self.max-scroll, self.raw-scroll-target) : 0px;
 
