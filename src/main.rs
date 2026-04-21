@@ -1278,19 +1278,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             if !authenticated && schedule_saved_token_background_recovery {
-                // Keep Home visible while saved-token recovery reconnects to
-                // Jellyfin so startup with cached auth does not regress to Login.
+                // Keep Login visible and interactive while saved-token recovery
+                // reconnects to Jellyfin in the background.
                 info!(
-                    "Saved-token background recovery is active; keeping Home visible while reconnecting"
+                    "Saved-token background recovery is active; keeping Login visible while reconnecting"
                 );
-                state_clone.navigate_replace(Screen::Home).await;
+                state_clone.navigate_replace(Screen::Login).await;
                 let _ = ui_handle.upgrade_in_event_loop(|ui| {
-                    ui.global::<AppBridge>().set_current_screen("home".into());
+                    ui.global::<AppBridge>().set_current_screen("login".into());
                     ui.global::<AppBridge>().set_error_message(
                         JELLYFIN_CONNECTIVITY_BACKGROUND_RETRY_MESSAGE.into(),
                     );
                     ui.global::<AppBridge>().set_is_loading(false);
                 });
+
+                let _ = load_public_users_foreground_once(
+                    ui_handle.clone(),
+                    client_clone.clone(),
+                    image_clone.clone(),
+                    true,
+                )
+                .await;
+
+                spawn_ui_task(retry_login_users_during_saved_token_recovery(
+                    ui_handle.clone(),
+                    client_clone.clone(),
+                    image_clone.clone(),
+                ));
 
                 let ui_retry = ui_handle.clone();
                 let client_retry = client_clone.clone();
@@ -2345,7 +2359,7 @@ async fn probe_saved_token_access(
             "Jellyfin client lock busy while probing saved-token session".into()
         })?;
     client_snapshot
-        .get_user_views()
+        .probe_authenticated_session()
         .await
         .map(|_| ())
         .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)

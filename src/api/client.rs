@@ -350,6 +350,21 @@ impl JellyfinClient {
         self.parse_json_response(resp).await
     }
 
+    /// Lightweight authenticated session probe used by saved-token recovery.
+    ///
+    /// This keeps recovery checks cheap and avoids timing out on heavier
+    /// home-data endpoints while the server is under load.
+    pub async fn probe_authenticated_session(&self) -> ApiResult<()> {
+        let resp = self
+            .send_with_base_fallback("/Users/Me", |http, url| {
+                http.get(url)
+                    .header("X-Emby-Authorization", self.auth_header())
+            })
+            .await?;
+        let _ = self.check_response(resp).await?;
+        Ok(())
+    }
+
     // -----------------------------------------------------------------------
     // User views / home screen
     // -----------------------------------------------------------------------
