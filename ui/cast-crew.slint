@@ -38,13 +38,6 @@ export component CastCrewRow inherits VerticalLayout {
         root.model.length > 0
             ? Theme.overscan-h * 2 + root.model.length * root.card-width + (root.model.length - 1) * Theme.card-gap
             : 0px;
-    private property <length> max-scroll-x: max(0px, root.content-width - self.width);
-    private property <length> desired-scroll-x:
-        root.safe-focused-index * (root.card-width + Theme.card-gap)
-        + root.card-width / 2
-        - self.width / 2
-        + Theme.overscan-h;
-    private property <length> scroll-target: min(root.max-scroll-x, max(0px, root.desired-scroll-x));
 
     spacing: 0px;
 
@@ -68,10 +61,18 @@ export component CastCrewRow inherits VerticalLayout {
 
     // Horizontal scrolling person card strip
     Flickable {
+        width: 100%;
         height: 130px;
         viewport-width: root.content-width;
+        private property <length> max-scroll-x: max(0px, root.content-width - self.width);
+        private property <length> desired-scroll-x:
+            root.safe-focused-index * (root.card-width + Theme.card-gap)
+            + root.card-width / 2
+            - self.width / 2
+            + Theme.overscan-h;
+        private property <length> scroll-target: min(self.max-scroll-x, max(0px, self.desired-scroll-x));
 
-        viewport-x: -root.scroll-target;
+        viewport-x: -self.scroll-target;
 
         animate viewport-x {
             duration: Theme.transition-duration;
@@ -209,13 +210,6 @@ export component GenreRow inherits VerticalLayout {
         root.model.length > 0
             ? Theme.overscan-h * 2 + root.model.length * root.pill-estimated-width + (root.model.length - 1) * root.pill-spacing
             : 0px;
-    private property <length> max-scroll-x: max(0px, root.content-width - self.width);
-    private property <length> desired-scroll-x:
-        root.safe-focused-index * (root.pill-estimated-width + root.pill-spacing)
-        + root.pill-estimated-width / 2
-        - self.width / 2
-        + Theme.overscan-h;
-    private property <length> scroll-target: min(root.max-scroll-x, max(0px, root.desired-scroll-x));
 
     spacing: 0px;
 
@@ -239,9 +233,17 @@ export component GenreRow inherits VerticalLayout {
 
     // Horizontal scrolling pill strip
     Flickable {
+        width: 100%;
         height: root.pill-height + 16px;
         viewport-width: root.content-width;
-        viewport-x: -root.scroll-target;
+        private property <length> max-scroll-x: max(0px, root.content-width - self.width);
+        private property <length> desired-scroll-x:
+            root.safe-focused-index * (root.pill-estimated-width + root.pill-spacing)
+            + root.pill-estimated-width / 2
+            - self.width / 2
+            + Theme.overscan-h;
+        private property <length> scroll-target: min(self.max-scroll-x, max(0px, self.desired-scroll-x));
+        viewport-x: -self.scroll-target;
 
         animate viewport-x {
             duration: Theme.transition-duration;
