@@ -17,6 +17,7 @@ const LATEST_FIELDS: &str =
     "PrimaryImageAspectRatio,ProductionYear,RunTimeTicks,SeriesName,ParentIndexNumber,IndexNumber,CommunityRating,OfficialRating,Genres,Overview";
 const HTTP_CONNECT_TIMEOUT_SECS: u64 = 5;
 const HTTP_REQUEST_TIMEOUT_SECS: u64 = 8;
+const PLAYBACK_INFO_REQUEST_TIMEOUT_SECS: u64 = 10;
 const MAX_SERVER_ERROR_BODY_LEN: usize = 240;
 const ERROR_BODY_READ_TIMEOUT_SECS: u64 = 1;
 
@@ -679,6 +680,7 @@ impl JellyfinClient {
         let resp = self
             .send_with_base_fallback(&endpoint, |http, url| {
                 http.post(url)
+                    .timeout(Duration::from_secs(PLAYBACK_INFO_REQUEST_TIMEOUT_SECS))
                     .header("X-Emby-Authorization", self.auth_header())
                     .query(&[("UserId", user_id)])
                     .json(&Body {
