@@ -4027,6 +4027,55 @@ fn setup_content_callbacks(
                     return;
                 }
 
+                // Keep request-item-detail aligned with the navigation contract:
+                // known CollectionFolder ids must always open Library directly.
+                // This avoids detail preflight/network variance from sending a
+                // library card down a detail-only path.
+                if state.is_known_library_id(&item_id_str).await {
+                    state
+                        .navigate_to(Screen::Library {
+                            library_id: item_id_str.clone(),
+                            title: String::new(),
+                        })
+                        .await;
+
+                    let library_id_for_ui = item_id_str.clone();
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>()
+                            .set_library_id(library_id_for_ui.into());
+                        ui.global::<AppBridge>().set_current_screen("library".into());
+                        ui.global::<AppBridge>().set_is_loading(true);
+                    });
+
+                    if let Err(e) = with_loading_timeout(
+                        "Library load (known-library detail redirect)",
+                        async {
+                            load_library_with_fallback(
+                                ui_weak.clone(),
+                                client,
+                                image_cache,
+                                &item_id_str,
+                                None,
+                                None,
+                                None,
+                            )
+                            .await
+                            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
+                        },
+                    )
+                    .await
+                    {
+                        error!("Failed to load library {}: {}", item_id_str, e);
+                        let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                            ui.global::<AppBridge>().set_error_message(
+                                format!("Failed to load library: {}", e).into(),
+                            );
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
+                    }
+                    return;
+                }
+
                 let _ = ui_weak.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_is_loading(true);
                 });
