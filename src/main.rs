@@ -1007,7 +1007,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Keep users on the Home shell while we validate auth and load data.
                 let _ = ui_handle.upgrade_in_event_loop(|ui| {
                     ui.global::<AppBridge>().set_current_screen("home".into());
-                    ui.global::<AppBridge>().set_is_loading(true);
+                    // Spec parity: saved-token login should feel instant and
+                    // must not show the global loading spinner.
+                    ui.global::<AppBridge>().set_is_loading(false);
                     ui.global::<AppBridge>().set_error_message("".into());
                 });
 
