@@ -425,12 +425,20 @@ $SAFETY_OVERRIDE"
     fi
   done
 
-  # Push any changes
+  # Push any changes (ignore transient lockfile noise)
+  git checkout -- automation/.codex-loop.lock/pid 2>/dev/null || true
+
   if [[ -n "$(git status --porcelain)" ]]; then
     git add -A
-    git commit -m "codex: pi-media-player iteration $ITERATION auto-fix ($TS)" --no-verify 2>/dev/null || true
-    git push origin "$BRANCH_NAME" 2>/dev/null || true
-    echo "[$TS] Pushed changes from iteration $ITERATION"
+    git reset automation/.codex-loop.lock/pid 2>/dev/null || true
+
+    if [[ -n "$(git diff --cached --name-only)" ]]; then
+      git commit -m "codex: pi-media-player iteration $ITERATION auto-fix ($TS)" --no-verify 2>/dev/null || true
+      git push origin "$BRANCH_NAME" 2>/dev/null || true
+      echo "[$TS] Pushed changes from iteration $ITERATION"
+    else
+      echo "[$TS] No committable changes (transient files only)."
+    fi
   fi
 
   echo "[$TS] Sleeping ${SLEEP_SECONDS}s..."
