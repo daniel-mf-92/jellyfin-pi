@@ -1873,6 +1873,7 @@ fn setup_navigation_callbacks(
                                     &item_id,
                                     None,
                                     None,
+                                    Some((navigation_epoch.clone(), request_epoch)),
                                 )
                                 .await
                                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
@@ -2001,6 +2002,7 @@ fn setup_navigation_callbacks(
                                     &item_id,
                                     None,
                                     None,
+                                    Some((navigation_epoch.clone(), request_epoch)),
                                 )
                                 .await
                                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
@@ -2135,6 +2137,7 @@ fn setup_navigation_callbacks(
                                 &library_id,
                                 None,
                                 None,
+                                Some((navigation_epoch.clone(), request_epoch)),
                             )
                             .await
                             .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
@@ -3926,6 +3929,7 @@ fn setup_content_callbacks(
                             &library_id_str,
                             sort_opt,
                             filter_opt,
+                            None,
                         )
                         .await
                         .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })
@@ -4030,6 +4034,7 @@ fn setup_content_callbacks(
                                 client,
                                 image_cache,
                                 &item_id_str,
+                                None,
                                 None,
                                 None,
                             )
@@ -5352,6 +5357,7 @@ async fn load_library(
     library_id: &str,
     sort_by: Option<&str>,
     filters: Option<&str>,
+    navigation_guard: Option<(Arc<AtomicU64>, u64)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     const LIBRARY_ITEM_FIELDS: &str =
         "CommunityRating,ProductionYear,OfficialRating,UserData,PrimaryImageAspectRatio";
@@ -5411,6 +5417,16 @@ async fn load_library(
     )
     .await;
 
+    if let Some((epoch, request_epoch)) = navigation_guard.as_ref() {
+        if epoch.load(Ordering::Acquire) != *request_epoch {
+            debug!(
+                "Skipping stale library UI update for {} (request epoch: {})",
+                library_id, request_epoch
+            );
+            return Ok(());
+        }
+    }
+
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_library_items(ModelRc::new(VecModel::from(media_items)));
@@ -5436,6 +5452,7 @@ async fn load_library_fallback(
     library_id: &str,
     sort_by: Option<&str>,
     filters: Option<&str>,
+    navigation_guard: Option<(Arc<AtomicU64>, u64)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let c = client.read().await;
     let server_url = c.server_url.clone();
@@ -5490,6 +5507,16 @@ async fn load_library_fallback(
     )
     .await;
 
+    if let Some((epoch, request_epoch)) = navigation_guard.as_ref() {
+        if epoch.load(Ordering::Acquire) != *request_epoch {
+            debug!(
+                "Skipping stale fallback library UI update for {} (request epoch: {})",
+                library_id, request_epoch
+            );
+            return Ok(());
+        }
+    }
+
     if let Some(ui) = ui_weak.upgrade() {
         ui.global::<AppBridge>()
             .set_library_items(ModelRc::new(VecModel::from(media_items)));
@@ -5515,6 +5542,7 @@ async fn load_library_with_fallback(
     library_id: &str,
     sort_by: Option<&str>,
     filters: Option<&str>,
+    navigation_guard: Option<(Arc<AtomicU64>, u64)>,
 ) -> Result<(), String> {
     let fallback_budget_secs = std::cmp::min(
         LIBRARY_FALLBACK_TIMEOUT_SECS,
@@ -5531,6 +5559,7 @@ async fn load_library_with_fallback(
             library_id,
             sort_by,
             filters,
+            navigation_guard.clone(),
         ),
     )
     .await
@@ -5560,6 +5589,7 @@ async fn load_library_with_fallback(
                     library_id,
                     sort_by,
                     filters,
+                    navigation_guard,
                 ),
             )
             .await
