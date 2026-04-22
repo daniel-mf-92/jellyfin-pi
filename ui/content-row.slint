@@ -113,13 +113,23 @@ export component ContentRow inherits VerticalLayout {
         enabled: root.row-focused;
 
         key-pressed(event) => {
-            if (event.text == Key.RightArrow || event.text == "Right") {
+            if (
+                event.text == Key.RightArrow
+                || event.text == "Right"
+                || event.text == "right"
+                || event.text == "ArrowRight"
+            ) {
                 if (root.focused-index < root.items.length - 1) {
                     root.focused-index += 1;
                 }
                 return accept;
             }
-            if (event.text == Key.LeftArrow || event.text == "Left") {
+            if (
+                event.text == Key.LeftArrow
+                || event.text == "Left"
+                || event.text == "left"
+                || event.text == "ArrowLeft"
+            ) {
                 if (root.focused-index > 0) {
                     root.focused-index -= 1;
                 }

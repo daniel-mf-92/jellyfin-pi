@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use std::path::Path;
-use tokio::sync::{mpsc, watch, RwLock};
+use tokio::sync::{mpsc, watch};
 use tokio::process::Command;
 use tokio::task::JoinHandle;
 use tokio::time::Duration;
@@ -109,26 +109,21 @@ impl SystemTasks {
         }
     }
 
-    /// Write current screen name to /tmp/foreground-app on every navigation change.
-    /// Uses watch channel — only wakes on changes, not polling.
+    /// Write current screen name to /tmp/foreground-app.
+    /// Writes once at startup and then on every watch change.
     async fn foreground_app_writer(mut rx: watch::Receiver<String>) {
+        let initial_screen_name = rx.borrow().clone();
+        if let Err(e) = write_foreground_app_hint(&initial_screen_name).await {
+            warn!("Failed to write initial /tmp/foreground-app: {}", e);
+        }
+
         loop {
             if rx.changed().await.is_err() {
                 break; // sender dropped
             }
             let screen_name = rx.borrow().clone();
-
-            // Map screen names to the app identifiers the master script expects
-            let app_name = match screen_name.as_str() {
-                "player" => "jellyfinmediaplayer",
-                "home" | "detail" | "library" | "search" | "settings" | "login" => "jellyfin",
-                _ => "jellyfin",
-            };
-
-            if let Err(e) = tokio::fs::write("/tmp/foreground-app", app_name).await {
+            if let Err(e) = write_foreground_app_hint(&screen_name).await {
                 warn!("Failed to write /tmp/foreground-app: {}", e);
-            } else {
-                debug!("Foreground app: {}", app_name);
             }
         }
     }
@@ -225,6 +220,18 @@ impl SystemTasks {
             }
         }
     }
+}
+
+async fn write_foreground_app_hint(screen_name: &str) -> std::io::Result<()> {
+    let app_name = match screen_name {
+        "player" => "jellyfinmediaplayer",
+        "home" | "detail" | "library" | "search" | "settings" | "login" => "jellyfin",
+        _ => "jellyfin",
+    };
+
+    tokio::fs::write("/tmp/foreground-app", app_name).await?;
+    debug!("Foreground app: {}", app_name);
+    Ok(())
 }
 
 /// Check if a process is running via pgrep -x.

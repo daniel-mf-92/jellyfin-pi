@@ -224,19 +224,34 @@ export component LibraryScreen inherits Rectangle {
 
             // -- Toolbar navigation (focused-section == 0) --------------------
             if (root.focused-section == 0) {
-                if (event.text == Key.LeftArrow || event.text == "Left") {
+                if (
+                    event.text == Key.LeftArrow
+                    || event.text == "Left"
+                    || event.text == "left"
+                    || event.text == "ArrowLeft"
+                ) {
                     if (root.toolbar-focus > 0) {
                         root.toolbar-focus -= 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.RightArrow || event.text == "Right") {
+                if (
+                    event.text == Key.RightArrow
+                    || event.text == "Right"
+                    || event.text == "right"
+                    || event.text == "ArrowRight"
+                ) {
                     if (root.toolbar-focus < 1) {
                         root.toolbar-focus += 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.DownArrow || event.text == "Down") {
+                if (
+                    event.text == Key.DownArrow
+                    || event.text == "Down"
+                    || event.text == "down"
+                    || event.text == "ArrowDown"
+                ) {
                     if (root.items.length > 0) {
                         root.focused-section = 1;
                         root.focused-item = 0;
@@ -270,20 +285,35 @@ export component LibraryScreen inherits Rectangle {
 
             // -- Grid navigation (focused-section == 1) -----------------------
             if (root.focused-section == 1) {
-                if (event.text == Key.LeftArrow || event.text == "Left") {
+                if (
+                    event.text == Key.LeftArrow
+                    || event.text == "Left"
+                    || event.text == "left"
+                    || event.text == "ArrowLeft"
+                ) {
                     if (root.focused-col > 0) {
                         root.focused-item -= 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.RightArrow || event.text == "Right") {
+                if (
+                    event.text == Key.RightArrow
+                    || event.text == "Right"
+                    || event.text == "right"
+                    || event.text == "ArrowRight"
+                ) {
                     if (root.focused-col < root.effective-columns - 1
                         && root.focused-item + 1 < root.items.length) {
                         root.focused-item += 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.UpArrow || event.text == "Up") {
+                if (
+                    event.text == Key.UpArrow
+                    || event.text == "Up"
+                    || event.text == "up"
+                    || event.text == "ArrowUp"
+                ) {
                     if (root.focused-row == 0) {
                         // Move back to toolbar
                         root.focused-section = 0;
@@ -292,7 +322,12 @@ export component LibraryScreen inherits Rectangle {
                     }
                     return accept;
                 }
-                if (event.text == Key.DownArrow || event.text == "Down") {
+                if (
+                    event.text == Key.DownArrow
+                    || event.text == "Down"
+                    || event.text == "down"
+                    || event.text == "ArrowDown"
+                ) {
                     if (root.focused-item + root.effective-columns < root.items.length) {
                         root.focused-item += root.effective-columns;
                     } else if (root.focused-row < root.total-rows - 1) {
