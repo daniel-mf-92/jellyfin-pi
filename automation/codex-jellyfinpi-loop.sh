@@ -11,17 +11,18 @@ CODEX_KILL_AFTER_SECONDS="${CODEX_KILL_AFTER_SECONDS:-30}"
 CODEX_MAX_RETRIES="${CODEX_MAX_RETRIES:-2}"
 CODEX_RETRY_DELAY_SECONDS="${CODEX_RETRY_DELAY_SECONDS:-30}"
 WATCHDOG_INTERVAL_SECONDS="${WATCHDOG_INTERVAL_SECONDS:-5}"
+ALLOW_PI_DEPLOY="${ALLOW_PI_DEPLOY:-0}"
 
 # Resource guardrails (prevent runaway RAM/CPU usage)
 CODEX_MAX_VMEM_KB="${CODEX_MAX_VMEM_KB:-6291456}"
-CODEX_MAX_RSS_MB="${CODEX_MAX_RSS_MB:-4096}"
+CODEX_MAX_RSS_MB="${CODEX_MAX_RSS_MB:-3072}"
 CODEX_MAX_CPU_PERCENT="${CODEX_MAX_CPU_PERCENT:-250}"
 CODEX_MAX_CPU_HITS="${CODEX_MAX_CPU_HITS:-6}"
 CODEX_NICE_LEVEL="${CODEX_NICE_LEVEL:-10}"
-MIN_FREE_MEM_MB="${MIN_FREE_MEM_MB:-1536}"
+MIN_FREE_MEM_MB="${MIN_FREE_MEM_MB:-3072}"
 MAX_LOAD_PER_CORE="${MAX_LOAD_PER_CORE:-2.50}"
 RESOURCE_BACKOFF_SECONDS="${RESOURCE_BACKOFF_SECONDS:-300}"
-MAX_CONCURRENT_CODEX_PROCS="${MAX_CONCURRENT_CODEX_PROCS:-8}"
+MAX_CONCURRENT_CODEX_PROCS="${MAX_CONCURRENT_CODEX_PROCS:-4}"
 MAX_CONCURRENT_REPO_CODEX_PROCS="${MAX_CONCURRENT_REPO_CODEX_PROCS:-1}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
@@ -41,6 +42,28 @@ mkdir -p "$LOG_DIR"
 
 [[ -f "$PROMPT_FILE" ]] || { echo "Missing prompt: $PROMPT_FILE"; exit 1; }
 [[ -f "$CREDENTIALS_FILE" ]] && source "$CREDENTIALS_FILE"
+
+SAFETY_OVERRIDE=$(cat <<'EOF'
+## Runtime Safety Override (Critical)
+This override supersedes conflicting instructions earlier in this prompt.
+
+If `ALLOW_PI_DEPLOY=0`:
+- Do not run SSH build/deploy commands on `10.100.0.17`.
+- Do not run `cargo build --release` on Pi.
+- Do not launch `jellyfin-pi` with nohup.
+- Use local verification only (`cargo check`) and Pi log tail (read-only).
+
+If `ALLOW_PI_DEPLOY=1`:
+- Use this safe Pi build command only (single-job, memory-capped, lock, timeout):
+  ```bash
+  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 1800000 && nice -n 19 cargo build --release -j 1\"'"
+  ```
+- Install to the service binary path and restart the managed user service only:
+  ```bash
+  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; echo 5991 | sudo -S install -m 0755 ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; systemctl --user restart pi-media-player.service; sleep 8; tail -n 120 /tmp/pi-media-player.log 2>/dev/null || tail -n 120 /tmp/jmp-slint.log 2>/dev/null'"
+  ```
+EOF
+)
 
 # --- Lock ---
 cleanup() { rm -rf "$LOCK_DIR" 2>/dev/null; }
@@ -347,7 +370,12 @@ $PI_LOG
 \`\`\`
 
 ## Current Iteration
-Iteration $ITERATION at $TS. Fix the highest-priority issue you can identify from the code and logs."
+Iteration $ITERATION at $TS. Fix the highest-priority issue you can identify from the code and logs.
+
+## Unattended Loop Flags
+ALLOW_PI_DEPLOY=$ALLOW_PI_DEPLOY
+
+$SAFETY_OVERRIDE"
 
   # Pick endpoint
   if pick_endpoint; then

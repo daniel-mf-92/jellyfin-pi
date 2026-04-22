@@ -34,21 +34,28 @@ Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contai
 5. Fix it with minimal, targeted changes
 6. Run `cargo check` on Mac Mini to verify compilation
 7. Commit and push to origin/slint-rewrite
-8. SSH to Pi: pull, build, install, restart, read log to verify fix
+8. Deploy to Pi only when explicitly requested by operator and only with the safe deploy commands below
 9. Report what you fixed and verification result
 
 ## E2E Verification (MUST DO after every fix)
 
-```bash
-# Build on Pi
-ssh danielmatthews-ferrero@10.100.0.17 "cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && cargo build --release 2>&1 | tail -3"
+### Default mode (safe unattended)
+- Run local verification (`cargo check`) and collect Pi logs/screenshots read-only.
+- Do **not** run remote `cargo build --release` on Pi in unattended mode.
 
-# Install and restart
-ssh danielmatthews-ferrero@10.100.0.17 "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; echo 5991 | sudo -S cp ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/jellyfin-pi; rm -f /tmp/jmp-slint.log; echo jellyfin-pi > /tmp/foreground-app; WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"
+### Optional deploy mode (operator-approved only)
+- If and only if deploy is explicitly enabled, use the memory-safe single-job commands below.
+
+```bash
+# Build on Pi (safe single-job + memory cap + lock + timeout)
+ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 1800000 && nice -n 19 cargo build --release -j 1\"'"
+
+# Install and restart managed service
+ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; echo 5991 | sudo -S install -m 0755 ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; systemctl --user restart pi-media-player.service'"
 
 # Wait and check log
 sleep 8
-ssh danielmatthews-ferrero@10.100.0.17 "cat /tmp/jmp-slint.log" | grep -E "INFO|ERROR|WARN" | grep -v "winit\|sctk\|tracing\|hyper\|reqwest"
+ssh danielmatthews-ferrero@10.100.0.17 "tail -n 120 /tmp/pi-media-player.log 2>/dev/null || tail -n 120 /tmp/jmp-slint.log 2>/dev/null"
 ```
 
 The fix is NOT done until the Pi log shows the issue is resolved.
