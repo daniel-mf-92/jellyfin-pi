@@ -97,8 +97,8 @@ const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 // Keep Home image fetches short so post-fetch artwork decoding does not push
 // saved-token startup beyond the 10s global loading timeout budget.
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
-const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 80;
-const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 450;
+const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 220;
+const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 2200;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Allow a bit more time so Resume/Next Up can populate under
@@ -4919,6 +4919,7 @@ async fn load_home_data(
                     .saturating_sub(tokio::time::Duration::from_millis(150)),
             );
         let library_image_deadline = tokio::time::Instant::now() + library_image_budget;
+        let mut library_cards_with_artwork = 0usize;
         for view in &views {
             let mut candidate_urls: Vec<String> = Vec::new();
             candidate_urls.push(view.primary_image_url(&server_url, 300).unwrap_or_else(|| {
@@ -4945,6 +4946,7 @@ async fn load_home_data(
             }
 
             let mut poster = slint::Image::default();
+            let mut artwork_loaded = false;
             for url in candidate_urls {
                 let now = tokio::time::Instant::now();
                 if now >= library_image_deadline {
@@ -4970,8 +4972,13 @@ async fn load_home_data(
                 .flatten();
                 if let Some(image) = image {
                     poster = image;
+                    artwork_loaded = true;
                     break;
                 }
+            }
+
+            if artwork_loaded {
+                library_cards_with_artwork += 1;
             }
 
             library_cards.push(MediaItem {
@@ -4982,6 +4989,11 @@ async fn load_home_data(
                 ..Default::default()
             });
         }
+        info!(
+            "Home library artwork loaded for {}/{} cards",
+            library_cards_with_artwork,
+            views.len()
+        );
         if !library_cards.is_empty() {
             let mut all_rows: Vec<ContentRowData> = Vec::with_capacity(rows.len() + 1);
             all_rows.push(ContentRowData {
