@@ -3003,7 +3003,7 @@ fn setup_playback_callbacks(
     playback_controls: Arc<Mutex<PlaybackControls>>,
     queue: Arc<Mutex<PlaybackQueue>>,
 ) {
-    // play-item(item_id)
+    // play-item(item_id, from_start)
     let ui_weak = ui.as_weak();
     let client_clone = client.clone();
     let state_clone = state.clone();
@@ -3013,7 +3013,7 @@ fn setup_playback_callbacks(
     let segments_clone = segments.clone();
     let playback_controls_clone = playback_controls.clone();
     let queue_clone = queue.clone();
-    ui.global::<AppBridge>().on_play_item(move |item_id| {
+    ui.global::<AppBridge>().on_play_item(move |item_id, from_start| {
         let ui_weak = ui_weak.clone();
         let client = client_clone.clone();
         let state = state_clone.clone();
@@ -3198,12 +3198,18 @@ fn setup_playback_callbacks(
                         c.get_item(&playback_item_id).await.ok()
                     };
 
-                    // Get resume position
-                    let start_position_ms = item_detail
-                        .as_ref()
-                        .and_then(|item| item.user_data.as_ref())
-                        .map(|ud| ud.playback_position_ticks / 10_000)
-                        .unwrap_or(0);
+                    // Use explicit Play-vs-Resume behavior from detail action buttons:
+                    // - Play starts from beginning
+                    // - Resume starts from stored position
+                    let start_position_ms = if from_start {
+                        0
+                    } else {
+                        item_detail
+                            .as_ref()
+                            .and_then(|item| item.user_data.as_ref())
+                            .map(|ud| ud.playback_position_ticks / 10_000)
+                            .unwrap_or(0)
+                    };
 
                     // Update state
                     state
@@ -3831,7 +3837,7 @@ fn setup_playback_callbacks(
                 if let Some(id) = item_id {
                     info!("Queue: playing item at index {}: {}", index, id);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                        ui.global::<AppBridge>().invoke_play_item(id.into());
+                        ui.global::<AppBridge>().invoke_play_item(id.into(), false);
                     });
                 }
             });
@@ -6078,7 +6084,7 @@ async fn handle_player_events(
                 if let Some(next_id) = next_item {
                     info!("Queue: auto-advancing to next item: {}", next_id);
                     let _ = ui_weak.upgrade_in_event_loop(move |ui| {
-                        ui.global::<AppBridge>().invoke_play_item(next_id.into());
+                        ui.global::<AppBridge>().invoke_play_item(next_id.into(), false);
                     });
                     // Don't stop playback or navigate back - new item will start
                     break;

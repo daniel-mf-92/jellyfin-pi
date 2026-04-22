@@ -37,7 +37,7 @@ export global AppBridge {
     callback request-episodes(/* series_id */ string, /* season_id */ string);
 
     // Playback
-    callback play-item(/* item_id */ string);
+    callback play-item(/* item_id */ string, /* from_start */ bool);
     callback play-pause();
     callback seek(/* position_ms */ int);
     callback stop-playback();
@@ -260,7 +260,7 @@ export component AppWindow inherits Window {
                 }
             }
             item-play(id) => {
-                AppBridge.play-item(id);
+                AppBridge.play-item(id, false);
             }
             open-search() => {
                 AppBridge.navigate("search", "");
@@ -286,7 +286,10 @@ export component AppWindow inherits Window {
             genres: AppBridge.genres;
             cast-members: AppBridge.cast-members;
             play-item(item-id) => {
-                AppBridge.play-item(item-id);
+                AppBridge.play-item(item-id, false);
+            }
+            play-item-from-start(item-id) => {
+                AppBridge.play-item(item-id, true);
             }
             navigate(screen, param) => {
                 AppBridge.navigate(screen, param);

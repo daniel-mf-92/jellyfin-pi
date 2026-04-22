@@ -86,6 +86,7 @@ export component DetailScreen inherits Rectangle {
     in-out property <int> focused-related-index: 0;
 
     callback play-item(/* item_id */ string);
+    callback play-item-from-start(/* item_id */ string);
     callback navigate(/* screen */ string, /* param */ string);
     callback go-back();
     callback toggle-favorite(/* item_id */ string);
@@ -265,7 +266,7 @@ export component DetailScreen inherits Rectangle {
                     if (root.has-progress) {
                         // 0=Play, 1=Resume, 2=Favorite, 3=Played
                         if (root.focused-button == 0) {
-                            root.play-item(root.item.id);
+                            root.play-item-from-start(root.item.id);
                         } else if (root.focused-button == 1) {
                             root.play-item(root.item.id);
                         } else if (root.focused-button == 2) {
@@ -280,7 +281,7 @@ export component DetailScreen inherits Rectangle {
                     } else {
                         // 0=Play, 1=Favorite, 2=Played
                         if (root.focused-button == 0) {
-                            root.play-item(root.item.id);
+                            root.play-item-from-start(root.item.id);
                         } else if (root.focused-button == 1) {
                             root.toggle-favorite(root.item.id);
                         } else if (root.focused-button == 2) {
@@ -640,7 +641,7 @@ export component DetailScreen inherits Rectangle {
                         icon-text: "\u{25B6}";
                         label: "Play";
                         focused: root.focused-section == 0 && root.focused-button == 0;
-                        activated => { root.play-item(root.item.id); }
+                        activated => { root.play-item-from-start(root.item.id); }
                     }
 
                     // Resume button (only if progress > 0)
