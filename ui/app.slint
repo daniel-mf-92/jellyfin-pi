@@ -166,6 +166,8 @@ export component AppWindow inherits Window {
                 || event.text == "\u{1b}"
                 || event.text == "Escape"
                 || event.text == "Esc"
+                || event.text == "b"
+                || event.text == "B"
             ) {
                 if (AppBridge.current-screen == "login" && AppBridge.users.length == 0) {
                     AppBridge.is-loading = false;
