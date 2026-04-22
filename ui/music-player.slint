@@ -467,8 +467,8 @@ export component MusicPlayer inherits Rectangle {
         height: 100%;
 
         key-pressed(event) => {
-            // B / Escape: exit music player
-            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+            // Escape/back: exit music player
+            if event.text == Key.Escape {
                 root.back();
                 return accept;
             }

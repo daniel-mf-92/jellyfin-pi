@@ -153,8 +153,8 @@ export component ChapterListPopup inherits Rectangle {
         enabled: root.visible;
 
         key-pressed(event) => {
-            // Escape or B button: close popup
-            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+            // Escape/back: close popup
+            if event.text == Key.Escape {
                 root.visible = false;
                 return accept;
             }

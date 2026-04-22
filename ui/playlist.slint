@@ -344,8 +344,8 @@ export component PlaylistSidebar inherits Rectangle {
         enabled: root.sidebar-visible;
 
         key-pressed(event) => {
-            // B or Escape: close sidebar
-            if event.text == Key.Escape || event.text == "b" || event.text == "B" {
+            // Escape/back: close sidebar
+            if event.text == Key.Escape {
                 root.close-requested();
                 return accept;
             }

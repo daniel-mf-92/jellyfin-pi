@@ -53,8 +53,8 @@ export component ConfirmPopup inherits Rectangle {
                 return accept;
             }
 
-            // B key or Escape -> cancel
-            if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+            // Escape/back -> cancel
+            if (event.text == Key.Escape) {
                 root.cancel();
                 return accept;
             }

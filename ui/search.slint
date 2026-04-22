@@ -399,14 +399,12 @@ export component SearchScreen inherits Rectangle {
 
     focus-scope := FocusScope {
         key-pressed(event) => {
-            // B or Escape => go back
+            // Escape/back => go back
             if (
                 event.text == Key.Escape
                 || event.text == "\u{1b}"
                 || event.text == "Escape"
                 || event.text == "Esc"
-                || event.text == "b"
-                || event.text == "B"
             ) {
                 go-back();
                 return accept;

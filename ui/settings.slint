@@ -73,7 +73,7 @@ export component SettingsScreen inherits Rectangle {
                     root.change-subtitle-font-size(root.subtitle-font-size + 2);
                 }
                 return accept;
-            } else if (event.text == Key.Escape || event.text == "b" || event.text == "B") {
+            } else if (event.text == Key.Escape) {
                 root.go-back();
                 return accept;
             }
