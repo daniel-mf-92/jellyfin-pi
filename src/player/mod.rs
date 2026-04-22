@@ -17,7 +17,7 @@ use std::process::Command as StdCommand;
 pub fn kill_all_media_players() {
     let targets = [
         "vlc", "cvlc", "mpv", "ffplay", "mplayer",
-        "jellyfinmediaplayer", "jellyfin-pi",
+        "jellyfinmediaplayer",
         "totem", "celluloid", "parole",
     ];
     for target in &targets {
