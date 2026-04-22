@@ -5429,51 +5429,48 @@ async fn load_library(
     const LIBRARY_ITEM_FIELDS: &str =
         "CommunityRating,ProductionYear,OfficialRating,UserData,PrimaryImageAspectRatio";
 
-    let c = client.read().await;
-    let server_url = c.server_url.clone();
-    let access_token = c.access_token.clone();
+    let client_snapshot = { client.read().await.clone() };
+    let server_url = client_snapshot.server_url.clone();
+    let access_token = client_snapshot.access_token.clone();
 
-    let library_name_future = async {
-        match tokio::time::timeout(
-            tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
-            c.get_item(library_id),
-        )
-        .await
-        {
-            Ok(Ok(lib_item)) => lib_item.name.clone(),
-            Ok(Err(e)) => {
-                warn!(
-                    "Failed to fetch library metadata for {}: {}; using fallback title",
-                    library_id, e
-                );
-                String::from("Library")
-            }
-            Err(_) => {
-                warn!(
-                    "Library metadata fetch timed out after {}s for {}; using fallback title",
-                    LIBRARY_NAME_FETCH_TIMEOUT_SECS,
-                    library_id
-                );
-                String::from("Library")
-            }
+    let library_name = match tokio::time::timeout(
+        tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
+        client_snapshot.get_item(library_id),
+    )
+    .await
+    {
+        Ok(Ok(lib_item)) => lib_item.name.clone(),
+        Ok(Err(e)) => {
+            warn!(
+                "Failed to fetch library metadata for {}: {}; using fallback title",
+                library_id, e
+            );
+            String::from("Library")
+        }
+        Err(_) => {
+            warn!(
+                "Library metadata fetch timed out after {}s for {}; using fallback title",
+                LIBRARY_NAME_FETCH_TIMEOUT_SECS,
+                library_id
+            );
+            String::from("Library")
         }
     };
 
-    let library_items_future = c.get_items(
-        Some(library_id),
-        None,
-        sort_by.or(Some("SortName")),
-        Some("Ascending"),
-        0,
-        LIBRARY_ITEM_LIMIT,
-        filters,
-        Some(LIBRARY_ITEM_FIELDS),
-        true,
-    );
-
-    let (library_name, result) = tokio::join!(library_name_future, library_items_future);
-    let result = result.map_err(|e| format!("Failed to get library items: {}", e))?;
-    drop(c);
+    let result = client_snapshot
+        .get_items(
+            Some(library_id),
+            None,
+            sort_by.or(Some("SortName")),
+            Some("Ascending"),
+            0,
+            LIBRARY_ITEM_LIMIT,
+            filters,
+            Some(LIBRARY_ITEM_FIELDS),
+            true,
+        )
+        .await
+        .map_err(|e| format!("Failed to get library items: {}", e))?;
 
     let media_items = items_to_media_items_fast(
         &result.items,
@@ -5521,13 +5518,13 @@ async fn load_library_fallback(
     filters: Option<&str>,
     navigation_guard: Option<(Arc<AtomicU64>, u64)>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let c = client.read().await;
-    let server_url = c.server_url.clone();
-    let access_token = c.access_token.clone();
+    let client_snapshot = { client.read().await.clone() };
+    let server_url = client_snapshot.server_url.clone();
+    let access_token = client_snapshot.access_token.clone();
 
     let library_name = match tokio::time::timeout(
         tokio::time::Duration::from_secs(LIBRARY_NAME_FETCH_TIMEOUT_SECS),
-        c.get_item(library_id),
+        client_snapshot.get_item(library_id),
     )
     .await
     {
@@ -5549,7 +5546,7 @@ async fn load_library_fallback(
         }
     };
 
-    let result = c
+    let result = client_snapshot
         .get_items(
             Some(library_id),
             None,
@@ -5563,7 +5560,6 @@ async fn load_library_fallback(
         )
         .await
         .map_err(|e| format!("Failed to get fallback library items: {}", e))?;
-    drop(c);
 
     let media_items = items_to_media_items_fast(
         &result.items,
