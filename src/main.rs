@@ -2512,7 +2512,7 @@ async fn retry_login_users_during_saved_token_recovery(
             ui_weak.clone(),
             client.clone(),
             image_cache.clone(),
-            true,
+            false,
         )
         .await
         {
