@@ -432,6 +432,26 @@ async fn wait_for_display_backend() {
     std::env::remove_var("DISPLAY");
 }
 
+fn dismiss_flex_launcher_overlay() {
+    #[cfg(target_os = "linux")]
+    {
+        match std::process::Command::new("pkill")
+            .args(["-x", "flex-launcher"])
+            .status()
+        {
+            Ok(status) if status.success() => {
+                info!("Dismissed flex-launcher so jellyfin-pi can take foreground");
+            }
+            Ok(_) => {
+                debug!("flex-launcher not running at startup");
+            }
+            Err(e) => {
+                warn!("Failed to dismiss flex-launcher at startup: {}", e);
+            }
+        }
+    }
+}
+
 // =============================================================================
 // Type conversion helpers
 // =============================================================================
@@ -938,6 +958,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let daemon_mgr = Arc::new(Mutex::new(daemon_mgr));
 
     wait_for_display_backend().await;
+    dismiss_flex_launcher_overlay();
 
     // 4. Create Slint UI
     let ui = AppWindow::new()?;
