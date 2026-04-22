@@ -117,6 +117,9 @@ const LIBRARY_FALLBACK_TIMEOUT_SECS: u64 = 6;
 const LIBRARY_FALLBACK_ITEM_LIMIT: i32 = 24;
 const LIBRARY_FALLBACK_IMAGE_LOAD_TIMEOUT_MS: u64 = 80;
 const LIBRARY_FALLBACK_ITEM_FIELDS: &str = "ProductionYear,PrimaryImageAspectRatio";
+// Give item-type preflight enough room to classify CollectionFolder items on
+// slower LAN/Wi-Fi links, while keeping navigation perceptibly snappy.
+const DETAIL_PREFLIGHT_TIMEOUT_MS: u64 = 1200;
 // Confirm incomplete setup quickly so login doesn't sit in a prolonged
 // background-retrying state when Jellyfin still needs first-time setup.
 const SETUP_INCOMPLETE_CONFIRMATION_STREAK: usize = 3;
@@ -1927,9 +1930,9 @@ fn setup_navigation_callbacks(
                         return;
                     }
 
-                    // For media items, keep preflight short so detail navigation remains
-                    // responsive while still catching occasional CollectionFolder ids.
-                    const DETAIL_PREFLIGHT_TIMEOUT_MS: u64 = 350;
+                    // Keep detail navigation responsive while still giving
+                    // CollectionFolder detection enough time to avoid
+                    // incorrect detail-screen navigation.
                     let preflight_item = match with_loading_timeout_duration(
                         "Detail preflight",
                         tokio::time::Duration::from_millis(DETAIL_PREFLIGHT_TIMEOUT_MS),
@@ -4007,7 +4010,7 @@ fn setup_content_callbacks(
 
                 let preflight_item = match with_loading_timeout_duration(
                     "Detail refresh preflight",
-                    tokio::time::Duration::from_millis(350),
+                    tokio::time::Duration::from_millis(DETAIL_PREFLIGHT_TIMEOUT_MS),
                     {
                         let client = client.clone();
                         let item_id = item_id_str.clone();
