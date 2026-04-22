@@ -24,9 +24,12 @@ MAX_LOAD_PER_CORE="${MAX_LOAD_PER_CORE:-2.50}"
 RESOURCE_BACKOFF_SECONDS="${RESOURCE_BACKOFF_SECONDS:-300}"
 MAX_CONCURRENT_CODEX_PROCS="${MAX_CONCURRENT_CODEX_PROCS:-4}"
 MAX_CONCURRENT_REPO_CODEX_PROCS="${MAX_CONCURRENT_REPO_CODEX_PROCS:-1}"
+BLOCK_PI_HOST_PATTERN="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
+BLOCK_RELEASE_BUILDS="${BLOCK_RELEASE_BUILDS:-1}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
 LOCK_PID_FILE="$LOCK_DIR/pid"
+SAFETY_BIN_DIR="${SAFETY_BIN_DIR:-$LOCK_DIR/safety-bin}"
 HEARTBEAT_FILE="${HEARTBEAT_FILE:-$LOG_DIR/loop.heartbeat}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.mcp-credentials.env}"
 
@@ -81,6 +84,95 @@ echo $$ > "$LOCK_PID_FILE"
 
 log_line() {
   echo "[$(date +%Y-%m-%dT%H:%M:%S%z)] $*"
+}
+
+setup_safety_shims() {
+  local shim_dir="$SAFETY_BIN_DIR"
+  local real_ssh real_scp real_rsync real_cargo
+
+  real_ssh=$(command -v ssh 2>/dev/null || echo /usr/bin/ssh)
+  real_scp=$(command -v scp 2>/dev/null || echo /usr/bin/scp)
+  real_rsync=$(command -v rsync 2>/dev/null || echo /usr/bin/rsync)
+  real_cargo=$(command -v cargo 2>/dev/null || true)
+
+  rm -rf "$shim_dir"
+  mkdir -p "$shim_dir"
+
+  cat > "$shim_dir/ssh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL="$real_ssh"
+TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
+ALLOW="${ALLOW_PI_DEPLOY:-0}"
+ARGS="$*"
+if [[ "$ALLOW" != "1" ]]; then
+  if [[ "$ARGS" == *"$TARGET_IP"* ]] || [[ "$ARGS" == *"pi-home-a"* ]] || [[ "$ARGS" == *"pi5-home-A"* ]]; then
+    echo "[safety-shim] blocked ssh to Pi target while ALLOW_PI_DEPLOY=0" >&2
+    exit 125
+  fi
+fi
+exec "$REAL" "$@"
+EOF
+
+  cat > "$shim_dir/scp" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL="$real_scp"
+TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
+ALLOW="${ALLOW_PI_DEPLOY:-0}"
+ARGS="$*"
+if [[ "$ALLOW" != "1" ]]; then
+  if [[ "$ARGS" == *"$TARGET_IP"* ]] || [[ "$ARGS" == *"pi-home-a"* ]] || [[ "$ARGS" == *"pi5-home-A"* ]]; then
+    echo "[safety-shim] blocked scp to/from Pi target while ALLOW_PI_DEPLOY=0" >&2
+    exit 125
+  fi
+fi
+exec "$REAL" "$@"
+EOF
+
+  cat > "$shim_dir/rsync" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL="$real_rsync"
+TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
+ALLOW="${ALLOW_PI_DEPLOY:-0}"
+ARGS="$*"
+if [[ "$ALLOW" != "1" ]]; then
+  if [[ "$ARGS" == *"$TARGET_IP"* ]] || [[ "$ARGS" == *"pi-home-a"* ]] || [[ "$ARGS" == *"pi5-home-A"* ]]; then
+    echo "[safety-shim] blocked rsync to/from Pi target while ALLOW_PI_DEPLOY=0" >&2
+    exit 125
+  fi
+fi
+exec "$REAL" "$@"
+EOF
+
+  chmod +x "$shim_dir/ssh" "$shim_dir/scp" "$shim_dir/rsync"
+
+  if [[ -n "$real_cargo" ]]; then
+    cat > "$shim_dir/cargo" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REAL="$real_cargo"
+ALLOW="${ALLOW_PI_DEPLOY:-0}"
+BLOCK="${BLOCK_RELEASE_BUILDS:-1}"
+if [[ "$ALLOW" != "1" && "$BLOCK" == "1" ]]; then
+  is_build=0
+  has_release=0
+  for arg in "$@"; do
+    [[ "$arg" == "build" ]] && is_build=1
+    [[ "$arg" == "--release" ]] && has_release=1
+  done
+  if [[ "$is_build" == "1" && "$has_release" == "1" ]]; then
+    echo "[safety-shim] blocked cargo build --release while ALLOW_PI_DEPLOY=0" >&2
+    exit 125
+  fi
+fi
+exec "$REAL" "$@"
+EOF
+    chmod +x "$shim_dir/cargo"
+  fi
+
+  log_line "Safety shims armed: ALLOW_PI_DEPLOY=$ALLOW_PI_DEPLOY BLOCK_RELEASE_BUILDS=$BLOCK_RELEASE_BUILDS target=$BLOCK_PI_HOST_PATTERN"
 }
 
 # --- Load balancer: pick a random endpoint ---
@@ -270,9 +362,9 @@ run_codex_attempt() {
     fi
 
     if [[ "$CODEX_NICE_LEVEL" -gt 0 ]] && command -v nice >/dev/null 2>&1; then
-      exec nice -n "$CODEX_NICE_LEVEL" codex "${CODEX_ARGS[@]}"
+      exec env PATH="$SAFETY_BIN_DIR:$PATH" ALLOW_PI_DEPLOY="$ALLOW_PI_DEPLOY" BLOCK_PI_HOST_PATTERN="$BLOCK_PI_HOST_PATTERN" BLOCK_RELEASE_BUILDS="$BLOCK_RELEASE_BUILDS" nice -n "$CODEX_NICE_LEVEL" codex "${CODEX_ARGS[@]}"
     else
-      exec codex "${CODEX_ARGS[@]}"
+      exec env PATH="$SAFETY_BIN_DIR:$PATH" ALLOW_PI_DEPLOY="$ALLOW_PI_DEPLOY" BLOCK_PI_HOST_PATTERN="$BLOCK_PI_HOST_PATTERN" BLOCK_RELEASE_BUILDS="$BLOCK_RELEASE_BUILDS" codex "${CODEX_ARGS[@]}"
     fi
   ) >> "$out_file" 2>&1 &
 
@@ -326,6 +418,8 @@ EOF
 
   wait "$pid"
 }
+
+setup_safety_shims
 
 # --- Main loop ---
 ITERATION=0
