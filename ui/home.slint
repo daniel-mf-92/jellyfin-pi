@@ -238,9 +238,6 @@ export component HomeScreen inherits Rectangle {
             ) {
                 if (root.focused-row > 0) {
                     root.focused-row -= 1;
-                    if (root.focused-col >= root.rows[root.focused-row].items.length) {
-                        root.focused-col = max(0, root.rows[root.focused-row].items.length - 1);
-                    }
                 }
                 return accept;
             }
@@ -252,10 +249,6 @@ export component HomeScreen inherits Rectangle {
             ) {
                 if (root.focused-row < root.rows.length - 1) {
                     root.focused-row += 1;
-                    // Clamp col to new row's item count
-                    if (root.focused-col >= root.rows[root.focused-row].items.length) {
-                        root.focused-col = max(0, root.rows[root.focused-row].items.length - 1);
-                    }
                 }
                 return accept;
             }
@@ -267,8 +260,8 @@ export component HomeScreen inherits Rectangle {
                 || event.text == "ArrowRight"
             ) {
                 if (root.focused-row >= 0 && root.focused-row < root.rows.length) {
-                    if (root.focused-col < root.rows[root.focused-row].items.length - 1) {
-                        root.focused-col += 1;
+                    if (root.safe-focused-col < root.rows[root.focused-row].items.length - 1) {
+                        root.focused-col = root.safe-focused-col + 1;
                     }
                 }
                 return accept;
@@ -279,8 +272,8 @@ export component HomeScreen inherits Rectangle {
                 || event.text == "left"
                 || event.text == "ArrowLeft"
             ) {
-                if (root.focused-col > 0) {
-                    root.focused-col -= 1;
+                if (root.safe-focused-col > 0) {
+                    root.focused-col = root.safe-focused-col - 1;
                 }
                 return accept;
             }
@@ -533,9 +526,10 @@ export component HomeScreen inherits Rectangle {
                     is-square: row.row-type == "square";
                     include-horizontal-overscan: false;
                     row-focused: index == root.safe-focused-row;
-                    // Match Jellyfin TV row behavior: only the active row
-                    // tracks horizontal focus/scroll movement.
-                    focused-index: index == root.safe-focused-row ? root.safe-focused-col : 0;
+                    // Keep rows from snapping back to column 0 when moving
+                    // vertically, so horizontal position follows Jellyfin TV
+                    // behavior across row transitions.
+                    focused-index: root.safe-focused-col;
 
                     item-selected(id, item-type) => {
                         if (
