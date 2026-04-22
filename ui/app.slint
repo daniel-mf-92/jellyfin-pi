@@ -200,6 +200,20 @@ export component AppWindow inherits Window {
                 AppBridge.navigate("home", "");
                 return accept;
             }
+            // Controller contract: Y/F2 opens settings from any browse screen.
+            if (event.text == Key.F2 && AppBridge.current-screen != "login" && AppBridge.current-screen != "player") {
+                if (AppBridge.current-screen != "settings") {
+                    AppBridge.navigate("settings", "");
+                }
+                return accept;
+            }
+            // Controller contract: X/F3 opens search from any browse screen.
+            if (event.text == Key.F3 && AppBridge.current-screen != "login" && AppBridge.current-screen != "player") {
+                if (AppBridge.current-screen != "search") {
+                    AppBridge.navigate("search", "");
+                }
+                return accept;
+            }
             // Ensure retry works from login/home whenever connectivity is degraded,
             // even if child FocusScopes did not capture Enter.
             // Avoid brittle exact-string matching so backend wording changes cannot
