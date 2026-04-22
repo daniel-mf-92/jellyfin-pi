@@ -204,7 +204,12 @@ export component DetailScreen inherits Rectangle {
             }
 
             // Up
-            if (event.text == Key.UpArrow || event.text == "Up") {
+            if (
+                event.text == Key.UpArrow
+                || event.text == "Up"
+                || event.text == "up"
+                || event.text == "ArrowUp"
+            ) {
                 if (root.focused-section > 0) {
                     root.focused-section -= 1;
                 }
@@ -212,7 +217,12 @@ export component DetailScreen inherits Rectangle {
             }
 
             // Down
-            if (event.text == Key.DownArrow || event.text == "Down") {
+            if (
+                event.text == Key.DownArrow
+                || event.text == "Down"
+                || event.text == "down"
+                || event.text == "ArrowDown"
+            ) {
                 if (root.focused-section < root.section-count() - 1) {
                     root.focused-section += 1;
                 }
@@ -221,13 +231,23 @@ export component DetailScreen inherits Rectangle {
 
             // Left/Right in button row
             if (root.focused-section == 0) {
-                if (event.text == Key.LeftArrow || event.text == "Left") {
+                if (
+                    event.text == Key.LeftArrow
+                    || event.text == "Left"
+                    || event.text == "left"
+                    || event.text == "ArrowLeft"
+                ) {
                     if (root.focused-button > 0) {
                         root.focused-button -= 1;
                     }
                     return accept;
                 }
-                if (event.text == Key.RightArrow || event.text == "Right") {
+                if (
+                    event.text == Key.RightArrow
+                    || event.text == "Right"
+                    || event.text == "right"
+                    || event.text == "ArrowRight"
+                ) {
                     if (root.focused-button < root.button-count - 1) {
                         root.focused-button += 1;
                     }
@@ -277,7 +297,12 @@ export component DetailScreen inherits Rectangle {
 
             // Left/Right/Enter in content rows
             if (root.focused-section > 0) {
-                if (event.text == Key.LeftArrow || event.text == "Left") {
+                if (
+                    event.text == Key.LeftArrow
+                    || event.text == "Left"
+                    || event.text == "left"
+                    || event.text == "ArrowLeft"
+                ) {
                     if (root.focused-section == root.section-index-genres()) {
                         if (root.focused-genre-index > 0) {
                             root.focused-genre-index -= 1;
@@ -303,7 +328,12 @@ export component DetailScreen inherits Rectangle {
                     return accept;
                 }
 
-                if (event.text == Key.RightArrow || event.text == "Right") {
+                if (
+                    event.text == Key.RightArrow
+                    || event.text == "Right"
+                    || event.text == "right"
+                    || event.text == "ArrowRight"
+                ) {
                     if (root.focused-section == root.section-index-genres()) {
                         if (root.focused-genre-index < root.genres.length - 1) {
                             root.focused-genre-index += 1;
