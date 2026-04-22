@@ -697,12 +697,14 @@ export component DetailScreen inherits Rectangle {
 
             // -- Seasons row (series only) ------------------------------------
             if root.is-series && root.has-seasons : VerticalLayout {
+                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 spacing: Theme.spacing-sm;
 
                 ContentRow {
                     title: "Seasons";
                     items: root.seasons;
+                    include-horizontal-overscan: false;
                     row-focused: root.focused-section == root.section-index-seasons();
                     focused-index: root.focused-season-index;
 
@@ -714,6 +716,7 @@ export component DetailScreen inherits Rectangle {
 
             // -- Episodes row (series with selected season) -------------------
             if root.is-series && root.has-episodes : VerticalLayout {
+                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 padding-top: Theme.spacing-md;
                 spacing: Theme.spacing-sm;
@@ -722,6 +725,7 @@ export component DetailScreen inherits Rectangle {
                     title: "Episodes";
                     items: root.episodes;
                     is-landscape: true;
+                    include-horizontal-overscan: false;
                     focused-index: root.focused-episode-index;
                     row-focused: root.focused-section == root.section-index-episodes();
 
@@ -737,6 +741,7 @@ export component DetailScreen inherits Rectangle {
 
             // -- Similar / Related row ----------------------------------------
             if root.has-related : VerticalLayout {
+                padding-left: Theme.overscan-h;
                 padding-right: Theme.overscan-h;
                 padding-top: Theme.spacing-md;
                 spacing: Theme.spacing-sm;
@@ -744,6 +749,7 @@ export component DetailScreen inherits Rectangle {
                 ContentRow {
                     title: "Similar";
                     items: root.related-items;
+                    include-horizontal-overscan: false;
                     focused-index: root.focused-related-index;
                     row-focused: root.focused-section == root.section-index-similar();
 
