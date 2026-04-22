@@ -97,9 +97,12 @@ const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 // Keep Home image fetches short so post-fetch artwork decoding does not push
 // saved-token startup beyond the 10s global loading timeout budget.
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
-const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 220;
-const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 2200;
-const HOME_LIBRARY_CARD_MIN_IMAGE_BUDGET_MS: u64 = 700;
+// Library cards are the primary visual affordance on Home. Allow a slightly
+// larger per-card image budget so "My Media" does not render as text-only on
+// first load when the Jellyfin server has normal LAN jitter.
+const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 700;
+const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 5000;
+const HOME_LIBRARY_CARD_MIN_IMAGE_BUDGET_MS: u64 = 2000;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Allow a bit more time so Resume/Next Up can populate under
