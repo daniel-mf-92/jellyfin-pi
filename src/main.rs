@@ -2237,10 +2237,24 @@ fn setup_navigation_callbacks(
                             ui.global::<AppBridge>().set_is_loading(false);
                         });
                         // Playback is initiated by play-item callback
+                    } else {
+                        warn!("Ignoring player navigation without item id");
+                        let _ = ui_weak.upgrade_in_event_loop(|ui| {
+                            ui.global::<AppBridge>()
+                                .set_error_message("Unable to start playback for this item.".into());
+                            ui.global::<AppBridge>().set_is_loading(false);
+                        });
                     }
                 }
                 other => {
                     warn!("Unknown navigation target: {}", other);
+                    let target = other.to_string();
+                    let _ = ui_weak.upgrade_in_event_loop(move |ui| {
+                        ui.global::<AppBridge>().set_error_message(
+                            format!("Unsupported screen: {}", target).into(),
+                        );
+                        ui.global::<AppBridge>().set_is_loading(false);
+                    });
                 }
             }
         });
