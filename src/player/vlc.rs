@@ -240,6 +240,7 @@ impl VlcPlayer {
 
         let child = Command::new("cvlc")
             .args(&args)
+            .env("LC_NUMERIC", "C")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true)
