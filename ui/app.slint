@@ -473,7 +473,18 @@ export component AppWindow inherits Window {
         }
 
         // Error message overlay
-        if AppBridge.error-message != "" && AppBridge.current-screen != "login" : Rectangle {
+        // Keep Home usable when content is already visible and we're only
+        // showing a transient Jellyfin reconnect message.
+        if AppBridge.error-message != "" && AppBridge.current-screen != "login"
+            && !(
+                AppBridge.current-screen == "home"
+                && AppBridge.home-rows.length > 0
+                && (
+                    AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry connection."
+                    || AppBridge.error-message == "Cannot connect to Jellyfin. Press A / Enter to retry now. Reconnecting automatically in background..."
+                    || AppBridge.error-message == "Cannot connect to Jellyfin (retrying in background)..."
+                )
+            ) : Rectangle {
             width: 100%;
             height: 100%;
             background: Theme.background.with-alpha(0.85);
@@ -491,6 +502,7 @@ export component AppWindow inherits Window {
                         )
                         && AppBridge.current-screen == "home"
                         && AppBridge.error-message != ""
+                        && AppBridge.home-rows.length == 0
                     ) {
                         AppBridge.retry-connection();
                         return accept;
