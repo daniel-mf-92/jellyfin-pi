@@ -68,265 +68,126 @@ export component HomeScreen inherits Rectangle {
 
     pure function rows-height-through(index: int) -> length {
         let i = max(0, min(index, root.rows.length));
-        if (i == 0) {
-            return 0px;
-        }
-        if (i == 1) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg;
-        }
-        if (i == 2) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg;
-        }
-        if (i == 3) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg;
-        }
-        if (i == 4) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg;
-        }
-        if (i == 5) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg;
-        }
-        if (i == 6) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg;
-        }
-        if (i == 7) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg;
-        }
-        if (i == 8) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg;
-        }
-        if (i == 9) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg;
-        }
-        if (i == 10) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg;
-        }
-        if (i == 11) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg;
-        }
-        if (i == 12) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg
-                + root.row-block-height-for-index(11) + Theme.spacing-lg;
-        }
-        if (i == 13) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg
-                + root.row-block-height-for-index(11) + Theme.spacing-lg
-                + root.row-block-height-for-index(12) + Theme.spacing-lg;
-        }
-        if (i == 14) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg
-                + root.row-block-height-for-index(11) + Theme.spacing-lg
-                + root.row-block-height-for-index(12) + Theme.spacing-lg
-                + root.row-block-height-for-index(13) + Theme.spacing-lg;
-        }
-        if (i == 15) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg
-                + root.row-block-height-for-index(11) + Theme.spacing-lg
-                + root.row-block-height-for-index(12) + Theme.spacing-lg
-                + root.row-block-height-for-index(13) + Theme.spacing-lg
-                + root.row-block-height-for-index(14) + Theme.spacing-lg;
-        }
-        if (i == 16) {
-            return root.row-block-height-for-index(0) + Theme.spacing-lg
-                + root.row-block-height-for-index(1) + Theme.spacing-lg
-                + root.row-block-height-for-index(2) + Theme.spacing-lg
-                + root.row-block-height-for-index(3) + Theme.spacing-lg
-                + root.row-block-height-for-index(4) + Theme.spacing-lg
-                + root.row-block-height-for-index(5) + Theme.spacing-lg
-                + root.row-block-height-for-index(6) + Theme.spacing-lg
-                + root.row-block-height-for-index(7) + Theme.spacing-lg
-                + root.row-block-height-for-index(8) + Theme.spacing-lg
-                + root.row-block-height-for-index(9) + Theme.spacing-lg
-                + root.row-block-height-for-index(10) + Theme.spacing-lg
-                + root.row-block-height-for-index(11) + Theme.spacing-lg
-                + root.row-block-height-for-index(12) + Theme.spacing-lg
-                + root.row-block-height-for-index(13) + Theme.spacing-lg
-                + root.row-block-height-for-index(14) + Theme.spacing-lg
-                + root.row-block-height-for-index(15) + Theme.spacing-lg;
-        }
-        let first-16-height = root.row-block-height-for-index(0) + Theme.spacing-lg
-            + root.row-block-height-for-index(1) + Theme.spacing-lg
-            + root.row-block-height-for-index(2) + Theme.spacing-lg
-            + root.row-block-height-for-index(3) + Theme.spacing-lg
-            + root.row-block-height-for-index(4) + Theme.spacing-lg
-            + root.row-block-height-for-index(5) + Theme.spacing-lg
-            + root.row-block-height-for-index(6) + Theme.spacing-lg
-            + root.row-block-height-for-index(7) + Theme.spacing-lg
-            + root.row-block-height-for-index(8) + Theme.spacing-lg
-            + root.row-block-height-for-index(9) + Theme.spacing-lg
-            + root.row-block-height-for-index(10) + Theme.spacing-lg
-            + root.row-block-height-for-index(11) + Theme.spacing-lg
-            + root.row-block-height-for-index(12) + Theme.spacing-lg
-            + root.row-block-height-for-index(13) + Theme.spacing-lg
-            + root.row-block-height-for-index(14) + Theme.spacing-lg
-            + root.row-block-height-for-index(15) + Theme.spacing-lg;
-        if (i == 17) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg;
-        }
-        if (i == 18) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg;
-        }
-        if (i == 19) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg;
-        }
-        if (i == 20) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg
-                + root.row-block-height-for-index(19) + Theme.spacing-lg;
-        }
-        if (i == 21) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg
-                + root.row-block-height-for-index(19) + Theme.spacing-lg
-                + root.row-block-height-for-index(20) + Theme.spacing-lg;
-        }
-        if (i == 22) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg
-                + root.row-block-height-for-index(19) + Theme.spacing-lg
-                + root.row-block-height-for-index(20) + Theme.spacing-lg
-                + root.row-block-height-for-index(21) + Theme.spacing-lg;
-        }
-        if (i == 23) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg
-                + root.row-block-height-for-index(19) + Theme.spacing-lg
-                + root.row-block-height-for-index(20) + Theme.spacing-lg
-                + root.row-block-height-for-index(21) + Theme.spacing-lg
-                + root.row-block-height-for-index(22) + Theme.spacing-lg;
-        }
-        if (i == 24) {
-            return first-16-height
-                + root.row-block-height-for-index(16) + Theme.spacing-lg
-                + root.row-block-height-for-index(17) + Theme.spacing-lg
-                + root.row-block-height-for-index(18) + Theme.spacing-lg
-                + root.row-block-height-for-index(19) + Theme.spacing-lg
-                + root.row-block-height-for-index(20) + Theme.spacing-lg
-                + root.row-block-height-for-index(21) + Theme.spacing-lg
-                + root.row-block-height-for-index(22) + Theme.spacing-lg
-                + root.row-block-height-for-index(23) + Theme.spacing-lg;
-        }
-        let first-24-height = first-16-height
-            + root.row-block-height-for-index(16) + Theme.spacing-lg
-            + root.row-block-height-for-index(17) + Theme.spacing-lg
-            + root.row-block-height-for-index(18) + Theme.spacing-lg
-            + root.row-block-height-for-index(19) + Theme.spacing-lg
-            + root.row-block-height-for-index(20) + Theme.spacing-lg
-            + root.row-block-height-for-index(21) + Theme.spacing-lg
-            + root.row-block-height-for-index(22) + Theme.spacing-lg
-            + root.row-block-height-for-index(23) + Theme.spacing-lg;
-        let extra-rows = i - 24;
-        let fallback-row-height = root.row-block-height-for-index(23) + Theme.spacing-lg;
-        return first-24-height + (extra-rows * fallback-row-height);
+        return (i > 0 ? root.row-block-height-for-index(0) + Theme.spacing-lg : 0px)
+            + (i > 1 ? root.row-block-height-for-index(1) + Theme.spacing-lg : 0px)
+            + (i > 2 ? root.row-block-height-for-index(2) + Theme.spacing-lg : 0px)
+            + (i > 3 ? root.row-block-height-for-index(3) + Theme.spacing-lg : 0px)
+            + (i > 4 ? root.row-block-height-for-index(4) + Theme.spacing-lg : 0px)
+            + (i > 5 ? root.row-block-height-for-index(5) + Theme.spacing-lg : 0px)
+            + (i > 6 ? root.row-block-height-for-index(6) + Theme.spacing-lg : 0px)
+            + (i > 7 ? root.row-block-height-for-index(7) + Theme.spacing-lg : 0px)
+            + (i > 8 ? root.row-block-height-for-index(8) + Theme.spacing-lg : 0px)
+            + (i > 9 ? root.row-block-height-for-index(9) + Theme.spacing-lg : 0px)
+            + (i > 10 ? root.row-block-height-for-index(10) + Theme.spacing-lg : 0px)
+            + (i > 11 ? root.row-block-height-for-index(11) + Theme.spacing-lg : 0px)
+            + (i > 12 ? root.row-block-height-for-index(12) + Theme.spacing-lg : 0px)
+            + (i > 13 ? root.row-block-height-for-index(13) + Theme.spacing-lg : 0px)
+            + (i > 14 ? root.row-block-height-for-index(14) + Theme.spacing-lg : 0px)
+            + (i > 15 ? root.row-block-height-for-index(15) + Theme.spacing-lg : 0px)
+            + (i > 16 ? root.row-block-height-for-index(16) + Theme.spacing-lg : 0px)
+            + (i > 17 ? root.row-block-height-for-index(17) + Theme.spacing-lg : 0px)
+            + (i > 18 ? root.row-block-height-for-index(18) + Theme.spacing-lg : 0px)
+            + (i > 19 ? root.row-block-height-for-index(19) + Theme.spacing-lg : 0px)
+            + (i > 20 ? root.row-block-height-for-index(20) + Theme.spacing-lg : 0px)
+            + (i > 21 ? root.row-block-height-for-index(21) + Theme.spacing-lg : 0px)
+            + (i > 22 ? root.row-block-height-for-index(22) + Theme.spacing-lg : 0px)
+            + (i > 23 ? root.row-block-height-for-index(23) + Theme.spacing-lg : 0px)
+            + (i > 24 ? root.row-block-height-for-index(24) + Theme.spacing-lg : 0px)
+            + (i > 25 ? root.row-block-height-for-index(25) + Theme.spacing-lg : 0px)
+            + (i > 26 ? root.row-block-height-for-index(26) + Theme.spacing-lg : 0px)
+            + (i > 27 ? root.row-block-height-for-index(27) + Theme.spacing-lg : 0px)
+            + (i > 28 ? root.row-block-height-for-index(28) + Theme.spacing-lg : 0px)
+            + (i > 29 ? root.row-block-height-for-index(29) + Theme.spacing-lg : 0px)
+            + (i > 30 ? root.row-block-height-for-index(30) + Theme.spacing-lg : 0px)
+            + (i > 31 ? root.row-block-height-for-index(31) + Theme.spacing-lg : 0px)
+            + (i > 32 ? root.row-block-height-for-index(32) + Theme.spacing-lg : 0px)
+            + (i > 33 ? root.row-block-height-for-index(33) + Theme.spacing-lg : 0px)
+            + (i > 34 ? root.row-block-height-for-index(34) + Theme.spacing-lg : 0px)
+            + (i > 35 ? root.row-block-height-for-index(35) + Theme.spacing-lg : 0px)
+            + (i > 36 ? root.row-block-height-for-index(36) + Theme.spacing-lg : 0px)
+            + (i > 37 ? root.row-block-height-for-index(37) + Theme.spacing-lg : 0px)
+            + (i > 38 ? root.row-block-height-for-index(38) + Theme.spacing-lg : 0px)
+            + (i > 39 ? root.row-block-height-for-index(39) + Theme.spacing-lg : 0px)
+            + (i > 40 ? root.row-block-height-for-index(40) + Theme.spacing-lg : 0px)
+            + (i > 41 ? root.row-block-height-for-index(41) + Theme.spacing-lg : 0px)
+            + (i > 42 ? root.row-block-height-for-index(42) + Theme.spacing-lg : 0px)
+            + (i > 43 ? root.row-block-height-for-index(43) + Theme.spacing-lg : 0px)
+            + (i > 44 ? root.row-block-height-for-index(44) + Theme.spacing-lg : 0px)
+            + (i > 45 ? root.row-block-height-for-index(45) + Theme.spacing-lg : 0px)
+            + (i > 46 ? root.row-block-height-for-index(46) + Theme.spacing-lg : 0px)
+            + (i > 47 ? root.row-block-height-for-index(47) + Theme.spacing-lg : 0px)
+            + (i > 48 ? root.row-block-height-for-index(48) + Theme.spacing-lg : 0px)
+            + (i > 49 ? root.row-block-height-for-index(49) + Theme.spacing-lg : 0px)
+            + (i > 50 ? root.row-block-height-for-index(50) + Theme.spacing-lg : 0px)
+            + (i > 51 ? root.row-block-height-for-index(51) + Theme.spacing-lg : 0px)
+            + (i > 52 ? root.row-block-height-for-index(52) + Theme.spacing-lg : 0px)
+            + (i > 53 ? root.row-block-height-for-index(53) + Theme.spacing-lg : 0px)
+            + (i > 54 ? root.row-block-height-for-index(54) + Theme.spacing-lg : 0px)
+            + (i > 55 ? root.row-block-height-for-index(55) + Theme.spacing-lg : 0px)
+            + (i > 56 ? root.row-block-height-for-index(56) + Theme.spacing-lg : 0px)
+            + (i > 57 ? root.row-block-height-for-index(57) + Theme.spacing-lg : 0px)
+            + (i > 58 ? root.row-block-height-for-index(58) + Theme.spacing-lg : 0px)
+            + (i > 59 ? root.row-block-height-for-index(59) + Theme.spacing-lg : 0px)
+            + (i > 60 ? root.row-block-height-for-index(60) + Theme.spacing-lg : 0px)
+            + (i > 61 ? root.row-block-height-for-index(61) + Theme.spacing-lg : 0px)
+            + (i > 62 ? root.row-block-height-for-index(62) + Theme.spacing-lg : 0px)
+            + (i > 63 ? root.row-block-height-for-index(63) + Theme.spacing-lg : 0px)
+            + (i > 64 ? root.row-block-height-for-index(64) + Theme.spacing-lg : 0px)
+            + (i > 65 ? root.row-block-height-for-index(65) + Theme.spacing-lg : 0px)
+            + (i > 66 ? root.row-block-height-for-index(66) + Theme.spacing-lg : 0px)
+            + (i > 67 ? root.row-block-height-for-index(67) + Theme.spacing-lg : 0px)
+            + (i > 68 ? root.row-block-height-for-index(68) + Theme.spacing-lg : 0px)
+            + (i > 69 ? root.row-block-height-for-index(69) + Theme.spacing-lg : 0px)
+            + (i > 70 ? root.row-block-height-for-index(70) + Theme.spacing-lg : 0px)
+            + (i > 71 ? root.row-block-height-for-index(71) + Theme.spacing-lg : 0px)
+            + (i > 72 ? root.row-block-height-for-index(72) + Theme.spacing-lg : 0px)
+            + (i > 73 ? root.row-block-height-for-index(73) + Theme.spacing-lg : 0px)
+            + (i > 74 ? root.row-block-height-for-index(74) + Theme.spacing-lg : 0px)
+            + (i > 75 ? root.row-block-height-for-index(75) + Theme.spacing-lg : 0px)
+            + (i > 76 ? root.row-block-height-for-index(76) + Theme.spacing-lg : 0px)
+            + (i > 77 ? root.row-block-height-for-index(77) + Theme.spacing-lg : 0px)
+            + (i > 78 ? root.row-block-height-for-index(78) + Theme.spacing-lg : 0px)
+            + (i > 79 ? root.row-block-height-for-index(79) + Theme.spacing-lg : 0px)
+            + (i > 80 ? root.row-block-height-for-index(80) + Theme.spacing-lg : 0px)
+            + (i > 81 ? root.row-block-height-for-index(81) + Theme.spacing-lg : 0px)
+            + (i > 82 ? root.row-block-height-for-index(82) + Theme.spacing-lg : 0px)
+            + (i > 83 ? root.row-block-height-for-index(83) + Theme.spacing-lg : 0px)
+            + (i > 84 ? root.row-block-height-for-index(84) + Theme.spacing-lg : 0px)
+            + (i > 85 ? root.row-block-height-for-index(85) + Theme.spacing-lg : 0px)
+            + (i > 86 ? root.row-block-height-for-index(86) + Theme.spacing-lg : 0px)
+            + (i > 87 ? root.row-block-height-for-index(87) + Theme.spacing-lg : 0px)
+            + (i > 88 ? root.row-block-height-for-index(88) + Theme.spacing-lg : 0px)
+            + (i > 89 ? root.row-block-height-for-index(89) + Theme.spacing-lg : 0px)
+            + (i > 90 ? root.row-block-height-for-index(90) + Theme.spacing-lg : 0px)
+            + (i > 91 ? root.row-block-height-for-index(91) + Theme.spacing-lg : 0px)
+            + (i > 92 ? root.row-block-height-for-index(92) + Theme.spacing-lg : 0px)
+            + (i > 93 ? root.row-block-height-for-index(93) + Theme.spacing-lg : 0px)
+            + (i > 94 ? root.row-block-height-for-index(94) + Theme.spacing-lg : 0px)
+            + (i > 95 ? root.row-block-height-for-index(95) + Theme.spacing-lg : 0px)
+            + (i > 96 ? root.row-block-height-for-index(96) + Theme.spacing-lg : 0px)
+            + (i > 97 ? root.row-block-height-for-index(97) + Theme.spacing-lg : 0px)
+            + (i > 98 ? root.row-block-height-for-index(98) + Theme.spacing-lg : 0px)
+            + (i > 99 ? root.row-block-height-for-index(99) + Theme.spacing-lg : 0px)
+            + (i > 100 ? root.row-block-height-for-index(100) + Theme.spacing-lg : 0px)
+            + (i > 101 ? root.row-block-height-for-index(101) + Theme.spacing-lg : 0px)
+            + (i > 102 ? root.row-block-height-for-index(102) + Theme.spacing-lg : 0px)
+            + (i > 103 ? root.row-block-height-for-index(103) + Theme.spacing-lg : 0px)
+            + (i > 104 ? root.row-block-height-for-index(104) + Theme.spacing-lg : 0px)
+            + (i > 105 ? root.row-block-height-for-index(105) + Theme.spacing-lg : 0px)
+            + (i > 106 ? root.row-block-height-for-index(106) + Theme.spacing-lg : 0px)
+            + (i > 107 ? root.row-block-height-for-index(107) + Theme.spacing-lg : 0px)
+            + (i > 108 ? root.row-block-height-for-index(108) + Theme.spacing-lg : 0px)
+            + (i > 109 ? root.row-block-height-for-index(109) + Theme.spacing-lg : 0px)
+            + (i > 110 ? root.row-block-height-for-index(110) + Theme.spacing-lg : 0px)
+            + (i > 111 ? root.row-block-height-for-index(111) + Theme.spacing-lg : 0px)
+            + (i > 112 ? root.row-block-height-for-index(112) + Theme.spacing-lg : 0px)
+            + (i > 113 ? root.row-block-height-for-index(113) + Theme.spacing-lg : 0px)
+            + (i > 114 ? root.row-block-height-for-index(114) + Theme.spacing-lg : 0px)
+            + (i > 115 ? root.row-block-height-for-index(115) + Theme.spacing-lg : 0px)
+            + (i > 116 ? root.row-block-height-for-index(116) + Theme.spacing-lg : 0px)
+            + (i > 117 ? root.row-block-height-for-index(117) + Theme.spacing-lg : 0px)
+            + (i > 118 ? root.row-block-height-for-index(118) + Theme.spacing-lg : 0px)
+            + (i > 119 ? root.row-block-height-for-index(119) + Theme.spacing-lg : 0px);
     }
 
     // Estimated viewport height for the rows region below the top bar.
