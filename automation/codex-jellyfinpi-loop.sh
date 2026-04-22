@@ -382,6 +382,9 @@ $SAFETY_OVERRIDE"
     CODEX_ARGS=(
       -a never -s workspace-write exec --json
       --model "$LB_MODEL"
+      -c "model_provider=azure"
+      -c "model_providers.azure.name=azure"
+      -c "model_providers.azure.env_key=AZURE_OPENAI_API_KEY"
       -c "model_providers.azure.base_url=$LB_BASE_URL"
       -c "model_providers.azure.wire_api=responses"
       -c "model_providers.azure.timeout=$CODEX_TIMEOUT_SECONDS"
