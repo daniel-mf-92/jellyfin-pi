@@ -69,7 +69,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use tokio::sync::{RwLock, Mutex};
 use tokio::sync::mpsc;
 use log::{info, error, warn, debug};
-use slint::{Image as SlintImage, Model, ModelRc, VecModel, SharedString};
+use slint::{CloseRequestResponse, Image as SlintImage, Model, ModelRc, VecModel, SharedString};
 
 const RSS_WARN_MB: u64 = 2500;
 const RSS_SOFT_LIMIT_MB: u64 = 4000;
@@ -963,6 +963,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Create Slint UI
     let ui = AppWindow::new()?;
     let ui_weak = ui.as_weak();
+
+    // Keep the TV app alive in kiosk mode: Escape/window-close requests should
+    // behave like controller Back, never terminate the process.
+    {
+        let ui_weak_for_close = ui_weak.clone();
+        ui.window().on_close_requested(move || {
+            if let Some(ui) = ui_weak_for_close.upgrade() {
+                let current_screen = ui.global::<AppBridge>().get_current_screen();
+                ui.global::<AppBridge>().set_is_loading(false);
+                if current_screen.as_str() == "player" {
+                    ui.global::<AppBridge>().invoke_stop_playback();
+                } else {
+                    ui.global::<AppBridge>().invoke_go_back();
+                }
+            }
+            CloseRequestResponse::KeepWindowShown
+        });
+    }
 
     // 5. Set up controller input
     let mut controller = ControllerManager::new();
