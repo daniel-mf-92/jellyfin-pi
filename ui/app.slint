@@ -247,8 +247,17 @@ export component AppWindow inherits Window {
             height: 100%;
             rows: AppBridge.home-rows;
             current-user: AppBridge.current-user;
-            item-selected(id) => {
-                AppBridge.navigate("detail", id);
+            item-selected(id, item-type) => {
+                if (
+                    item-type == "CollectionFolder"
+                    || item-type == "Folder"
+                    || item-type == "collectionfolder"
+                    || item-type == "folder"
+                ) {
+                    AppBridge.navigate("library", id);
+                } else {
+                    AppBridge.navigate("detail", id);
+                }
             }
             item-play(id) => {
                 AppBridge.play-item(id);

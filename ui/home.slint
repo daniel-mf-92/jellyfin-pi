@@ -28,7 +28,7 @@ export component HomeScreen inherits Rectangle {
             ? max(0, min(root.focused-col, root.rows[root.safe-focused-row].items.length - 1))
             : 0;
 
-    callback item-selected(/* item_id */ string);
+    callback item-selected(/* item_id */ string, /* item_type */ string);
     callback item-play(/* item_id */ string);
     callback open-search();
     callback open-settings();
@@ -281,10 +281,15 @@ export component HomeScreen inherits Rectangle {
                     if (root.focused-col >= 0 && root.focused-col < root.rows[root.focused-row].items.length) {
                         let focused-row-is-library = root.row-is-library-row(root.focused-row);
                         let selected-item = root.rows[root.focused-row].items[root.focused-col];
-                        if (focused-row-is-library || root.item-type-is-library(selected-item.item-type)) {
+                        if (
+                            focused-row-is-library
+                            || root.item-type-is-library(
+                                root.rows[root.focused-row].items[root.focused-col].item-type,
+                            )
+                        ) {
                             root.open-library(selected-item.id);
                         } else {
-                            root.item-selected(selected-item.id);
+                            root.item-selected(selected-item.id, selected-item.item-type);
                         }
                     }
                 }
@@ -503,10 +508,16 @@ export component HomeScreen inherits Rectangle {
                     focused-index: root.safe-focused-col;
 
                     item-selected(id, item-type) => {
-                        if (root.row-is-library-row(index) || root.item-type-is-library(item-type)) {
+                        if (
+                            root.row-is-library-row(index)
+                            || item-type == "CollectionFolder"
+                            || item-type == "Folder"
+                            || item-type == "collectionfolder"
+                            || item-type == "folder"
+                        ) {
                             root.open-library(id);
                         } else {
-                            root.item-selected(id);
+                            root.item-selected(id, item-type);
                         }
                     }
                     item-play-requested(id) => {
