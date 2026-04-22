@@ -458,6 +458,12 @@ export component AppWindow inherits Window {
                             AppBridge.error-message = "";
                         }
                         AppBridge.is-loading = false;
+                        if (
+                            AppBridge.current-screen == "home"
+                            || AppBridge.current-screen == "login"
+                        ) {
+                            return accept;
+                        }
                         AppBridge.go-back();
                         return accept;
                     }
