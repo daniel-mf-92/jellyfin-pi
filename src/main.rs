@@ -99,6 +99,7 @@ const USER_AVATAR_LOAD_TIMEOUT_MS: u64 = 500;
 const HOME_IMAGE_LOAD_TIMEOUT_MS: u64 = 120;
 const HOME_LIBRARY_CARD_IMAGE_TIMEOUT_MS: u64 = 220;
 const HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS: u64 = 2200;
+const HOME_LIBRARY_CARD_MIN_IMAGE_BUDGET_MS: u64 = 700;
 const FAST_IMAGE_LOAD_BATCH_SIZE: usize = 6;
 // Home loading does two sequential fetch phases (optional rows, then latest
 // library rows). Allow a bit more time so Resume/Next Up can populate under
@@ -5031,12 +5032,16 @@ async fn load_home_data(
 
         // Also add a "My Media" row at the TOP of home rows with poster images
         let mut library_cards: Vec<MediaItem> = Vec::new();
-        let library_image_budget = tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS)
-            .min(
-                tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
-                    .saturating_sub(home_load_started.elapsed())
-                    .saturating_sub(tokio::time::Duration::from_millis(150)),
-            );
+        let loading_budget_remaining = tokio::time::Duration::from_secs(LOADING_TIMEOUT_SECS)
+            .saturating_sub(home_load_started.elapsed())
+            .saturating_sub(tokio::time::Duration::from_millis(150));
+        let mut library_image_budget = tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS)
+            .min(loading_budget_remaining);
+        let minimum_library_image_budget = tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_MIN_IMAGE_BUDGET_MS)
+            .min(tokio::time::Duration::from_millis(HOME_LIBRARY_CARD_TOTAL_IMAGE_BUDGET_MS));
+        if library_image_budget < minimum_library_image_budget {
+            library_image_budget = minimum_library_image_budget;
+        }
         let library_image_deadline = tokio::time::Instant::now() + library_image_budget;
         let mut library_cards_with_artwork = 0usize;
         for view in &views {
