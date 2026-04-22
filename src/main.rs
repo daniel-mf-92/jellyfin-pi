@@ -4917,11 +4917,17 @@ async fn load_home_data(
             HOME_IMAGE_LOAD_TIMEOUT_MS,
         )
         .await;
-        rows.push(ContentRowData {
-            title: SharedString::from("Continue Watching"),
-            items: ModelRc::new(VecModel::from(media_items)),
-            row_type: SharedString::from("landscape"),
-        });
+        if media_items.is_empty() {
+            warn!(
+                "Skipping Continue Watching row because no valid media cards were produced"
+            );
+        } else {
+            rows.push(ContentRowData {
+                title: SharedString::from("Continue Watching"),
+                items: ModelRc::new(VecModel::from(media_items)),
+                row_type: SharedString::from("landscape"),
+            });
+        }
     }
 
     // "Next Up" row
@@ -4934,11 +4940,15 @@ async fn load_home_data(
             HOME_IMAGE_LOAD_TIMEOUT_MS,
         )
         .await;
-        rows.push(ContentRowData {
-            title: SharedString::from("Next Up"),
-            items: ModelRc::new(VecModel::from(media_items)),
-            row_type: SharedString::from("landscape"),
-        });
+        if media_items.is_empty() {
+            warn!("Skipping Next Up row because no valid media cards were produced");
+        } else {
+            rows.push(ContentRowData {
+                title: SharedString::from("Next Up"),
+                items: ModelRc::new(VecModel::from(media_items)),
+                row_type: SharedString::from("landscape"),
+            });
+        }
     }
 
     for (view_name, collection_type, latest) in latest_rows_payloads {
@@ -4956,11 +4966,18 @@ async fn load_home_data(
             Some("music") => "square",
             _ => "poster",
         };
-        rows.push(ContentRowData {
-            title: SharedString::from(format!("Latest in {}", view_name)),
-            items: ModelRc::new(VecModel::from(media_items)),
-            row_type: SharedString::from(row_type),
-        });
+        if media_items.is_empty() {
+            warn!(
+                "Skipping latest row for '{}' because no valid media cards were produced",
+                view_name
+            );
+        } else {
+            rows.push(ContentRowData {
+                title: SharedString::from(format!("Latest in {}", view_name)),
+                items: ModelRc::new(VecModel::from(media_items)),
+                row_type: SharedString::from(row_type),
+            });
+        }
     }
 
     state
