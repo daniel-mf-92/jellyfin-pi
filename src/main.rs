@@ -668,6 +668,35 @@ async fn load_poster_image(
     SlintImage::default()
 }
 
+/// Fast-path poster lookup for grid/list rows.
+///
+/// This intentionally avoids the broader fallback chain used by
+/// `load_poster_image` so navigation into library/detail grids does not stall
+/// while probing multiple alternates per item.
+async fn load_poster_image_fast(
+    item: &BaseItemDto,
+    server_url: &str,
+    access_token: Option<&str>,
+    image_cache: &ImageCache,
+    max_height: i32,
+) -> SlintImage {
+    if let Some(url) = item.primary_image_url(server_url, max_height) {
+        let url = append_api_key(url, access_token);
+        if let Some(image) = image_cache.load_image(&url).await {
+            return image;
+        }
+    }
+
+    let fallback_url = append_api_key(
+        format!(
+            "{}/Items/{}/Images/Primary?maxHeight={}&quality=90",
+            server_url, item.id, max_height
+        ),
+        access_token,
+    );
+    image_cache.load_image(&fallback_url).await.unwrap_or_default()
+}
+
 /// Load a backdrop image for an item through the image cache.
 async fn load_backdrop_image(
     item: &BaseItemDto,
@@ -788,7 +817,7 @@ async fn items_to_media_items_fast(
                 async move {
                     let poster = tokio::time::timeout(
                         tokio::time::Duration::from_millis(image_timeout_ms),
-                        load_poster_image(
+                        load_poster_image_fast(
                             item,
                             &server_url,
                             access_token.as_deref(),
