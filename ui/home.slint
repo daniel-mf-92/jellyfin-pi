@@ -533,10 +533,9 @@ export component HomeScreen inherits Rectangle {
                     is-square: row.row-type == "square";
                     include-horizontal-overscan: false;
                     row-focused: index == root.safe-focused-row;
-                    // Preserve horizontal position when moving between rows:
-                    // all rows track the current column instead of snapping
-                    // unfocused rows back to index 0.
-                    focused-index: root.safe-focused-col;
+                    // Match Jellyfin TV row behavior: only the active row
+                    // tracks horizontal focus/scroll movement.
+                    focused-index: index == root.safe-focused-row ? root.safe-focused-col : 0;
 
                     item-selected(id, item-type) => {
                         if (
