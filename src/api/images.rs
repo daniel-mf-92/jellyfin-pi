@@ -161,7 +161,7 @@ impl ImageCache {
         for key in &keys_to_remove {
             cache.remove(key);
         }
-        info!(
+        debug!(
             "Evicted {} images from memory cache (was {}, now {})",
             keys_to_remove.len(),
             keys_to_remove.len() + cache.len(),
