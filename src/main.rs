@@ -5210,6 +5210,17 @@ async fn load_item_detail(
 
     if is_navigation_stale() {
         debug!("Skipping stale detail UI update for item {}", item_id_owned);
+        if let Some(ui) = ui_weak.upgrade() {
+            let current_screen = ui.global::<AppBridge>().get_current_screen();
+            let active_detail_id = ui.global::<AppBridge>().get_detail_item().id;
+            if current_screen.as_str() == "detail" && active_detail_id.as_str() == item_id_owned {
+                ui.global::<AppBridge>().set_is_loading(false);
+                debug!(
+                    "Cleared loading state after stale detail update for {}",
+                    item_id_owned
+                );
+            }
+        }
         return Ok(());
     }
 
