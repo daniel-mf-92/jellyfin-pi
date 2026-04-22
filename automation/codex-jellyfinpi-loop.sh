@@ -88,20 +88,14 @@ log_line() {
 
 setup_safety_shims() {
   local shim_dir="$SAFETY_BIN_DIR"
-  local real_ssh real_scp real_rsync real_cargo
-
-  real_ssh=$(command -v ssh 2>/dev/null || echo /usr/bin/ssh)
-  real_scp=$(command -v scp 2>/dev/null || echo /usr/bin/scp)
-  real_rsync=$(command -v rsync 2>/dev/null || echo /usr/bin/rsync)
-  real_cargo=$(command -v cargo 2>/dev/null || true)
 
   rm -rf "$shim_dir"
   mkdir -p "$shim_dir"
 
-  cat > "$shim_dir/ssh" <<EOF
+  cat > "$shim_dir/ssh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-REAL="$real_ssh"
+REAL="/usr/bin/ssh"
 TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
 ALLOW="${ALLOW_PI_DEPLOY:-0}"
 ARGS="$*"
@@ -114,10 +108,10 @@ fi
 exec "$REAL" "$@"
 EOF
 
-  cat > "$shim_dir/scp" <<EOF
+  cat > "$shim_dir/scp" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-REAL="$real_scp"
+REAL="/usr/bin/scp"
 TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
 ALLOW="${ALLOW_PI_DEPLOY:-0}"
 ARGS="$*"
@@ -130,10 +124,10 @@ fi
 exec "$REAL" "$@"
 EOF
 
-  cat > "$shim_dir/rsync" <<EOF
+  cat > "$shim_dir/rsync" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-REAL="$real_rsync"
+REAL="/usr/bin/rsync"
 TARGET_IP="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
 ALLOW="${ALLOW_PI_DEPLOY:-0}"
 ARGS="$*"
@@ -147,30 +141,6 @@ exec "$REAL" "$@"
 EOF
 
   chmod +x "$shim_dir/ssh" "$shim_dir/scp" "$shim_dir/rsync"
-
-  if [[ -n "$real_cargo" ]]; then
-    cat > "$shim_dir/cargo" <<EOF
-#!/usr/bin/env bash
-set -euo pipefail
-REAL="$real_cargo"
-ALLOW="${ALLOW_PI_DEPLOY:-0}"
-BLOCK="${BLOCK_RELEASE_BUILDS:-1}"
-if [[ "$ALLOW" != "1" && "$BLOCK" == "1" ]]; then
-  is_build=0
-  has_release=0
-  for arg in "$@"; do
-    [[ "$arg" == "build" ]] && is_build=1
-    [[ "$arg" == "--release" ]] && has_release=1
-  done
-  if [[ "$is_build" == "1" && "$has_release" == "1" ]]; then
-    echo "[safety-shim] blocked cargo build --release while ALLOW_PI_DEPLOY=0" >&2
-    exit 125
-  fi
-fi
-exec "$REAL" "$@"
-EOF
-    chmod +x "$shim_dir/cargo"
-  fi
 
   log_line "Safety shims armed: ALLOW_PI_DEPLOY=$ALLOW_PI_DEPLOY BLOCK_RELEASE_BUILDS=$BLOCK_RELEASE_BUILDS target=$BLOCK_PI_HOST_PATTERN"
 }
