@@ -144,14 +144,15 @@ impl ImageCache {
         Self::decode_to_slint(&bytes)
     }
 
-    /// If the memory cache exceeds `max_memory_items`, evict roughly half of
-    /// the entries. This is a simple strategy that avoids tracking access order.
+    /// If the memory cache exceeds `max_memory_items`, evict only the overflow
+    /// entries. This avoids aggressive churn (e.g. 11 -> 5) that causes repeat
+    /// downloads and visible image popping while navigating.
     async fn evict_if_needed(&self) {
         let mut cache = self.memory_cache.write().await;
         if cache.len() <= self.max_memory_items {
             return;
         }
-        let target = self.max_memory_items / 2;
+        let target = self.max_memory_items;
         let keys_to_remove: Vec<String> = cache
             .keys()
             .take(cache.len() - target)
