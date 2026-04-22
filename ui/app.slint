@@ -436,6 +436,8 @@ export component AppWindow inherits Window {
                         || event.text == "\u{1b}"
                         || event.text == "Escape"
                         || event.text == "Esc"
+                        || event.text == "b"
+                        || event.text == "B"
                     ) {
                         if (AppBridge.error-message != "") {
                             AppBridge.error-message = "";
@@ -477,6 +479,8 @@ export component AppWindow inherits Window {
                         || event.text == "\u{1b}"
                         || event.text == "Escape"
                         || event.text == "Esc"
+                        || event.text == "b"
+                        || event.text == "B"
                     ) {
                         AppBridge.error-message = "";
                         AppBridge.is-loading = false;
