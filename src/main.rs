@@ -5585,6 +5585,17 @@ async fn load_library(
                 "Skipping stale library UI update for {} (request epoch: {})",
                 library_id, request_epoch
             );
+            if let Some(ui) = ui_weak.upgrade() {
+                let current_screen = ui.global::<AppBridge>().get_current_screen();
+                let active_library_id = ui.global::<AppBridge>().get_library_id();
+                if current_screen.as_str() == "library" && active_library_id.as_str() == library_id {
+                    ui.global::<AppBridge>().set_is_loading(false);
+                    warn!(
+                        "Cleared loading state after stale library update for {}",
+                        library_id
+                    );
+                }
+            }
             return Ok(());
         }
     }
@@ -5674,6 +5685,17 @@ async fn load_library_fallback(
                 "Skipping stale fallback library UI update for {} (request epoch: {})",
                 library_id, request_epoch
             );
+            if let Some(ui) = ui_weak.upgrade() {
+                let current_screen = ui.global::<AppBridge>().get_current_screen();
+                let active_library_id = ui.global::<AppBridge>().get_library_id();
+                if current_screen.as_str() == "library" && active_library_id.as_str() == library_id {
+                    ui.global::<AppBridge>().set_is_loading(false);
+                    warn!(
+                        "Cleared loading state after stale fallback library update for {}",
+                        library_id
+                    );
+                }
+            }
             return Ok(());
         }
     }
