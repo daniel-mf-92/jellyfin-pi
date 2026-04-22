@@ -284,6 +284,17 @@ export component HomeScreen inherits Rectangle {
                 }
                 return accept;
             }
+            if (
+                event.text == Key.Home
+                || event.text == "Home"
+                || event.text == "home"
+            ) {
+                if (root.rows.length > 0) {
+                    root.focused-row = 0;
+                    root.focused-col = 0;
+                }
+                return accept;
+            }
             // Enter/Space/A-button aliases → select item
             if (
                 event.text == Key.Return ||
