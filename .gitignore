@@ -11,3 +11,6 @@ __pycache__/
 
 # Automation logs (may contain secrets from captured command output)
 automation/logs/
+# Automation loop transient lock/shim state
+automation/.codex-loop.lock/
+
