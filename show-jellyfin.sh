@@ -4,14 +4,22 @@ set -euo pipefail
 export WAYLAND_DISPLAY=wayland-0
 export XDG_RUNTIME_DIR=/run/user/1000
 
-# Kill other media players but NOT jellyfin-pi
+# Kill other media players but NOT Pi-Media-Player
 for proc in vlc mpv mpvpaper; do
   pkill -x "$proc" >/dev/null 2>&1 || true
 done
 
-echo jellyfin-pi > /tmp/foreground-app
+echo pi-media-player > /tmp/foreground-app
 
-BINARY="/usr/local/bin/jellyfin-pi"
+BINARY="/usr/local/bin/pi-media-player"
+LEGACY_BINARY="/usr/local/bin/jellyfin-pi"
+if [ ! -x "$BINARY" ] && [ -x "$LEGACY_BINARY" ]; then
+  BINARY="$LEGACY_BINARY"
+fi
+
+app_running() {
+  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1 || pgrep -x jellyfin-pi >/dev/null 2>&1
+}
 
 jtv_has_toplevel() {
   wlrctl toplevel find "title:Jellyfin" >/dev/null 2>&1
@@ -29,7 +37,7 @@ restore_launcher() {
 }
 
 # If process is running and has a window, just focus it
-if pgrep -f "$BINARY" >/dev/null 2>&1; then
+if app_running; then
   if jtv_has_toplevel; then
     wlrctl toplevel minimize app_id:flex-launcher >/dev/null 2>&1 || true
     focus_jtv
@@ -41,6 +49,7 @@ if pgrep -f "$BINARY" >/dev/null 2>&1; then
     exit 1
   else
     # Zombie: process alive but no window
+    pkill -x pi-media-player >/dev/null 2>&1 || true
     pkill -f "$BINARY" >/dev/null 2>&1 || true
     sleep 1
     pkill -9 -f "jellyfin-pi" >/dev/null 2>&1 || true
@@ -56,7 +65,7 @@ else
 fi
 
 sleep 1
-if pgrep -f "$BINARY" >/dev/null 2>&1 && jtv_has_toplevel; then
+if app_running && jtv_has_toplevel; then
   exit 0
 fi
 

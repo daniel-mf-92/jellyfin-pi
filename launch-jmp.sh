@@ -23,24 +23,33 @@ export SLINT_BACKEND=winit
 export WINIT_UNIX_BACKEND=wayland
 ulimit -n 65536
 
-echo jellyfin-pi > /tmp/foreground-app
+echo pi-media-player > /tmp/foreground-app
 
-BINARY="/usr/local/bin/jellyfin-pi"
+BINARY="/usr/local/bin/pi-media-player"
+LEGACY_BINARY="/usr/local/bin/jellyfin-pi"
+if [ ! -x "$BINARY" ] && [ -x "$LEGACY_BINARY" ]; then
+  BINARY="$LEGACY_BINARY"
+fi
 
-# --- Start jellyfin-pi if not already running ---
-if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
-  pkill -f "jellyfin-pi" >/dev/null 2>&1 || true
+app_running() {
+  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1 || pgrep -x jellyfin-pi >/dev/null 2>&1
+}
+
+# --- Start Pi-Media-Player if not already running ---
+if ! app_running; then
+  pkill -x pi-media-player >/dev/null 2>&1 || true
+  pkill -x jellyfin-pi >/dev/null 2>&1 || true
   sleep 0.3
   nohup "$BINARY" > /tmp/jmp.log 2>&1 &
   sleep 0.5
 fi
 
-if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
+if ! app_running; then
   sleep 1.5
 fi
 
-if ! pgrep -f "$BINARY" >/dev/null 2>&1; then
-  echo "jellyfin-pi process failed to start" >&2
+if ! app_running; then
+  echo "pi-media-player process failed to start" >&2
   exit 1
 fi
 
@@ -55,12 +64,12 @@ for i in $(seq 1 20); do
 done
 
 if [ "$WINDOW_FOUND" -eq 0 ]; then
-  echo "jellyfin-pi window did not appear within 10s" >&2
+  echo "Pi-Media-Player window did not appear within 10s" >&2
 fi
 
-# --- Minimize flex-launcher, focus jellyfin-pi ---
+# --- Minimize flex-launcher, focus Pi-Media-Player ---
 wlrctl toplevel minimize app_id:flex-launcher >/dev/null 2>&1 || true
 wlrctl toplevel focus "title:Jellyfin" >/dev/null 2>&1 || true
 
-echo jellyfin-pi > /tmp/foreground-app
+echo pi-media-player > /tmp/foreground-app
 exit 0

@@ -44,15 +44,16 @@ ssh pi5-home-a 'tail -40 /tmp/jmp-slint.log' | grep -Ev 'winit|sctk|tracing|hype
 
 ## Runtime-Path Quirks (PRESERVED ON PURPOSE)
 
-These paths still say `jellyfin-pi` internally and must NOT be "fixed" without a coordinated state migration:
+These legacy/runtime paths must stay stable unless you run a coordinated migration:
 
-- Binary installed at: `/usr/local/bin/jellyfin-pi`
+- Service/runtime binary: `/usr/local/bin/pi-media-player`
+- Legacy compatibility alias: `/usr/local/bin/jellyfin-pi` (may be symlinked to `pi-media-player`)
 - Config dir: `~/.config/jellyfin-pi/`
 - IPC sockets: `/tmp/jellyfin-pi-*.sock`
-- Wayland app id in some places: `WAYLAND_APP_ID=jellyfin-pi`
+- Wayland app id appears in some places as: `jellyfin-pi`
 - Log file: `/tmp/jmp-slint.log`
 
-Leaving these alone keeps existing user state (watched history, cached auth tokens, resume positions) working across the rename.
+Keeping legacy state paths intact preserves watched history, cached auth tokens, and resume positions across the rename.
 
 ## Goal — e2e Jellyfin UX Parity
 

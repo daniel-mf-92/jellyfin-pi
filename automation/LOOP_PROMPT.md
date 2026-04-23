@@ -21,7 +21,7 @@ Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contai
 - Player: VLC (cvlc) subprocess
 - Jellyfin server: http://10.100.0.2:8096 on Mac Mini
 - Pi SSH: ssh danielmatthews-ferrero@10.100.0.17 (via WireGuard)
-- Pi binary: /usr/local/bin/jellyfin-pi
+- Pi runtime binary: /usr/local/bin/pi-media-player (legacy alias /usr/local/bin/jellyfin-pi may exist)
 - Pi logs: /tmp/jmp-slint.log
 - Pi config: ~/.config/jellyfin-pi/config.toml
 

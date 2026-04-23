@@ -32,6 +32,13 @@ send_key() {
     sleep 0.5
 }
 
+focus_app_window() {
+    wlrctl toplevel focus title:Pi-Media-Player 2>/dev/null || true
+    wlrctl toplevel focus title:Jellyfin 2>/dev/null || true
+    wlrctl toplevel focus app_id:pi-media-player 2>/dev/null || true
+    sleep 1
+}
+
 check_text() {
     local img="$1"
     local expected="$2"
@@ -92,15 +99,23 @@ echo ""
 echo "=== Pi-Media-Player E2E Visual Test ==="
 echo ""
 
+is_app_running() {
+    pgrep -x pi-media-player >/dev/null 2>&1 ||
+    pgrep -x jellyfin-pi >/dev/null 2>&1 ||
+    systemctl --user is-active --quiet pi-media-player.service
+}
+
 # Verify app is running
-if ! pgrep -x jellyfin-pi > /dev/null; then
-    echo "FATAL: jellyfin-pi not running" | tee -a "$LOG"
+if ! is_app_running; then
+    echo "FATAL: pi-media-player/jellyfin-pi not running" | tee -a "$LOG"
+    systemctl --user status --no-pager pi-media-player.service 2>/dev/null | sed -n "1,8p" | tee -a "$LOG" || true
     exit 1
 fi
 
 # --- TEST 1: Home screen is visible ---
 echo "--- Test 1: Home screen visible ---"
 sleep 2
+focus_app_window
 IMG=$(screenshot "01-home")
 check_not_black "$IMG" "Home screen not black"
 # Check for expected home screen elements
