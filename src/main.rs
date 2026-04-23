@@ -24,7 +24,7 @@ use api::models::*;
 fn load_dotenv() {
     let mut paths = vec![std::path::PathBuf::from(".env")];
     if let Ok(home) = std::env::var("HOME") {
-        paths.push(std::path::Path::new(&home).join("jellyfin-pi/.env"));
+        paths.push(std::path::Path::new(&home).join("pi-media-player/.env"));
         paths.push(std::path::Path::new(&home).join("Pi-Media-Player/.env"));
     }
 
@@ -215,7 +215,7 @@ async fn wait_for_display_backend() {
     fn ensure_headless_labwc_config(runtime_dir: &str) -> Option<std::path::PathBuf> {
         let uid = unsafe { libc::geteuid() };
         let config_dir = std::path::PathBuf::from(format!(
-            "/tmp/jellyfin-pi-labwc-{uid}"
+            "/tmp/pi-media-player-labwc-{uid}"
         ));
         if std::fs::create_dir_all(&config_dir).is_err() {
             return None;
@@ -444,7 +444,7 @@ fn dismiss_flex_launcher_overlay() {
             .status()
         {
             Ok(status) if status.success() => {
-                info!("Dismissed flex-launcher so jellyfin-pi can take foreground");
+                info!("Dismissed flex-launcher so pi-media-player can take foreground");
             }
             Ok(_) => {
                 debug!("flex-launcher not running at startup");

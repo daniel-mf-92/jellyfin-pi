@@ -12,13 +12,8 @@ done
 echo pi-media-player > /tmp/foreground-app
 
 BINARY="/usr/local/bin/pi-media-player"
-LEGACY_BINARY="/usr/local/bin/jellyfin-pi"
-if [ ! -x "$BINARY" ] && [ -x "$LEGACY_BINARY" ]; then
-  BINARY="$LEGACY_BINARY"
-fi
-
 app_running() {
-  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1 || pgrep -x jellyfin-pi >/dev/null 2>&1
+  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1
 }
 
 jtv_has_toplevel() {
@@ -52,7 +47,7 @@ if app_running; then
     pkill -x pi-media-player >/dev/null 2>&1 || true
     pkill -f "$BINARY" >/dev/null 2>&1 || true
     sleep 1
-    pkill -9 -f "jellyfin-pi" >/dev/null 2>&1 || true
+    pkill -9 -x pi-media-player >/dev/null 2>&1 || true
     sleep 0.5
   fi
 fi

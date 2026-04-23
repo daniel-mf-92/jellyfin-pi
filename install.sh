@@ -7,7 +7,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BINARY_NAME="pi-media-player"
 INSTALL_DIR="/usr/local/bin"
-CONFIG_DIR="$HOME/.config/jellyfin-pi"
+CONFIG_DIR="$HOME/.config/pi-media-player"
 SERVICE_DIR="$HOME/.config/systemd/user"
 
 echo "=== Pi-Media-Player Installer ==="

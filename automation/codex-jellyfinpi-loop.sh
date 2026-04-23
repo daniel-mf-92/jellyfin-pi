@@ -55,7 +55,7 @@ This override supersedes conflicting instructions earlier in this prompt.
 If `ALLOW_PI_DEPLOY=0`:
 - Do not run SSH build/deploy commands on `10.100.0.17`.
 - Do not run `cargo build --release` on Pi.
-- Do not launch `jellyfin-pi` with nohup.
+- Do not launch `pi-media-player` with nohup.
 - Use local verification only (`cargo check`) and Pi log tail (read-only).
 
 If `ALLOW_PI_DEPLOY=1`:

@@ -6,7 +6,7 @@ use chrono::{Utc, DateTime};
 /// Lightweight local playback tracker backed by SQLite.
 ///
 /// Records who watched what, for how long, and from which device.
-/// Database lives alongside the app config at `~/.config/jellyfin-pi/playback.db`.
+/// Database lives alongside the app config at `~/.config/pi-media-player/playback.db`.
 
 pub struct PlaybackTracker {
     conn: Mutex<rusqlite::Connection>,

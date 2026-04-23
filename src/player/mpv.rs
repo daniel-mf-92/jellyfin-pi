@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 
 use super::vlc::{PlayerError, PlayerEvent, PlayerResult, TrackInfo};
 
-const MPV_SOCKET_PATH: &str = "/tmp/jellyfin-pi-mpv.sock";
+const MPV_SOCKET_PATH: &str = "/tmp/pi-media-player-mpv.sock";
 const MPV_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 pub struct MpvPlayer {

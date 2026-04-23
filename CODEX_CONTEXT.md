@@ -1,12 +1,12 @@
 # CODEX_CONTEXT.md — Pi-Media-Player 24/7 Autonomous Agent
 
 Authoritative reference for the always-on Codex agent iterating on this repo.
-Last updated: 2026-04-16 (post-rename).
+Last updated: 2026-04-23 (post-legacy-removal).
 
 ## Identity & Naming
 
 - **Canonical project name:** Pi-Media-Player
-- **Previous name:** jellyfin-pi (renamed 2026-04-16)
+- **Legacy app identifiers:** retired (migration completed)
 - **GitHub repo:** https://github.com/daniel-mf-92/Pi-Media-Player
 - **Primary branch:** slint-rewrite
 - **Agent LaunchAgent label:** com.jellyfinpi.codex.loop (label NOT renamed — runtime state)
@@ -42,18 +42,17 @@ ssh pi5-home-a 'tail -40 /tmp/jmp-slint.log' | grep -Ev 'winit|sctk|tracing|hype
 
 **Build command on Pi:** `bash build-pi5.sh` (NOT `~/bin/build-arm64.sh` — that belongs to the upstream Qt JMP project).
 
-## Runtime-Path Quirks (PRESERVED ON PURPOSE)
+## Runtime Paths (Canonical)
 
-These legacy/runtime paths must stay stable unless you run a coordinated migration:
+Canonical runtime identifiers and paths:
 
 - Service/runtime binary: `/usr/local/bin/pi-media-player`
-- Legacy compatibility alias: `/usr/local/bin/jellyfin-pi` (may be symlinked to `pi-media-player`)
-- Config dir: `~/.config/jellyfin-pi/`
-- IPC sockets: `/tmp/jellyfin-pi-*.sock`
-- Wayland app id appears in some places as: `jellyfin-pi`
-- Log file: `/tmp/jmp-slint.log`
+- Config dir: `~/.config/pi-media-player/`
+- IPC sockets: `/tmp/pi-media-player-*.sock`
+- Wayland app id: `pi-media-player`
+- Runtime log file: `/tmp/pi-media-player.log`
 
-Keeping legacy state paths intact preserves watched history, cached auth tokens, and resume positions across the rename.
+Legacy app identifiers have been removed from runtime paths.
 
 ## Goal — e2e Jellyfin UX Parity
 
@@ -93,7 +92,7 @@ Iterate the Slint/Rust UI toward feature-parity with the official Jellyfin Media
 **Recent history (pre-rename, on branch slint-rewrite):**
 - Iteration 9 (2026-04-13): auto-fix for detail load timeout (false timeout on nested 10s)
 - Iteration 8 (2026-04-13): earlier detail-page work
-- 2026-04-16: repo rename jellyfin-pi -> Pi-Media-Player (commit d5f2433)
+- 2026-04-16: repo rename completed to Pi-Media-Player (commit d5f2433)
 
 **Still TODO (high level):**
 - Full JELLYFIN_UI_SPEC.md review and gap identification

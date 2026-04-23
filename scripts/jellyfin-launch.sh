@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# @section jellyfin-pi-launch
+# @section pi-media-player-launch
 # @frequency L1 (every 5 min)
 # @description Ensure native Jellyfin Media Player is running
 # =============================================================================

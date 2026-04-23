@@ -24,7 +24,7 @@
 #   streaming-health         — JMP stall->mpv, bitrate adapt, dual-stream
 #   audio-healing            — PipeWire/WirePlumber, HDMI sink, lip-sync
 #   wireguard-bandwidth-measure — WG speed test, /tmp/pi-home-wg-bandwidth.json
-#   jellyfin-pi-launch       — Ensure JMP running (L1)
+#   pi-media-player-launch   — Ensure JMP running (L1)
 #   flex-launcher-health     — Restart flex-launcher if dead
 #
 # LOCAL (stays in master script — sensitive or non-JMP):

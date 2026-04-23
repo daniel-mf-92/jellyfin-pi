@@ -179,15 +179,15 @@ impl AppConfig {
     /// Returns the configuration directory for this application.
     ///
     /// Uses `directories::ProjectDirs` when available, otherwise falls back
-    /// to `~/.config/jellyfin-pi/`.
+    /// to `~/.config/pi-media-player/`.
     pub fn config_dir() -> PathBuf {
-        if let Some(proj) = ProjectDirs::from("org", "jellyfin", "jellyfin-pi") {
+        if let Some(proj) = ProjectDirs::from("org", "jellyfin", "pi-media-player") {
             proj.config_dir().to_path_buf()
         } else {
-            warn!("Could not determine XDG config directory, falling back to ~/.config/jellyfin-pi/");
+            warn!("Could not determine XDG config directory, falling back to ~/.config/pi-media-player/");
             let mut fallback = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
             fallback.push(".config");
-            fallback.push("jellyfin-pi");
+            fallback.push("pi-media-player");
             fallback
         }
     }

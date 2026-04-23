@@ -112,17 +112,17 @@ ssh danielmatthews-ferrero@10.100.0.17 \
 
 # 3. Install and launch
 ssh danielmatthews-ferrero@10.100.0.17 \
-  "kill -9 \$(pgrep -x jellyfin-pi) 2>/dev/null; sleep 1; \
-   echo 5991 | sudo -S cp ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/jellyfin-pi; \
-   echo jellyfin-pi > /tmp/foreground-app; \
+  "kill -9 \$(pgrep -x pi-media-player) 2>/dev/null; sleep 1; \
+   echo 5991 | sudo -S cp ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; \
+   echo pi-media-player > /tmp/foreground-app; \
    WAYLAND_DISPLAY=wayland-0 XDG_RUNTIME_DIR=/run/user/1000 SLINT_BACKEND=winit WINIT_UNIX_BACKEND=wayland \
-   nohup /usr/local/bin/jellyfin-pi > /tmp/jmp-slint.log 2>&1 &"
+   nohup /usr/local/bin/pi-media-player > /tmp/pi-media-player.log 2>&1 &"
 ```
 
 ### Functional Verification (check Pi log after each action)
 ```bash
 # Read log
-ssh danielmatthews-ferrero@10.100.0.17 "cat /tmp/jmp-slint.log"
+ssh danielmatthews-ferrero@10.100.0.17 "cat /tmp/pi-media-player.log"
 ```
 
 1. **App starts** -> log shows "Jellyfin TV starting...", "Home data loaded successfully"

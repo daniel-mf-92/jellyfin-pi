@@ -46,7 +46,7 @@ impl SystemTasks {
 
         // Periodic: flex-launcher health check
         if self.flex_heal_enabled {
-            // DISABLED: flex-launcher managed by labwc autostart, not by jellyfin-pi daemon
+            // DISABLED: flex-launcher managed by labwc autostart, not by pi-media-player daemon
             // handles.push(tokio::spawn(Self::flex_launcher_heal(self.shared)));
         }
 

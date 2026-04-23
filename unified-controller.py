@@ -109,7 +109,7 @@ NAVIGATION_APPS = {
 JELLYFIN_APPS = {
     "com.github.iwalton3.jellyfin-media-player", "jellyfin-media-player",
     "jellyfinmediaplayer", "org.jellyfin.jellyfindesktop",
-    "jellyfin-tv", "jellyfin", "jmp", "jellyfin-pi",
+    "jellyfin-tv", "jellyfin", "jmp", "pi-media-player",
 }
 MOONLIGHT_APPS = {"moonlight-qt", "moonlight", "com.moonlight_stream.moonlight"}
 
@@ -1169,7 +1169,7 @@ class UnifiedController:
             "app_id:org.jellyfin.JellyfinDesktop",
             "app_id:com.github.iwalton3.jellyfin-media-player",
             "app_id:jellyfin-media-player",
-            "app_id:jellyfin-pi",
+            "app_id:pi-media-player",
             "title:Jellyfin",
             "app_id:com.moonlight_stream.Moonlight",
             "app_id:moonlight-qt",

@@ -7,7 +7,7 @@ use tokio::time::timeout;
 
 use crate::player::vlc::PlayerEvent;
 
-const VLC_SOCKET_PATH: &str = "/tmp/jellyfin-pi-vlc.sock";
+const VLC_SOCKET_PATH: &str = "/tmp/pi-media-player-vlc.sock";
 const FOREGROUND_APP_PATH: &str = "/tmp/foreground-app";
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 const SOCKET_TIMEOUT: Duration = Duration::from_secs(2);
@@ -15,8 +15,8 @@ const SOCKET_TIMEOUT: Duration = Duration::from_secs(2);
 /// Apps that count as "us" — if foreground-app contains one of these, do NOT pause.
 const ALLOWED_FOREGROUND_APPS: &[&str] = &[
     "jellyfinmediaplayer",
-    "jellyfin-pi",
     "jellyfin",
+    "pi-media-player",
     "vlc",
     "mpv",
 ];

@@ -101,13 +101,12 @@ echo ""
 
 is_app_running() {
     pgrep -x pi-media-player >/dev/null 2>&1 ||
-    pgrep -x jellyfin-pi >/dev/null 2>&1 ||
     systemctl --user is-active --quiet pi-media-player.service
 }
 
 # Verify app is running
 if ! is_app_running; then
-    echo "FATAL: pi-media-player/jellyfin-pi not running" | tee -a "$LOG"
+    echo "FATAL: pi-media-player not running" | tee -a "$LOG"
     systemctl --user status --no-pager pi-media-player.service 2>/dev/null | sed -n "1,8p" | tee -a "$LOG" || true
     exit 1
 fi

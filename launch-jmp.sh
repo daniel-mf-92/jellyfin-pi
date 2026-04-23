@@ -26,19 +26,13 @@ ulimit -n 65536
 echo pi-media-player > /tmp/foreground-app
 
 BINARY="/usr/local/bin/pi-media-player"
-LEGACY_BINARY="/usr/local/bin/jellyfin-pi"
-if [ ! -x "$BINARY" ] && [ -x "$LEGACY_BINARY" ]; then
-  BINARY="$LEGACY_BINARY"
-fi
-
 app_running() {
-  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1 || pgrep -x jellyfin-pi >/dev/null 2>&1
+  pgrep -f "$BINARY" >/dev/null 2>&1 || pgrep -x pi-media-player >/dev/null 2>&1
 }
 
 # --- Start Pi-Media-Player if not already running ---
 if ! app_running; then
   pkill -x pi-media-player >/dev/null 2>&1 || true
-  pkill -x jellyfin-pi >/dev/null 2>&1 || true
   sleep 0.3
   nohup "$BINARY" > /tmp/jmp.log 2>&1 &
   sleep 0.5

@@ -70,7 +70,7 @@ pub struct TrackInfo {
 // VlcPlayer
 // ---------------------------------------------------------------------------
 
-const SOCKET_PATH: &str = "/tmp/jellyfin-pi-vlc.sock";
+const SOCKET_PATH: &str = "/tmp/pi-media-player-vlc.sock";
 const VLC_MAX_VOLUME: f64 = 512.0;
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
