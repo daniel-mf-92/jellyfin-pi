@@ -29,7 +29,7 @@ BLOCK_RELEASE_BUILDS="${BLOCK_RELEASE_BUILDS:-1}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
 LOCK_PID_FILE="$LOCK_DIR/pid"
-SAFETY_BIN_DIR="${SAFETY_BIN_DIR:-$LOCK_DIR/safety-bin}"
+SAFETY_BIN_DIR="${SAFETY_BIN_DIR:-/tmp/jellyfinpi-codex-safety-bin-$USER}"
 HEARTBEAT_FILE="${HEARTBEAT_FILE:-$LOG_DIR/loop.heartbeat}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.mcp-credentials.env}"
 
