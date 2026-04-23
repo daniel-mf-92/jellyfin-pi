@@ -26,6 +26,8 @@ MAX_CONCURRENT_CODEX_PROCS="${MAX_CONCURRENT_CODEX_PROCS:-4}"
 MAX_CONCURRENT_REPO_CODEX_PROCS="${MAX_CONCURRENT_REPO_CODEX_PROCS:-1}"
 BLOCK_PI_HOST_PATTERN="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
 BLOCK_RELEASE_BUILDS="${BLOCK_RELEASE_BUILDS:-1}"
+RUNAWAY_GUARD_INTERVAL_SECONDS="${RUNAWAY_GUARD_INTERVAL_SECONDS:-10}"
+EMERGENCY_MIN_FREE_MEM_MB="${EMERGENCY_MIN_FREE_MEM_MB:-2048}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
 LOCK_PID_FILE="$LOCK_DIR/pid"
@@ -212,10 +214,11 @@ get_free_mem_mb() {
 }
 
 count_codex_processes() {
-  local count
-  count=$(pgrep -x codex 2>/dev/null | wc -l | tr -d '[:space:]')
-  [[ -z "$count" ]] && count=0
-  echo "$count"
+  ps -eo comm=,args= | awk '
+    $1 == "codex" {c++}
+    $1 == "node" && $0 ~ /\/codex\/bin\/codex\.js/ {c++}
+    END {print c + 0}
+  '
 }
 
 count_repo_codex_processes() {
@@ -225,6 +228,124 @@ count_repo_codex_processes() {
     }
     END {print c + 0}
   '
+}
+
+LAST_RUNAWAY_GUARD_TS=0
+
+collect_unattended_release_build_pids() {
+  ps -eo pid=,comm=,args= | awk '
+    $2 == "cargo" && $0 ~ / build / && $0 ~ / --release/ {print $1}
+    $2 == "rustc" && $0 ~ /--crate-name pi_media_player/ {print $1}
+  '
+}
+
+kill_pid_list() {
+  local reason="$1"
+  shift || true
+
+  local pid killed_any=0
+  for pid in "$@"; do
+    [[ -z "$pid" ]] && continue
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ "$pid" -eq "$$" ]] && continue
+
+    if kill -0 "$pid" 2>/dev/null; then
+      log_line "Runaway guard: TERM pid=$pid reason=$reason"
+      kill -TERM "$pid" 2>/dev/null || true
+      killed_any=1
+    fi
+  done
+
+  if [[ "$killed_any" -eq 1 ]]; then
+    sleep 2
+    for pid in "$@"; do
+      [[ -z "$pid" ]] && continue
+      [[ "$pid" =~ ^[0-9]+$ ]] || continue
+      if kill -0 "$pid" 2>/dev/null; then
+        log_line "Runaway guard: KILL pid=$pid reason=$reason"
+        kill -KILL "$pid" 2>/dev/null || true
+      fi
+    done
+  fi
+}
+
+kill_excess_repo_codex_processes() {
+  local keep_pid="${1:-}"
+  local limit="${MAX_CONCURRENT_REPO_CODEX_PROCS:-1}"
+
+  local rows=()
+  mapfile -t rows < <(
+    ps -eo pid=,etimes=,args= | awk -v repo="$REPO_DIR" '
+      index($0, "--cd " repo) > 0 && ($0 ~ /(^|[[:space:]])codex([[:space:]]|$)/ || $0 ~ /\/codex\/bin\/codex\.js/) {
+        print $1 " " $2
+      }
+    ' | sort -k2,2n
+  )
+
+  local total="${#rows[@]}"
+  [[ "$total" -le "$limit" ]] && return
+
+  local allowed="$limit"
+  if [[ -n "$keep_pid" && "$allowed" -gt 0 ]]; then
+    allowed=$((allowed - 1))
+  fi
+  [[ "$allowed" -lt 0 ]] && allowed=0
+
+  local keep_count=0
+  local row pid
+  local victims=()
+  for row in "${rows[@]}"; do
+    pid="${row%% *}"
+
+    if [[ -n "$keep_pid" && "$pid" == "$keep_pid" ]]; then
+      continue
+    fi
+
+    if [[ "$keep_count" -lt "$allowed" ]]; then
+      keep_count=$((keep_count + 1))
+      continue
+    fi
+
+    victims+=("$pid")
+  done
+
+  if [[ "${#victims[@]}" -gt 0 ]]; then
+    kill_pid_list "excess repo codex processes" "${victims[@]}"
+  fi
+}
+
+runaway_guard_tick() {
+  local active_codex_pid="${1:-}"
+  local now free_mem_mb
+
+  now=$(date +%s)
+  if [[ "$RUNAWAY_GUARD_INTERVAL_SECONDS" -gt 0 ]] && [[ "$LAST_RUNAWAY_GUARD_TS" -gt 0 ]]; then
+    if (( now - LAST_RUNAWAY_GUARD_TS < RUNAWAY_GUARD_INTERVAL_SECONDS )); then
+      return
+    fi
+  fi
+  LAST_RUNAWAY_GUARD_TS="$now"
+
+  if [[ "$ALLOW_PI_DEPLOY" != "1" && "$BLOCK_RELEASE_BUILDS" == "1" ]]; then
+    local release_pids=()
+    mapfile -t release_pids < <(collect_unattended_release_build_pids)
+    if [[ "${#release_pids[@]}" -gt 0 ]]; then
+      kill_pid_list "blocked release build while ALLOW_PI_DEPLOY=0" "${release_pids[@]}"
+    fi
+  fi
+
+  free_mem_mb=$(get_free_mem_mb)
+  if [[ "$free_mem_mb" -lt "$EMERGENCY_MIN_FREE_MEM_MB" ]]; then
+    log_line "Runaway guard: emergency free memory ${free_mem_mb}MB (< ${EMERGENCY_MIN_FREE_MEM_MB}MB)"
+    if [[ "$ALLOW_PI_DEPLOY" != "1" && "$BLOCK_RELEASE_BUILDS" == "1" ]]; then
+      local emergency_release_pids=()
+      mapfile -t emergency_release_pids < <(collect_unattended_release_build_pids)
+      if [[ "${#emergency_release_pids[@]}" -gt 0 ]]; then
+        kill_pid_list "emergency low-memory release build kill" "${emergency_release_pids[@]}"
+      fi
+    fi
+    kill_excess_repo_codex_processes "$active_codex_pid"
+  fi
 }
 
 should_backoff_for_system_load() {
@@ -343,6 +464,8 @@ run_codex_attempt() {
   while kill -0 "$pid" 2>/dev/null; do
     sleep "$WATCHDOG_INTERVAL_SECONDS"
 
+    runaway_guard_tick "$pid"
+
     now=$(date +%s)
     elapsed=$((now - start_ts))
 
@@ -397,6 +520,8 @@ while true; do
   ITERATION=$((ITERATION + 1))
   TS=$(date +%Y%m%d-%H%M%S)
   echo "$TS iteration=$ITERATION" > "$HEARTBEAT_FILE"
+
+  runaway_guard_tick
 
   CODEX_RUNNING=$(count_codex_processes)
   if [[ "$CODEX_RUNNING" -ge "$MAX_CONCURRENT_CODEX_PROCS" ]]; then
