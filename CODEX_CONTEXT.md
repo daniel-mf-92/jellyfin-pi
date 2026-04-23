@@ -9,8 +9,8 @@ Last updated: 2026-04-23 (post-legacy-removal).
 - **Legacy app identifiers:** retired (migration completed)
 - **GitHub repo:** https://github.com/daniel-mf-92/Pi-Media-Player
 - **Primary branch:** slint-rewrite
-- **Agent LaunchAgent label:** com.jellyfinpi.codex.loop (label NOT renamed — runtime state)
-- **Agent AGENT_NAME:** jellyfinpi-codex (backoff/lock files under /tmp keyed on this)
+- **Agent LaunchAgent label:** com.pi-media-player.codex.loop
+- **Agent AGENT_NAME:** pi-media-player-codex
 
 ## Three Canonical Locations
 
@@ -37,7 +37,7 @@ git push origin slint-rewrite
 ssh pi5-home-a 'cd ~/Pi-Media-Player && git pull --rebase origin slint-rewrite && bash build-pi5.sh && systemctl --user restart pi-media-player.service'
 
 # Verify runtime log is clean:
-ssh pi5-home-a 'tail -40 /tmp/jmp-slint.log' | grep -Ev 'winit|sctk|tracing|hyper|reqwest'
+ssh pi5-home-a 'tail -40 /tmp/pi-media-player.log' | grep -Ev 'winit|sctk|tracing|hyper|reqwest'
 ```
 
 **Build command on Pi:** `bash build-pi5.sh` (NOT `~/bin/build-arm64.sh` — that belongs to the upstream Qt JMP project).
@@ -69,9 +69,9 @@ Iterate the Slint/Rust UI toward feature-parity with the official Jellyfin Media
 
 ## Loop Orchestration
 
-- **LaunchAgent plist:** `~/Library/LaunchAgents/com.jellyfinpi.codex.loop.plist` (KeepAlive=true)
-- **Wrapper:** `~/bin/jellyfinpi-codex-loop-wrapper.sh` (sets REPO_DIR, sources codex-loop-common.sh)
-- **Loop script:** `automation/codex-jellyfinpi-loop.sh` (in this repo)
+- **LaunchAgent plist:** `~/Library/LaunchAgents/com.pi-media-player.codex.loop.plist` (KeepAlive=true)
+- **Wrapper:** `~/bin/pi-media-player-codex-loop-wrapper.sh` (sets REPO_DIR, sources codex-loop-common.sh)
+- **Loop script:** `automation/codex-pi-media-player-loop.sh` (in this repo)
 - **Prompt:** `automation/LOOP_PROMPT.md` (in this repo — **read this first** every iteration)
 - **UI Spec:** `JELLYFIN_UI_SPEC.md` (repo root — defines target UX)
 - **Sleep between iterations:** 180s (overridable via SLEEP_SECONDS env)
@@ -107,14 +107,14 @@ Iterate the Slint/Rust UI toward feature-parity with the official Jellyfin Media
 
 ```bash
 # Confirm loop is alive:
-ssh macmini-azure 'launchctl list | grep jellyfinpi; ps auxww | grep jellyfinpi-codex | grep -v grep'
+ssh macmini-azure 'launchctl list | grep pi-media-player.codex.loop; ps auxww | grep pi-media-player-codex | grep -v grep'
 
 # Tail loop log:
-ssh macmini-azure 'tail -40 ~/logs/jellyfinpi-codex-loop.out.log'
+ssh macmini-azure 'tail -40 ~/logs/pi-media-player-codex-loop.out.log'
 
 # Check current iteration in flight:
 ssh macmini-azure 'ls -la ~/Documents/local-codebases/Pi-Media-Player/automation/logs/ | tail'
 
 # Peek at Pi runtime log:
-ssh macmini-azure "ssh pi5-home-a 'tail -30 /tmp/jmp-slint.log'"
+ssh macmini-azure "ssh pi5-home-a 'tail -30 /tmp/pi-media-player.log'"
 ```

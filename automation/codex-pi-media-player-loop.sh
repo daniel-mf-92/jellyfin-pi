@@ -31,7 +31,7 @@ EMERGENCY_MIN_FREE_MEM_MB="${EMERGENCY_MIN_FREE_MEM_MB:-2048}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
 LOCK_PID_FILE="$LOCK_DIR/pid"
-SAFETY_BIN_DIR="${SAFETY_BIN_DIR:-/tmp/jellyfinpi-codex-safety-bin-$USER}"
+SAFETY_BIN_DIR="${SAFETY_BIN_DIR:-/tmp/pi-media-player-codex-safety-bin-$USER}"
 HEARTBEAT_FILE="${HEARTBEAT_FILE:-$LOG_DIR/loop.heartbeat}"
 CREDENTIALS_FILE="${CREDENTIALS_FILE:-$HOME/.mcp-credentials.env}"
 
@@ -61,11 +61,11 @@ If `ALLOW_PI_DEPLOY=0`:
 If `ALLOW_PI_DEPLOY=1`:
 - Use this safe Pi build command only (single-job, memory-capped, lock, timeout):
   ```bash
-  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 1800000 && nice -n 19 cargo build --release -j 1\"'"
+  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 3200000 && nice -n 19 cargo build --release -j 1\"'"
   ```
 - Install to the service binary path and restart the managed user service only:
   ```bash
-  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; echo 5991 | sudo -S install -m 0755 ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; systemctl --user restart pi-media-player.service; sleep 8; tail -n 120 /tmp/pi-media-player.log 2>/dev/null || tail -n 120 /tmp/jmp-slint.log 2>/dev/null'"
+  ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; echo 5991 | sudo -S install -m 0755 ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; systemctl --user restart pi-media-player.service; sleep 8; tail -n 120 /tmp/pi-media-player.log 2>/dev/null'"
   ```
 EOF
 )
@@ -550,7 +550,7 @@ while true; do
 
   # Append Pi log context
   PI_LOG=$(ssh -o ConnectTimeout=5 -o BatchMode=yes danielmatthews-ferrero@10.100.0.17 \
-    "tail -30 /tmp/jmp-slint.log 2>/dev/null" 2>/dev/null || echo "(Pi unreachable)")
+    "tail -30 /tmp/pi-media-player.log 2>/dev/null" 2>/dev/null || echo "(Pi unreachable)")
   PROMPT="$PROMPT
 
 ## Current Pi Log (last 30 lines)

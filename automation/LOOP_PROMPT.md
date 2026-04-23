@@ -22,13 +22,13 @@ Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contai
 - Jellyfin server: http://10.100.0.2:8096 on Mac Mini
 - Pi SSH: ssh danielmatthews-ferrero@10.100.0.17 (via WireGuard)
 - Pi runtime binary: /usr/local/bin/pi-media-player
-- Pi logs: /tmp/jmp-slint.log
+- Pi logs: /tmp/pi-media-player.log
 - Pi config: ~/.config/pi-media-player/config.toml
 
 ## Execution Contract
 
 1. Read JELLYFIN_UI_SPEC.md
-2. SSH to Pi and read /tmp/jmp-slint.log to see current errors
+2. SSH to Pi and read /tmp/pi-media-player.log to see current errors
 3. Identify the highest-priority broken behavior from the spec
 4. Read the relevant Rust/Slint code
 5. Fix it with minimal, targeted changes
@@ -48,14 +48,14 @@ Before doing ANYTHING else, read JELLYFIN_UI_SPEC.md in the repo root. It contai
 
 ```bash
 # Build on Pi (safe single-job + memory cap + lock + timeout)
-ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 1800000 && nice -n 19 cargo build --release -j 1\"'"
+ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; flock -n /tmp/pi-media-player-build.lock timeout 25m bash -lc \"cd ~/Pi-Media-Player && git pull origin slint-rewrite && source ~/.cargo/env && export CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0 && ulimit -Sv 3200000 && nice -n 19 cargo build --release -j 1\"'"
 
 # Install and restart managed service
 ssh danielmatthews-ferrero@10.100.0.17 "bash -lc 'set -euo pipefail; echo 5991 | sudo -S install -m 0755 ~/Pi-Media-Player/target/release/pi-media-player /usr/local/bin/pi-media-player; systemctl --user restart pi-media-player.service'"
 
 # Wait and check log
 sleep 8
-ssh danielmatthews-ferrero@10.100.0.17 "tail -n 120 /tmp/pi-media-player.log 2>/dev/null || tail -n 120 /tmp/jmp-slint.log 2>/dev/null"
+ssh danielmatthews-ferrero@10.100.0.17 "tail -n 120 /tmp/pi-media-player.log 2>/dev/null"
 ```
 
 The fix is NOT done until the Pi log shows the issue is resolved.
