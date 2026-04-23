@@ -28,6 +28,7 @@ BLOCK_PI_HOST_PATTERN="${BLOCK_PI_HOST_PATTERN:-10.100.0.17}"
 BLOCK_RELEASE_BUILDS="${BLOCK_RELEASE_BUILDS:-1}"
 RUNAWAY_GUARD_INTERVAL_SECONDS="${RUNAWAY_GUARD_INTERVAL_SECONDS:-10}"
 EMERGENCY_MIN_FREE_MEM_MB="${EMERGENCY_MIN_FREE_MEM_MB:-2048}"
+PI_LOG_LOCAL="${PI_LOG_LOCAL:-0}"
 
 LOCK_DIR="${LOCK_DIR:-$REPO_DIR/automation/.codex-loop.lock}"
 LOCK_PID_FILE="$LOCK_DIR/pid"
@@ -549,8 +550,12 @@ while true; do
   PROMPT=$(cat "$PROMPT_FILE")
 
   # Append Pi log context
-  PI_LOG=$(ssh -o ConnectTimeout=5 -o BatchMode=yes danielmatthews-ferrero@10.100.0.17 \
-    "tail -30 /tmp/pi-media-player.log 2>/dev/null" 2>/dev/null || echo "(Pi unreachable)")
+  if [[ "$PI_LOG_LOCAL" == "1" ]]; then
+    PI_LOG=$(tail -30 /tmp/pi-media-player.log 2>/dev/null || echo "(Pi log unavailable)")
+  else
+    PI_LOG=$(ssh -o ConnectTimeout=5 -o BatchMode=yes danielmatthews-ferrero@10.100.0.17 \
+      "tail -30 /tmp/pi-media-player.log 2>/dev/null" 2>/dev/null || echo "(Pi unreachable)")
+  fi
   PROMPT="$PROMPT
 
 ## Current Pi Log (last 30 lines)
