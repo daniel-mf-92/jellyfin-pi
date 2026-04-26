@@ -115,3 +115,6 @@ impl PlayerWrapper {
         match self { Self::Vlc(p) => p.run_event_loop().await, Self::Mpv(p) => p.run_event_loop().await }
     }
 }
+
+#[cfg(feature = "libmpv-inproc")]
+pub mod libmpv_inproc;

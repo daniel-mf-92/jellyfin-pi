@@ -1,0 +1,67 @@
+// Jellyfin Pi TV App - Toast (transient notification)
+// Bottom-right corner, auto-hides after duration-ms.
+
+import { Theme } from "theme.slint";
+
+export component Toast inherits Rectangle {
+    in property <string> message: "";
+    in property <int> duration-ms: 3000;
+    in-out property <bool> visible-toast: false;
+
+    callback dismissed();
+
+    width: 100%;
+    height: 100%;
+    visible: root.visible-toast || anim-progress > 0.01;
+
+    // Animation: opacity + translate-y .5em → 0
+    property <float> anim-progress: visible-toast ? 1.0 : 0.0;
+    animate anim-progress {
+        duration: 200ms;
+        easing: ease-out;
+    }
+
+    // Auto-hide timer
+    auto-hide := Timer {
+        interval: root.duration-ms * 1ms;
+        running: root.visible-toast;
+        triggered => {
+            root.visible-toast = false;
+            root.dismissed();
+        }
+    }
+
+    // Pass clicks through (toast is non-interactive overlay)
+    toast := Rectangle {
+        x: parent.width - self.width - 32px;
+        y: parent.height - self.height - 32px - (1.0 - root.anim-progress) * 8px;
+        width: 300px;
+        // Auto-height from children
+        background: Theme.surface;
+        border-radius: 16px;
+        opacity: root.anim-progress;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #000000aa;
+        drop-shadow-offset-y: 8px;
+
+        VerticalLayout {
+            padding: 16px;
+
+            Text {
+                text: root.message;
+                font-size: Theme.font-body-medium;
+                color: Theme.text-primary;
+                horizontal-alignment: left;
+                wrap: word-wrap;
+            }
+        }
+
+        TouchArea {
+            // Click dismisses early
+            clicked => {
+                root.visible-toast = false;
+                root.dismissed();
+            }
+        }
+    }
+}

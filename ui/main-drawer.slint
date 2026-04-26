@@ -1,0 +1,229 @@
+// Jellyfin Pi TV App - MainDrawer (slide-out side navigation)
+// 1-1 parity with jellyfin-web .mainDrawer (jellyfin-web/src/components/skinHeader/skinHeader.scss)
+//
+// JMP reference:
+//   .mainDrawer { width: 280px; transition: transform .3s ease-in-out; transform: translateX(-100%); }
+//   .mainDrawer.open { transform: translateX(0); }
+//   .navMenuOption { padding: 1em; display: flex; align-items: center; }
+//   .navMenuOption:focus { background: var(--focus-background); }
+
+import { Theme } from "theme.slint";
+
+export struct NavEntry {
+    id: string,
+    label: string,
+    icon: string,
+}
+
+export component MainDrawer inherits Rectangle {
+    // -- Public API -----------------------------------------------------------
+
+    in property <bool> open: false;
+    in property <string> current-route: "home";
+
+    callback nav-selected(/* route_id */ string);
+    callback closed();
+
+    // Width / position match JMP .mainDrawer (280px) — full viewport height.
+    width: 100%;
+    height: 100%;
+    background: transparent;
+
+    // Pointer-transparent when closed so it doesn't block underlying UI.
+    visible: root.open || drawer.x > -drawer.width + 1px;
+
+    private property <[NavEntry]> entries: [
+        { id: "home",     label: "Home",     icon: "\u{2302}" },   // ⌂
+        { id: "movies",   label: "Movies",   icon: "\u{1F3AC}" },  // 🎬
+        { id: "shows",    label: "Shows",    icon: "\u{1F4FA}" },  // 📺
+        { id: "music",    label: "Music",    icon: "\u{1F3B5}" },  // 🎵
+        { id: "livetv",   label: "Live TV",  icon: "\u{1F4E1}" },  // 📡
+        { id: "search",   label: "Search",   icon: "\u{1F50D}" },  // 🔍
+        { id: "settings", label: "Settings", icon: "\u{2699}" },   // ⚙
+        { id: "logout",   label: "Logout",   icon: "\u{21E6}" },   // ⇦
+    ];
+
+    in-out property <int> focused-index: 0;
+
+    private property <int> safe-focused-index:
+        max(0, min(root.focused-index, root.entries.length - 1));
+
+    // -- Backdrop overlay (click closes drawer) -------------------------------
+
+    backdrop := Rectangle {
+        width: 100%;
+        height: 100%;
+        background: Theme.scrim;
+        opacity: root.open ? 1.0 : 0.0;
+        visible: self.opacity > 0.01;
+        animate opacity {
+            duration: Theme.transition-duration;
+            easing: ease-in-out;
+        }
+
+        TouchArea {
+            clicked => { root.closed(); }
+        }
+    }
+
+    // -- Drawer panel (280px, slides in from left) ----------------------------
+
+    drawer := Rectangle {
+        width: 280px;
+        height: 100%;
+        background: Theme.surface;
+
+        // Slide-in: matches JMP `.mainDrawer { transition: transform .3s ease-in-out }`.
+        x: root.open ? 0px : -self.width;
+        animate x {
+            duration: Theme.transition-duration;
+            easing: ease-in-out;
+        }
+
+        // Subtle right-edge shadow to separate from content.
+        Rectangle {
+            x: parent.width;
+            y: 0;
+            width: 8px;
+            height: 100%;
+            background: @linear-gradient(90deg,
+                #000000aa 0%,
+                #00000000 100%);
+        }
+
+        // Block clicks on the panel itself from reaching the backdrop.
+        TouchArea {
+            clicked => { /* swallow */ }
+        }
+
+        // -- Focus + keyboard nav --------------------------------------------
+
+        focus-scope := FocusScope {
+            width: 100%;
+            height: 100%;
+
+            key-pressed(event) => {
+                if (event.text == Key.UpArrow) {
+                    if (root.safe-focused-index > 0) {
+                        root.focused-index = root.safe-focused-index - 1;
+                    }
+                    return accept;
+                }
+                if (event.text == Key.DownArrow) {
+                    if (root.safe-focused-index < root.entries.length - 1) {
+                        root.focused-index = root.safe-focused-index + 1;
+                    }
+                    return accept;
+                }
+                if (event.text == Key.Return || event.text == " ") {
+                    if (root.entries.length > 0) {
+                        root.nav-selected(root.entries[root.safe-focused-index].id);
+                    }
+                    return accept;
+                }
+                if (event.text == Key.Escape) {
+                    root.closed();
+                    return accept;
+                }
+                return reject;
+            }
+
+            // Auto-focus when drawer opens.
+            changed open => {
+                if (root.open) {
+                    self.focus();
+                }
+            }
+
+            VerticalLayout {
+                width: 100%;
+                padding-top: Theme.spacing-lg;
+                padding-bottom: Theme.spacing-lg;
+                spacing: 0px;
+
+                // Brand header (matches JMP .headerLogo area).
+                Rectangle {
+                    height: 64px;
+                    background: transparent;
+
+                    Text {
+                        x: Theme.spacing-md;
+                        y: (parent.height - self.height) / 2;
+                        text: "Jellyfin";
+                        color: Theme.accent;
+                        font-size: Theme.font-title-small;
+                        font-weight: 700;
+                    }
+                }
+
+                // -- Nav entries (.navMenuOption) ----------------------------
+
+                for entry[idx] in root.entries : Rectangle {
+                    height: 56px;
+                    background: idx == root.safe-focused-index
+                        ? Theme.accent-dim
+                        : (entry.id == root.current-route
+                            ? Theme.surface-variant
+                            : transparent);
+                    animate background { duration: Theme.focus-duration; }
+
+                    // Active route accent bar (left edge).
+                    Rectangle {
+                        x: 0;
+                        y: 0;
+                        width: 4px;
+                        height: 100%;
+                        background: entry.id == root.current-route
+                            ? Theme.accent
+                            : transparent;
+                    }
+
+                    HorizontalLayout {
+                        // padding 1em ≈ Theme.spacing-md
+                        padding-left: Theme.spacing-md;
+                        padding-right: Theme.spacing-md;
+                        padding-top: Theme.spacing-sm;
+                        padding-bottom: Theme.spacing-sm;
+                        spacing: Theme.spacing-md;
+                        alignment: start;
+
+                        Rectangle {
+                            width: 24px;
+                            height: 24px;
+                            y: (parent.height - self.height) / 2;
+                            Text {
+                                text: entry.icon;
+                                font-size: 22px;
+                                color: idx == root.safe-focused-index
+                                    ? Theme.on-background
+                                    : Theme.on-surface;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        Text {
+                            text: entry.label;
+                            font-size: Theme.font-body-medium;
+                            color: idx == root.safe-focused-index
+                                ? Theme.on-background
+                                : Theme.on-surface;
+                            font-weight: entry.id == root.current-route ? 700 : 500;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    TouchArea {
+                        clicked => {
+                            root.focused-index = idx;
+                            root.nav-selected(entry.id);
+                        }
+                    }
+                }
+
+                // Filler so subsequent UI (if any) stays at the bottom.
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+    }
+}

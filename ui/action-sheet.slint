@@ -1,0 +1,174 @@
+// Jellyfin Pi TV App - ActionSheet (audio/subtitle picker popup)
+// Modeled after JMP `.actionSheet` — bottom-anchored sheet on TV/mobile,
+// centered floating popup on desktop.
+
+import { Theme } from "theme.slint";
+
+export struct ActionSheetItem {
+    id: string,
+    label: string,
+    secondary: string,
+    selected: bool,
+}
+
+export component ActionSheet inherits Rectangle {
+    in property <bool> open: false;
+    in property <string> title: "";
+    in property <[ActionSheetItem]> items: [];
+    in-out property <string> selected-id: "";
+    in property <bool> tv-mode: true;
+
+    in-out property <int> focused-index: 0;
+
+    callback item-selected(string);
+    callback closed();
+
+    visible: open;
+    width: 100%;
+    height: 100%;
+    background: Theme.scrim;
+
+    // Slide-up + fade animation state (driven off `open`)
+    property <float> anim-progress: open ? 1.0 : 0.0;
+    animate anim-progress {
+        duration: 300ms;
+        easing: ease-out;
+    }
+
+    forward-focus: key-handler;
+
+    // Backdrop click closes
+    TouchArea {
+        clicked => {
+            if (root.open) {
+                root.closed();
+            }
+        }
+    }
+
+    key-handler := FocusScope {
+        init => { self.focus(); }
+        width: 0;
+        height: 0;
+
+        key-pressed(event) => {
+            if (!root.open) {
+                return reject;
+            }
+            if (event.text == Key.UpArrow) {
+                if (root.focused-index > 0) {
+                    root.focused-index = root.focused-index - 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.DownArrow) {
+                if (root.focused-index < root.items.length - 1) {
+                    root.focused-index = root.focused-index + 1;
+                }
+                return accept;
+            }
+            if (event.text == Key.Return) {
+                if (root.items.length > 0) {
+                    root.item-selected(root.items[root.focused-index].id);
+                }
+                return accept;
+            }
+            if (event.text == Key.Escape) {
+                root.closed();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    // Sheet container — bottom-anchored on TV, centered on desktop
+    sheet := Rectangle {
+        x: root.tv-mode ? (parent.width - self.width) / 2
+                        : (parent.width - self.width) / 2;
+        y: root.tv-mode
+            ? parent.height - self.height - 48px + (1.0 - root.anim-progress) * (self.height * 0.3)
+            : (parent.height - self.height) / 2 + (1.0 - root.anim-progress) * 30px;
+        width: 600px;
+        // Height clamped via min/max via children — Slint auto-sizes
+        background: Theme.surface;
+        border-radius: 16px;
+        opacity: root.anim-progress;
+        drop-shadow-blur: 24px;
+        drop-shadow-color: #000000aa;
+        drop-shadow-offset-y: 8px;
+
+        TouchArea {
+            // Eat clicks so backdrop close doesn't fire
+            clicked => { }
+        }
+
+        VerticalLayout {
+            padding: 24px;
+            spacing: 8px;
+
+            // Title
+            if root.title != "": Text {
+                text: root.title;
+                font-size: 22px;
+                font-weight: 700;
+                color: Theme.text-primary;
+                horizontal-alignment: left;
+            }
+
+            if root.title != "": Rectangle { height: 8px; }
+
+            // Items
+            for item[idx] in root.items: Rectangle {
+                height: 56px;
+                border-radius: Theme.button-radius;
+                background: root.focused-index == idx ? Theme.accent : Theme.surface-variant;
+
+                animate background { duration: Theme.focus-duration; }
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    spacing: 12px;
+                    alignment: stretch;
+
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: item.label;
+                            font-size: Theme.font-body-medium;
+                            font-weight: 600;
+                            color: root.focused-index == idx ? Theme.on-background : Theme.text-primary;
+                            horizontal-alignment: left;
+                        }
+                        if item.secondary != "": Text {
+                            text: item.secondary;
+                            font-size: Theme.font-caption;
+                            color: root.focused-index == idx ? Theme.on-background : Theme.text-secondary;
+                            horizontal-alignment: left;
+                        }
+                    }
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                    }
+
+                    // Check-mark glyph when selected
+                    if item.selected: Text {
+                        text: "✓";
+                        font-size: 28px;
+                        font-weight: 700;
+                        color: root.focused-index == idx ? Theme.on-background : Theme.accent;
+                        vertical-alignment: center;
+                    }
+                }
+
+                TouchArea {
+                    clicked => {
+                        root.focused-index = idx;
+                        root.item-selected(item.id);
+                    }
+                }
+            }
+        }
+    }
+}

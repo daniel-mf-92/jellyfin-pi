@@ -1,0 +1,192 @@
+// Jellyfin Pi TV App - SkinHeader Component
+// 1-1 parity with jellyfin-web .skinHeader top app-bar
+// Layout: hamburger | logo  ......  search | cast | avatar
+// Tokens: matches Theme global (no new colors defined here).
+
+import { Theme } from "./theme.slint";
+
+// ----------------------------------------------------------------------------
+// Internal: icon button with FocusScope-driven focus ring (no scale).
+// ----------------------------------------------------------------------------
+component HeaderIconButton inherits Rectangle {
+    in property <string> glyph;
+    in property <length> glyph-size: 28px;
+    in property <color> glyph-color: Theme.text-primary;
+    in property <bool> active: false;            // for stateful icons (e.g. cast-active)
+    callback clicked();
+
+    width: 56px;
+    height: 56px;
+    border-radius: Theme.button-radius;
+    background: focus-scope.has-focus ? Theme.surface-variant : transparent;
+    border-width: focus-scope.has-focus ? 2px : 0px;
+    border-color: Theme.accent;       // accent acts as focus-color in this theme
+
+    animate background, border-width { duration: Theme.focus-duration; }
+
+    Text {
+        text: root.glyph;
+        font-size: root.glyph-size;
+        color: root.active ? Theme.accent : root.glyph-color;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    focus-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            focus-scope.focus();
+            root.clicked();
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Internal: avatar button (circular, image-backed)
+// ----------------------------------------------------------------------------
+component HeaderAvatarButton inherits Rectangle {
+    in property <image> avatar-image;
+    callback clicked();
+
+    width: 56px;
+    height: 56px;
+    border-radius: 28px;
+    clip: true;
+    background: Theme.surface-variant;
+    border-width: focus-scope.has-focus ? 2px : 0px;
+    border-color: Theme.accent;
+
+    animate border-width { duration: Theme.focus-duration; }
+
+    Image {
+        source: root.avatar-image;
+        width: parent.width;
+        height: parent.height;
+        image-fit: cover;
+    }
+
+    // Fallback glyph when no avatar set
+    Text {
+        text: "\u{1F464}";
+        font-size: 28px;
+        color: Theme.on-surface-variant;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        visible: root.avatar-image.width == 0;
+    }
+
+    focus-scope := FocusScope {
+        key-pressed(event) => {
+            if (event.text == " " || event.text == "\n") {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    TouchArea {
+        clicked => {
+            focus-scope.focus();
+            root.clicked();
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// SkinHeader - exported top app-bar
+// ----------------------------------------------------------------------------
+export component SkinHeader inherits Rectangle {
+    // Properties (per spec)
+    in-out property <string> current-page: "home";
+    in-out property <image> user-avatar-image;
+    in-out property <bool> cast-active: false;
+
+    // Hide-on-osd: fades opacity to 0 over 200ms
+    in property <bool> osd-mode: false;
+
+    // Callbacks
+    callback clicked-menu();
+    callback clicked-search();
+    callback clicked-cast();
+    callback clicked-user();
+
+    // Fixed-height ~3em (Theme default-font-size = 32px → ~96px)
+    height: Theme.default-font-size * 3;
+    width: 100%;
+
+    // Background: rgba(0,0,0,0.4)
+    background: #00000066;
+
+    // Subtle bottom border (uses surface-variant - the existing "border" token)
+    Rectangle {
+        x: 0;
+        y: parent.height - 1px;
+        width: parent.width;
+        height: 1px;
+        background: Theme.surface-variant;
+    }
+
+    // Hide-on-osd fade
+    opacity: root.osd-mode ? 0.0 : 1.0;
+    animate opacity { duration: 200ms; }
+
+    HorizontalLayout {
+        padding-left: Theme.spacing-lg;
+        padding-right: Theme.spacing-lg;
+        padding-top: Theme.spacing-sm;
+        padding-bottom: Theme.spacing-sm;
+        spacing: Theme.spacing-md;
+        alignment: space-between;
+
+        // == Left cluster: hamburger + logo ===================================
+        HorizontalLayout {
+            spacing: Theme.spacing-md;
+            alignment: start;
+
+            HeaderIconButton {
+                glyph: "\u{2630}";       // ☰
+                clicked => { root.clicked-menu(); }
+            }
+
+            // Jellyfin logo (icon-transparent)
+            Image {
+                source: @image-url("../assets/icon-transparent.png");
+                width: 56px;
+                height: 56px;
+                image-fit: contain;
+            }
+        }
+
+        // == Right cluster: search + cast + avatar ============================
+        HorizontalLayout {
+            spacing: Theme.spacing-sm;
+            alignment: end;
+
+            HeaderIconButton {
+                glyph: "\u{1F50D}";      // 🔍
+                clicked => { root.clicked-search(); }
+            }
+
+            HeaderIconButton {
+                glyph: "\u{1F4FA}";      // 📺 (cast)
+                active: root.cast-active;
+                clicked => { root.clicked-cast(); }
+            }
+
+            HeaderAvatarButton {
+                avatar-image: root.user-avatar-image;
+                clicked => { root.clicked-user(); }
+            }
+        }
+    }
+}

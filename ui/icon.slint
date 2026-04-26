@@ -1,0 +1,66 @@
+// Jellyfin Pi TV App - Material Icons component
+// Renders any Material Icon by name using the embedded MaterialIcons-Regular.ttf
+// Family name is "Material Icons" (verified from font name table).
+//
+// Codepoints sourced from assets/MaterialIcons-Regular.codepoints (2235 entries
+// total). This component exposes a curated set of ~32 glyphs used by the
+// Jellyfin Mobile/TV (JMP) reference UI; extend `glyph(name)` to add more.
+
+import { Theme } from "theme.slint";
+
+// Register the font with the Slint compiler. Path is relative to this file.
+import "../assets/MaterialIcons-Regular.ttf";
+
+export component Icon inherits Text {
+    in property <string> name;
+    in property <length> size: 24px;
+    in property <color> color: Theme.text-primary;
+
+    font-family: "Material Icons";
+    font-size: size;
+    color: self.color;
+    horizontal-alignment: center;
+    vertical-alignment: center;
+    text: glyph(name);
+
+    // ------------------------------------------------------------------
+    // Name -> glyph lookup. Codepoints are decimal (Slint string can hold
+    // any unicode scalar). Hex values come straight from the codepoints
+    // map shipped with the font. Add new entries in alphabetical order.
+    // ------------------------------------------------------------------
+    pure function glyph(n: string) -> string {
+        return n == "home"                ? "\u{e88a}" :
+               n == "movie"               ? "\u{e02c}" :
+               n == "tv"                  ? "\u{e333}" :
+               n == "music_note"          ? "\u{e405}" :
+               n == "search"              ? "\u{e8b6}" :
+               n == "settings"            ? "\u{e8b8}" :
+               n == "logout"              ? "\u{e9ba}" :
+               n == "menu"                ? "\u{e5d2}" :
+               n == "cast"                ? "\u{e307}" :
+               n == "person"              ? "\u{e7fd}" :
+               n == "play_arrow"          ? "\u{e037}" :
+               n == "pause"               ? "\u{e034}" :
+               n == "skip_next"           ? "\u{e044}" :
+               n == "skip_previous"       ? "\u{e045}" :
+               n == "fast_rewind"         ? "\u{e020}" :
+               n == "fast_forward"        ? "\u{e01f}" :
+               n == "fullscreen"          ? "\u{e5d0}" :
+               n == "fullscreen_exit"     ? "\u{e5d1}" :
+               n == "closed_caption"      ? "\u{e01c}" :
+               n == "audiotrack"          ? "\u{e3a1}" :
+               n == "volume_up"           ? "\u{e050}" :
+               n == "volume_off"          ? "\u{e04f}" :
+               n == "volume_down"         ? "\u{e04d}" :
+               n == "favorite"            ? "\u{e87d}" :
+               n == "favorite_border"     ? "\u{e87e}" :
+               n == "check"               ? "\u{e5ca}" :
+               n == "more_vert"           ? "\u{e5d4}" :
+               n == "expand_less"         ? "\u{e5ce}" :
+               n == "expand_more"         ? "\u{e5cf}" :
+               n == "arrow_back"          ? "\u{e5c4}" :
+               n == "tap_and_play"        ? "\u{e62b}" :
+               n == "fiber_manual_record" ? "\u{e061}" :
+               "";
+    }
+}

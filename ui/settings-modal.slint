@@ -1,0 +1,119 @@
+import { Theme } from "theme.slint";
+import { SettingsScreen } from "settings.slint";
+
+// JMP `.dialog` parity wrapper: full-screen scrim + centered card overlay.
+// Reuses the existing SettingsScreen (433 LOC) as inner content — no duplication.
+export component SettingsModal inherits Rectangle {
+    in-out property <bool> open: false;
+    in property <int> initial-section: 0;
+
+    // Passthrough properties to inner SettingsScreen
+    in property <string> server-url;
+    in property <string> username;
+    in property <string> device-name;
+    in property <string> version: "1.0.0";
+    in property <string> audio-output: "Default";
+    in property <bool> hardware-decode: true;
+    in property <int> subtitle-size: 100;
+    in property <bool> audio-passthrough: true;
+    in property <int> subtitle-font-size: 48;
+    in property <string> media-player: "vlc";
+
+    // Passthrough callbacks
+    callback closed();
+    callback logout();
+    callback change-server();
+    callback toggle-hw-decode();
+    callback change-subtitle-size(int);
+    callback toggle-passthrough();
+    callback toggle-media-player();
+    callback change-subtitle-font-size(int);
+    callback power-action(string);
+
+    // Full-screen scrim — only laid out / visible when open
+    visible: root.open;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.86);
+
+    // JMP `.scaleup` keyframe parity: opacity 0→1 + scale 0.9→1, 200ms ease-out
+    opacity: root.open ? 1.0 : 0.0;
+    animate opacity { duration: 200ms; easing: ease-out; }
+
+    // Block clicks bleeding through to whatever is behind
+    TouchArea {
+        width: 100%;
+        height: 100%;
+        clicked => {
+            // tap-on-scrim closes (JMP behavior)
+            root.open = false;
+            root.closed();
+        }
+    }
+
+    // Centered dialog card
+    card := Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: min(parent.width * 0.9, 800px);
+        height: min(parent.height * 0.9, 700px);
+        background: Theme.surface;
+        border-radius: Theme.card-radius;
+        clip: true;
+
+        // JMP `e3` elevation (drop-shadow)
+        drop-shadow-blur: 24px;
+        drop-shadow-color: rgba(0, 0, 0, 0.55);
+        drop-shadow-offset-y: 8px;
+
+        scale-factor: root.open ? 1.0 : 0.9;
+        animate scale-factor { duration: 200ms; easing: ease-out; }
+        property <float> scale-factor: 1.0;
+
+        // Swallow taps on the card itself (don't propagate to scrim TouchArea)
+        TouchArea { width: 100%; height: 100%; }
+
+        inner := SettingsScreen {
+            width: 100%;
+            height: 100%;
+            server-url: root.server-url;
+            username: root.username;
+            device-name: root.device-name;
+            version: root.version;
+            audio-output: root.audio-output;
+            hardware-decode: root.hardware-decode;
+            subtitle-size: root.subtitle-size;
+            audio-passthrough: root.audio-passthrough;
+            subtitle-font-size: root.subtitle-font-size;
+            media-player: root.media-player;
+            focused-item: root.initial-section;
+
+            logout => { root.logout(); }
+            change-server => { root.change-server(); }
+            toggle-hw-decode => { root.toggle-hw-decode(); }
+            change-subtitle-size(v) => { root.change-subtitle-size(v); }
+            toggle-passthrough => { root.toggle-passthrough(); }
+            toggle-media-player => { root.toggle-media-player(); }
+            change-subtitle-font-size(v) => { root.change-subtitle-font-size(v); }
+            power-action(a) => { root.power-action(a); }
+            go-back => {
+                root.open = false;
+                root.closed();
+            }
+        }
+    }
+
+    // Outer Escape handler (also covers cases where inner FocusScope hasn't grabbed focus)
+    fs := FocusScope {
+        width: 100%;
+        height: 100%;
+        key-pressed(event) => {
+            if (event.text == Key.Escape) {
+                root.open = false;
+                root.closed();
+                return accept;
+            }
+            return reject;
+        }
+    }
+}

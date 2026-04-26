@@ -1,3 +1,4 @@
+mod focus;
 mod api;
 mod player;
 mod input;

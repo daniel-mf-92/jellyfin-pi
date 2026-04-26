@@ -137,6 +137,9 @@ export global Theme {
     // -- Typography (size tokens) ---------------------------------------------
 
     out property <string> default-font-family: "sans-serif";
+    // Material Icons (registered via ui/icon.slint -> assets/MaterialIcons-Regular.ttf).
+    // Use the Icon component from ui/icon.slint rather than referencing this directly.
+    out property <string> icon-font-family: "Material Icons";
     out property <length> default-font-size:   32px;
 
     out property <length> font-title-large:  64px;
