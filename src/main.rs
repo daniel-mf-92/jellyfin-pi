@@ -170,6 +170,22 @@ fn spawn_ui_task(future: impl std::future::Future<Output = ()> + 'static) {
     }
 }
 
+/// Sleep on the Slint event loop without busy-spinning.
+///
+/// `tokio::time::sleep` polled under `async_compat::Compat` from `slint::spawn_local`
+/// wakes the FutureRunner immediately on every poll, pinning a CPU core at 100%.
+/// Use this helper for any long-lived idle delay inside a `spawn_ui_task` body.
+async fn slint_sleep(duration: std::time::Duration) {
+    let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+    let tx = std::cell::Cell::new(Some(tx));
+    slint::Timer::single_shot(duration, move || {
+        if let Some(tx) = tx.take() {
+            let _ = tx.send(());
+        }
+    });
+    let _ = rx.await;
+}
+
 fn background_retry_delay_secs(attempt: usize) -> u64 {
     // Try immediately once, then keep reconnect cadence tight while Jellyfin is
     // rebooting: 5s -> 10s -> 15s.
@@ -1432,7 +1448,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     retry_attempt = retry_attempt.saturating_add(1);
                     let retry_delay_secs = background_retry_delay_secs(retry_attempt as usize);
-                    tokio::time::sleep(tokio::time::Duration::from_secs(retry_delay_secs)).await;
+                    slint_sleep(std::time::Duration::from_secs(retry_delay_secs)).await;
 
                     if retry_attempt == 1 || retry_attempt % 3 == 0 {
                         info!(
@@ -1693,7 +1709,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let image_cache_rss = image_cache.clone();
         spawn_ui_task(async move {
             loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+                slint_sleep(std::time::Duration::from_secs(10)).await;
                 if let Some(mb) = read_rss_mb() {
                     if mb > RSS_EMERGENCY_EXIT_MB {
                         log::error!(
@@ -1703,7 +1719,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         );
                         image_cache_rss.clear_memory_cache().await;
                         trim_process_memory();
-                        tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+                        slint_sleep(std::time::Duration::from_secs(1)).await;
 
                         if let Some(after_trim_mb) = read_rss_mb() {
                             if after_trim_mb > RSS_EMERGENCY_EXIT_MB {
