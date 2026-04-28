@@ -6,25 +6,24 @@ export component LoadingSpinner inherits Rectangle {
     in property <bool> active: false;
     in property <string> message: "Loading...";
 
-    // Internal animation timer (0.0 -> 1.0 looping)
-    property <float> phase: 0;
+    // Driven by a Timer at 200ms instead of an iteration-count:-1 animation,
+    // so the Slint render loop is not pinned at full-frame redraw while the
+    // spinner is on screen. Previously this cost ~100% of one CPU core, which
+    // also tripped the master-script CPU watchdog.
+    property <int> tick: 0;
 
     visible: active;
     width: 100%;
     height: 100%;
     background: Theme.scrim;
 
-    // Drive the animation loop
-    animate phase {
-        duration: 1200ms;
-        iteration-count: -1;
-    }
-
-    states [
-        running when active: {
-            phase: 1.0;
+    pulse-timer := Timer {
+        interval: 200ms;
+        running: active;
+        triggered => {
+            tick = mod(tick + 1, 6);
         }
-    ]
+    }
 
     VerticalLayout {
         alignment: center;
@@ -32,58 +31,38 @@ export component LoadingSpinner inherits Rectangle {
         HorizontalLayout {
             alignment: center;
 
-            // Pulsing dots container
+            // Three dots; the active pair lights up on its tick. No interpolated
+            // animations — state changes are direct so the renderer settles.
             HorizontalLayout {
                 spacing: 12px;
                 alignment: center;
                 height: 56px;
 
-                // Dot 1 - leads the pulse
                 Rectangle {
-                    property <float> dot-phase: mod(root.phase + 0.0, 1.0);
-                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
-
-                    width: 12px + (pulse * 6px);
+                    property <bool> on: root.tick == 0 || root.tick == 1;
+                    width: on ? 18px : 12px;
                     height: self.width;
                     border-radius: self.width / 2;
                     background: Theme.accent;
-                    opacity: 0.4 + (pulse * 0.6);
-
-                    animate width, height, opacity {
-                        duration: 50ms;
-                    }
+                    opacity: on ? 1.0 : 0.4;
                 }
 
-                // Dot 2 - offset by 1/3
                 Rectangle {
-                    property <float> dot-phase: mod(root.phase + 0.67, 1.0);
-                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
-
-                    width: 12px + (pulse * 6px);
+                    property <bool> on: root.tick == 2 || root.tick == 3;
+                    width: on ? 18px : 12px;
                     height: self.width;
                     border-radius: self.width / 2;
                     background: Theme.accent;
-                    opacity: 0.4 + (pulse * 0.6);
-
-                    animate width, height, opacity {
-                        duration: 50ms;
-                    }
+                    opacity: on ? 1.0 : 0.4;
                 }
 
-                // Dot 3 - offset by 2/3
                 Rectangle {
-                    property <float> dot-phase: mod(root.phase + 0.34, 1.0);
-                    property <float> pulse: dot-phase < 0.33 ? (dot-phase / 0.33) : dot-phase < 0.66 ? (1.0 - ((dot-phase - 0.33) / 0.33)) : 0.0;
-
-                    width: 12px + (pulse * 6px);
+                    property <bool> on: root.tick == 4 || root.tick == 5;
+                    width: on ? 18px : 12px;
                     height: self.width;
                     border-radius: self.width / 2;
                     background: Theme.accent;
-                    opacity: 0.4 + (pulse * 0.6);
-
-                    animate width, height, opacity {
-                        duration: 50ms;
-                    }
+                    opacity: on ? 1.0 : 0.4;
                 }
             }
         }
