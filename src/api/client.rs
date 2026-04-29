@@ -123,7 +123,17 @@ impl JellyfinClient {
 
         for (index, base_url) in candidates.iter().enumerate() {
             let url = format!("{base_url}{endpoint}");
-            match build_request(&self.http, &url).send().await {
+            // Run HTTP send/connect on the tokio runtime, NOT on the slint
+            // event loop (where async_compat::Compat would busy-spin
+            // tokio::time::timeout inside reqwest's connect timeout, pinning
+            // CPU at 100%; see task #9).
+            let req = build_request(&self.http, &url);
+            let send_fut = req.send();
+            let send_result = tokio::runtime::Handle::current()
+                .spawn(send_fut)
+                .await
+                .expect("reqwest send task panicked");
+            match send_result {
                 Ok(resp) => {
                     if index > 0 {
                         warn!(

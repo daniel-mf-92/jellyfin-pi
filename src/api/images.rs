@@ -210,7 +210,13 @@ impl ImageCache {
 
     /// Download raw bytes from `url`.
     async fn download_bytes(&self, url: &str) -> Option<Vec<u8>> {
-        match self.http.get(url).send().await {
+        // Run the full HTTP send + body stream on the tokio runtime so reqwest's
+        // internal tokio::time::* don't busy-spin under slint's async_compat
+        // (see task #9). reqwest::Client is Arc internally so the clone is cheap.
+        let http = self.http.clone();
+        let url = url.to_string();
+        tokio::runtime::Handle::current().spawn(async move {
+            match http.get(&url).send().await {
             Ok(resp) => {
                 if !resp.status().is_success() {
                     warn!("Image download failed (HTTP {}): {}", resp.status(), url);
@@ -259,6 +265,7 @@ impl ImageCache {
                 None
             }
         }
+        }).await.expect("image download task panicked")
     }
 
     /// Decode raw image bytes (JPEG, PNG, WebP, etc.) into a Slint `Image`.
