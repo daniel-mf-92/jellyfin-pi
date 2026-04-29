@@ -551,6 +551,23 @@ fn base_item_to_media_item(
                 .map(|g| g.join(", "))
                 .unwrap_or_default(),
         ),
+        tagline: SharedString::from(
+            item.taglines
+                .as_ref()
+                .and_then(|t| t.first().cloned())
+                .unwrap_or_default(),
+        ),
+        studio: SharedString::from(
+            item.studios
+                .as_ref()
+                .and_then(|s| s.first().map(|n| n.name.clone()))
+                .unwrap_or_default(),
+        ),
+        critic_rating: SharedString::from(
+            item.critic_rating
+                .map(|r| format!("{:.0}%", r))
+                .unwrap_or_default(),
+        ),
     }
 }
 

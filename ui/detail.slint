@@ -498,6 +498,17 @@ export component DetailScreen inherits Rectangle {
                     width: parent.width - Theme.overscan-h * 2 - 260px;
                     spacing: 6px;
 
+                    // Tagline (italic, above title)
+                    if root.item.tagline != "" : Text {
+                        text: root.item.tagline;
+                        font-size: Theme.font-body-medium;
+                        font-italic: true;
+                        color: Theme.text-secondary;
+                        wrap: word-wrap;
+                        overflow: elide;
+                        horizontal-alignment: left;
+                    }
+
                     // Title
                     Text {
                         text: root.item.title;
@@ -544,6 +555,27 @@ export component DetailScreen inherits Rectangle {
                             color: Theme.text-secondary;
                             vertical-alignment: center;
                         }
+                        if root.item.critic-rating != "" && (root.item.year != "" || root.item.official-rating != "" || root.item.runtime != "") : Text {
+                            text: "  |  ";
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-tertiary;
+                            vertical-alignment: center;
+                        }
+                        if root.item.critic-rating != "" : Text {
+                            text: "Critics: " + root.item.critic-rating;
+                            font-size: Theme.font-body-medium;
+                            color: Theme.text-secondary;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Studio row
+                    if root.item.studio != "" : Text {
+                        text: root.item.studio;
+                        font-size: Theme.font-body-small;
+                        color: Theme.text-tertiary;
+                        overflow: elide;
+                        horizontal-alignment: left;
                     }
 
                     // Genres row
